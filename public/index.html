@@ -2,194 +2,114 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <meta name="theme-color" content="#0a0a0f">
-  <meta name="description" content="Track and control your laptop remotely">
-  
   <title>Laptop Tracker</title>
-  
-  <link rel="manifest" href="/manifest.json">
-  <link rel="icon" type="image/svg+xml" href="/icons/icon.svg">
-  
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
-  
   <style>
-    :root {
-      --bg-primary: #0a0a0f;
-      --bg-card: rgba(255,255,255,0.05);
-      --bg-card-hover: rgba(255,255,255,0.08);
-      --border: rgba(255,255,255,0.1);
-      --accent: #00d4ff;
-      --accent-glow: rgba(0,212,255,0.3);
-      --success: #00ff88;
-      --warning: #ffaa00;
-      --danger: #ff4444;
-      --text-primary: #fff;
-      --text-secondary: #888;
-      --safe-top: env(safe-area-inset-top, 0px);
-      --safe-bottom: env(safe-area-inset-bottom, 0px);
-    }
-
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-      -webkit-tap-highlight-color: transparent;
-    }
-
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
-      background: var(--bg-primary);
-      color: var(--text-primary);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0a0a0f;
+      color: #fff;
       min-height: 100vh;
       overflow-x: hidden;
-      padding-top: var(--safe-top);
-      padding-bottom: var(--safe-bottom);
     }
 
-    /* Login Screen */
-    #login-screen {
+    /* Pairing Modal */
+    .modal-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.9);
       display: flex;
-      flex-direction: column;
       align-items: center;
       justify-content: center;
-      min-height: 100vh;
+      z-index: 9999;
       padding: 20px;
-      background: linear-gradient(135deg, #0a0a1a 0%, #1a0a2e 50%, #0a1a2e 100%);
     }
 
-    .login-logo {
-      width: 120px;
-      height: 120px;
-      margin-bottom: 24px;
-      animation: float 3s ease-in-out infinite;
-    }
+    .modal-overlay.hidden { display: none; }
 
-    @keyframes float {
-      0%, 100% { transform: translateY(0); }
-      50% { transform: translateY(-10px); }
-    }
-
-    .login-card {
-      background: var(--bg-card);
-      backdrop-filter: blur(20px);
-      border: 1px solid var(--border);
-      border-radius: 24px;
-      padding: 40px 30px;
+    .modal {
+      background: #1a1a2e;
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 20px;
+      padding: 30px;
       width: 100%;
       max-width: 360px;
       text-align: center;
     }
 
-    .login-title {
-      font-size: 28px;
-      font-weight: 700;
-      margin-bottom: 8px;
-      background: linear-gradient(135deg, #fff 0%, #aaa 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
+    .modal-icon {
+      width: 80px; height: 80px;
+      background: linear-gradient(135deg, #00d4ff, #7c3aed);
+      border-radius: 20px;
+      display: flex; align-items: center; justify-content: center;
+      margin: 0 auto 20px;
+      font-size: 36px;
     }
 
-    .login-subtitle {
-      color: var(--text-secondary);
-      font-size: 14px;
-      margin-bottom: 32px;
-    }
+    .modal h2 { font-size: 22px; margin-bottom: 8px; }
+    .modal p { color: #888; font-size: 13px; margin-bottom: 24px; }
 
-    .pin-input {
-      display: flex;
-      gap: 12px;
-      justify-content: center;
-      margin-bottom: 24px;
-    }
-
-    .pin-digit {
-      width: 60px;
-      height: 70px;
-      background: rgba(255,255,255,0.06);
-      border: 2px solid var(--border);
-      border-radius: 14px;
-      text-align: center;
-      font-size: 28px;
-      font-weight: 700;
-      color: #fff;
-      outline: none;
-      transition: all 0.2s;
-    }
-
-    .pin-digit:focus {
-      border-color: var(--accent);
-      box-shadow: 0 0 25px var(--accent-glow);
-    }
-
-    .connect-btn {
+    .pair-key-input {
       width: 100%;
-      padding: 18px;
-      background: linear-gradient(135deg, var(--accent), #7c3aed);
-      border: none;
-      border-radius: 14px;
+      padding: 16px;
+      background: rgba(255,255,255,0.08);
+      border: 2px solid rgba(255,255,255,0.15);
+      border-radius: 12px;
       color: #fff;
-      font-size: 17px;
+      font-size: 28px;
+      font-weight: 700;
+      text-align: center;
+      letter-spacing: 8px;
+      text-transform: uppercase;
+      outline: none;
+      margin-bottom: 16px;
+    }
+
+    .pair-key-input:focus { border-color: #00d4ff; }
+
+    .btn {
+      width: 100%;
+      padding: 16px;
+      border: none;
+      border-radius: 12px;
+      font-size: 16px;
       font-weight: 600;
       cursor: pointer;
       transition: all 0.2s;
-      position: relative;
-      overflow: hidden;
     }
 
-    .connect-btn::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: -100%;
-      width: 100%;
-      height: 100%;
-      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
-      transition: left 0.5s;
+    .btn-primary {
+      background: linear-gradient(135deg, #00d4ff, #7c3aed);
+      color: #fff;
     }
 
-    .connect-btn:hover::before {
-      left: 100%;
+    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-primary:active { transform: scale(0.98); }
+
+    .btn-secondary {
+      background: rgba(255,255,255,0.1);
+      color: #fff;
+      margin-top: 10px;
     }
 
-    .connect-btn:active {
-      transform: scale(0.98);
-    }
-
-    .connect-btn:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-
-    .error-msg {
-      color: var(--danger);
-      font-size: 13px;
-      margin-top: 12px;
-      min-height: 20px;
-    }
+    .error-text { color: #ff4444; font-size: 12px; margin-top: 10px; min-height: 18px; }
 
     /* Main App */
-    #app-screen {
-      display: none;
-      min-height: 100vh;
-      padding-bottom: 300px;
-    }
+    #app { display: none; min-height: 100vh; padding-bottom: 200px; }
+    #app.active { display: block; }
 
-    /* Header */
     .header {
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      z-index: 1000;
-      background: rgba(10,10,15,0.92);
+      position: fixed; top: 0; left: 0; right: 0;
+      background: rgba(10,10,15,0.95);
       backdrop-filter: blur(20px);
-      border-bottom: 1px solid var(--border);
+      border-bottom: 1px solid rgba(255,255,255,0.1);
       padding: 12px 16px;
-      padding-top: calc(12px + var(--safe-top));
+      z-index: 100;
     }
 
     .header-content {
@@ -198,627 +118,319 @@
       justify-content: space-between;
     }
 
-    .laptop-info {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
+    .device-info { display: flex; align-items: center; gap: 10px; }
 
-    .laptop-icon {
-      width: 40px;
-      height: 40px;
-      background: linear-gradient(135deg, var(--accent), #7c3aed);
+    .device-icon {
+      width: 40px; height: 40px;
+      background: linear-gradient(135deg, #00d4ff, #7c3aed);
       border-radius: 10px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      display: flex; align-items: center; justify-content: center;
       font-size: 20px;
     }
 
-    .laptop-name {
-      font-size: 16px;
-      font-weight: 600;
-    }
+    .device-name { font-size: 15px; font-weight: 600; }
 
-    .connection-status {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 12px;
-      color: var(--text-secondary);
+    .status-badge {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 11px; color: #888;
     }
 
     .status-dot {
-      width: 8px;
-      height: 8px;
+      width: 8px; height: 8px;
       border-radius: 50%;
-      background: var(--success);
-      animation: pulse 2s infinite;
+      background: #ff4444;
     }
 
-    .status-dot.offline {
-      background: var(--danger);
-      animation: none;
-    }
+    .status-dot.online { background: #00ff88; animation: pulse 2s infinite; }
 
     @keyframes pulse {
-      0%, 100% { opacity: 1; transform: scale(1); }
-      50% { opacity: 0.6; transform: scale(0.8); }
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
     }
 
     /* Map */
     #map {
       position: fixed;
-      top: 70px;
-      left: 0;
-      right: 0;
-      height: 35vh;
+      top: 65px; left: 0; right: 0;
+      height: 40vh;
       z-index: 1;
     }
 
-    /* Status Cards */
-    .status-section {
+    /* Info Panel */
+    .info-panel {
       position: relative;
       z-index: 10;
-      margin-top: calc(35vh + 70px);
+      margin-top: calc(40vh + 65px);
       padding: 16px;
     }
 
-    .section-title {
-      font-size: 13px;
-      font-weight: 600;
-      color: var(--text-secondary);
-      text-transform: uppercase;
-      letter-spacing: 1px;
+    .info-card {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 16px;
+      padding: 16px;
       margin-bottom: 12px;
     }
 
-    .status-grid {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 12px;
-      margin-bottom: 20px;
-    }
-
-    .status-card {
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 16px;
-      transition: all 0.2s;
-    }
-
-    .status-card:active {
-      background: var(--bg-card-hover);
-      transform: scale(0.98);
-    }
-
-    .card-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 12px;
-    }
-
-    .card-icon {
-      width: 36px;
-      height: 36px;
-      border-radius: 10px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 18px;
-    }
-
-    .card-icon.cpu { background: rgba(0,212,255,0.15); }
-    .card-icon.memory { background: rgba(124,58,237,0.15); }
-    .card-icon.battery { background: rgba(0,255,136,0.15); }
-    .card-icon.disk { background: rgba(255,170,0,0.15); }
-    .card-icon.network { background: rgba(255,68,68,0.15); }
-    .card-icon.processes { background: rgba(0,255,255,0.15); }
-
-    .card-value {
-      font-size: 28px;
-      font-weight: 700;
-      line-height: 1;
-      margin-bottom: 4px;
-    }
-
-    .card-label {
-      font-size: 12px;
-      color: var(--text-secondary);
-    }
-
-    .progress-bar {
-      width: 100%;
-      height: 4px;
-      background: rgba(255,255,255,0.1);
-      border-radius: 2px;
-      margin-top: 12px;
-      overflow: hidden;
-    }
-
-    .progress-fill {
-      height: 100%;
-      border-radius: 2px;
-      transition: width 0.3s ease;
-    }
-
-    .progress-fill.low { background: var(--success); }
-    .progress-fill.medium { background: var(--warning); }
-    .progress-fill.high { background: var(--danger); }
-
-    /* Location Card */
-    .location-card {
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 16px;
-      margin-bottom: 20px;
-    }
-
-    .location-row {
+    .info-row {
       display: flex;
       justify-content: space-between;
       padding: 8px 0;
-      border-bottom: 1px solid var(--border);
+      border-bottom: 1px solid rgba(255,255,255,0.05);
     }
 
-    .location-row:last-child {
-      border-bottom: none;
+    .info-row:last-child { border-bottom: none; }
+    .info-label { color: #888; font-size: 13px; }
+    .info-value { font-size: 13px; font-weight: 500; }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-bottom: 12px;
     }
 
-    .location-label {
-      color: var(--text-secondary);
-      font-size: 13px;
+    .stat-box {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 12px;
+      padding: 12px;
+      text-align: center;
     }
 
-    .location-value {
-      font-size: 13px;
-      font-weight: 500;
-    }
+    .stat-value { font-size: 22px; font-weight: 700; }
+    .stat-label { font-size: 10px; color: #888; margin-top: 4px; }
 
-    /* Control Panel */
-    .control-panel {
+    /* Controls */
+    .controls {
       position: fixed;
-      bottom: 0;
-      left: 0;
-      right: 0;
-      z-index: 1000;
+      bottom: 0; left: 0; right: 0;
       background: rgba(10,10,15,0.95);
       backdrop-filter: blur(20px);
-      border-top: 1px solid var(--border);
+      border-top: 1px solid rgba(255,255,255,0.1);
       padding: 16px;
-      padding-bottom: calc(16px + var(--safe-bottom));
-      border-radius: 24px 24px 0 0;
+      border-radius: 20px 20px 0 0;
+      z-index: 100;
     }
 
-    .panel-handle {
-      width: 36px;
-      height: 4px;
+    .controls-handle {
+      width: 36px; height: 4px;
       background: rgba(255,255,255,0.2);
       border-radius: 2px;
-      margin: 0 auto 16px;
+      margin: 0 auto 12px;
     }
 
-    .panel-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 16px;
-    }
-
-    .panel-title {
-      font-size: 18px;
-      font-weight: 600;
-    }
-
-    .tracking-toggle {
-      position: relative;
-      width: 56px;
-      height: 30px;
-      background: rgba(255,255,255,0.1);
-      border-radius: 15px;
-      cursor: pointer;
-      transition: background 0.3s;
-    }
-
-    .tracking-toggle.active {
-      background: var(--success);
-    }
-
-    .tracking-toggle::after {
-      content: '';
-      position: absolute;
-      top: 3px;
-      left: 3px;
-      width: 24px;
-      height: 24px;
-      background: #fff;
-      border-radius: 50%;
-      transition: transform 0.3s;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-    }
-
-    .tracking-toggle.active::after {
-      transform: translateX(26px);
-    }
-
-    /* Alarm Buttons */
     .alarm-grid {
       display: grid;
       grid-template-columns: repeat(4, 1fr);
-      gap: 10px;
+      gap: 8px;
       margin-bottom: 12px;
     }
 
     .alarm-btn {
-      padding: 14px 8px;
+      padding: 12px 6px;
       border: none;
-      border-radius: 14px;
-      font-size: 11px;
+      border-radius: 12px;
+      font-size: 10px;
       font-weight: 600;
       cursor: pointer;
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 6px;
+      gap: 4px;
+      color: #fff;
       transition: all 0.2s;
     }
 
-    .alarm-btn:active {
-      transform: scale(0.92);
-    }
+    .alarm-btn:active { transform: scale(0.92); }
+    .alarm-btn .icon { font-size: 20px; }
 
-    .alarm-btn .icon {
-      font-size: 22px;
-    }
+    .alarm-btn.siren { background: linear-gradient(135deg, #ff4444, #cc0000); }
+    .alarm-btn.alarm { background: linear-gradient(135deg, #ff8800, #cc6600); }
+    .alarm-btn.noise { background: linear-gradient(135deg, #ff00ff, #cc00cc); }
+    .alarm-btn.sensor { background: linear-gradient(135deg, #ffff00, #cccc00); color: #000; }
 
-    .alarm-btn.siren {
-      background: linear-gradient(135deg, #ff4444, #cc0000);
-      color: #fff;
-    }
-
-    .alarm-btn.alarm {
-      background: linear-gradient(135deg, #ff8800, #cc6600);
-      color: #fff;
-    }
-
-    .alarm-btn.noise {
-      background: linear-gradient(135deg, #ff00ff, #cc00cc);
-      color: #fff;
-    }
-
-    .alarm-btn.sensor {
-      background: linear-gradient(135deg, #ffff00, #cccc00);
-      color: #000;
-    }
-
-    /* Quick Actions */
-    .quick-actions {
+    .action-grid {
       display: grid;
       grid-template-columns: repeat(4, 1fr);
-      gap: 10px;
+      gap: 8px;
     }
 
     .action-btn {
-      padding: 12px 8px;
-      background: var(--bg-card);
-      border: 1px solid var(--border);
+      padding: 12px 6px;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.15);
       border-radius: 12px;
       color: #fff;
-      font-size: 11px;
+      font-size: 10px;
       font-weight: 500;
       cursor: pointer;
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 6px;
-      transition: all 0.2s;
+      gap: 4px;
     }
 
-    .action-btn:active {
-      background: var(--bg-card-hover);
-      transform: scale(0.95);
-    }
-
-    .action-btn .icon {
-      font-size: 20px;
-    }
-
-    .action-btn.danger {
-      border-color: rgba(255,68,68,0.3);
-      color: var(--danger);
-    }
+    .action-btn:active { background: rgba(255,255,255,0.15); }
+    .action-btn .icon { font-size: 18px; }
+    .action-btn.danger { border-color: rgba(255,68,68,0.3); color: #ff4444; }
 
     /* Toast */
     .toast {
       position: fixed;
-      top: calc(80px + var(--safe-top));
-      left: 50%;
+      top: 80px; left: 50%;
       transform: translateX(-50%) translateY(-20px);
       background: rgba(0,212,255,0.95);
       color: #fff;
-      padding: 12px 24px;
-      border-radius: 12px;
-      font-size: 14px;
+      padding: 10px 20px;
+      border-radius: 10px;
+      font-size: 13px;
       font-weight: 500;
       z-index: 2000;
       opacity: 0;
       transition: all 0.3s;
       pointer-events: none;
-      box-shadow: 0 8px 32px rgba(0,212,255,0.3);
     }
 
-    .toast.show {
-      opacity: 1;
-      transform: translateX(-50%) translateY(0);
-    }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
-    /* Alarm Active Banner */
-    .alarm-banner {
-      position: fixed;
-      top: calc(70px + var(--safe-top));
-      left: 50%;
-      transform: translateX(-50%);
-      background: var(--danger);
-      color: #fff;
-      padding: 10px 20px;
-      border-radius: 10px;
-      font-size: 13px;
-      font-weight: 700;
-      z-index: 2000;
-      display: none;
-      animation: blink 0.5s infinite;
-      box-shadow: 0 4px 20px rgba(255,68,68,0.5);
-    }
-
-    .alarm-banner.show {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    @keyframes blink {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.6; }
-    }
-
-    /* Custom Marker */
-    .custom-marker {
-      background: none;
-      border: none;
-    }
-
+    /* Custom marker */
+    .custom-marker { background: none; border: none; }
     .marker-dot {
-      width: 24px;
-      height: 24px;
-      background: var(--accent);
+      width: 20px; height: 20px;
+      background: #00d4ff;
       border: 3px solid #fff;
       border-radius: 50%;
-      box-shadow: 0 0 20px var(--accent-glow);
-      position: relative;
+      box-shadow: 0 0 15px rgba(0,212,255,0.5);
     }
 
-    .marker-dot::after {
-      content: '';
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      width: 40px;
-      height: 40px;
-      background: var(--accent);
+    .marker-phone {
+      width: 20px; height: 20px;
+      background: #00ff88;
+      border: 3px solid #fff;
       border-radius: 50%;
-      opacity: 0.3;
-      animation: marker-pulse 2s infinite;
+      box-shadow: 0 0 15px rgba(0,255,136,0.5);
     }
 
-    @keyframes marker-pulse {
-      0% { transform: translate(-50%, -50%) scale(1); opacity: 0.3; }
-      100% { transform: translate(-50%, -50%) scale(2); opacity: 0; }
-    }
-
-    /* Scrollbar */
-    ::-webkit-scrollbar {
-      width: 4px;
-    }
-
-    ::-webkit-scrollbar-track {
-      background: transparent;
-    }
-
-    ::-webkit-scrollbar-thumb {
-      background: rgba(255,255,255,0.2);
-      border-radius: 2px;
+    .section-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 10px;
     }
   </style>
 </head>
 <body>
-  <!-- Login Screen -->
-  <div id="login-screen">
-    <img src="/icons/icon.svg" alt="Logo" class="login-logo">
-    
-    <div class="login-card">
-      <h1 class="login-title">Laptop Tracker</h1>
-      <p class="login-subtitle">Enter PIN to connect to your laptop</p>
-      
-      <div class="pin-input">
-        <input type="password" class="pin-digit" maxlength="1" data-index="0" inputmode="numeric" pattern="[0-9]">
-        <input type="password" class="pin-digit" maxlength="1" data-index="1" inputmode="numeric" pattern="[0-9]">
-        <input type="password" class="pin-digit" maxlength="1" data-index="2" inputmode="numeric" pattern="[0-9]">
-        <input type="password" class="pin-digit" maxlength="1" data-index="3" inputmode="numeric" pattern="[0-9]">
-      </div>
-      
-      <button class="connect-btn" id="connect-btn" disabled>Connect to Laptop</button>
-      <p class="error-msg" id="error-msg"></p>
+  <!-- Pairing Modal -->
+  <div class="modal-overlay" id="pairing-modal">
+    <div class="modal">
+      <div class="modal-icon">🔗</div>
+      <h2>Pair with Laptop</h2>
+      <p>Enter the 8-digit pair key shown on your laptop agent</p>
+      <input type="text" class="pair-key-input" id="pair-key-input" 
+             maxlength="8" placeholder="XXXXXXXX" autocomplete="off">
+      <button class="btn btn-primary" id="pair-btn" disabled>Connect</button>
+      <button class="btn btn-secondary" id="generate-btn">Generate New Key</button>
+      <div class="error-text" id="pair-error"></div>
     </div>
   </div>
 
-  <!-- Main App Screen -->
-  <div id="app-screen">
+  <!-- Main App -->
+  <div id="app">
     <header class="header">
       <div class="header-content">
-        <div class="laptop-info">
-          <div class="laptop-icon">💻</div>
+        <div class="device-info">
+          <div class="device-icon">💻</div>
           <div>
-            <div class="laptop-name" id="laptop-name">Laptop</div>
-            <div class="connection-status">
+            <div class="device-name" id="device-name">Laptop</div>
+            <div class="status-badge">
               <div class="status-dot" id="status-dot"></div>
               <span id="status-text">Connecting...</span>
-              <span id="cloud-badge" style="display:none; background:#7c3aed; color:#fff; padding:2px 6px; border-radius:4px; font-size:10px; margin-left:4px;">CLOUD</span>
             </div>
           </div>
         </div>
-        <div class="last-update" id="last-update" style="font-size: 11px; color: var(--text-secondary);">--</div>
+        <div style="font-size:11px; color:#888;" id="last-seen">--</div>
       </div>
     </header>
 
     <div id="map"></div>
 
-    <section class="status-section">
+    <div class="info-panel">
+      <div class="section-title">Laptop Location</div>
+      <div class="info-card">
+        <div class="info-row">
+          <span class="info-label">City</span>
+          <span class="info-value" id="loc-city">--</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Region</span>
+          <span class="info-value" id="loc-region">--</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Country</span>
+          <span class="info-value" id="loc-country">--</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">IP</span>
+          <span class="info-value" id="loc-ip">--</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Coordinates</span>
+          <span class="info-value" id="loc-coords">--</span>
+        </div>
+      </div>
+
       <div class="section-title">System Status</div>
-      
-      <div class="status-grid">
-        <div class="status-card">
-          <div class="card-header">
-            <div class="card-icon cpu">⚡</div>
-          </div>
-          <div class="card-value" id="cpu-value">0%</div>
-          <div class="card-label">CPU Usage</div>
-          <div class="progress-bar">
-            <div class="progress-fill low" id="cpu-bar" style="width: 0%"></div>
-          </div>
+      <div class="stats-grid">
+        <div class="stat-box">
+          <div class="stat-value" id="stat-cpu">--</div>
+          <div class="stat-label">CPU</div>
         </div>
-
-        <div class="status-card">
-          <div class="card-header">
-            <div class="card-icon memory">🧠</div>
-          </div>
-          <div class="card-value" id="memory-value">0%</div>
-          <div class="card-label">Memory Used</div>
-          <div class="progress-bar">
-            <div class="progress-fill low" id="memory-bar" style="width: 0%"></div>
-          </div>
+        <div class="stat-box">
+          <div class="stat-value" id="stat-ram">--</div>
+          <div class="stat-label">RAM</div>
         </div>
-
-        <div class="status-card">
-          <div class="card-header">
-            <div class="card-icon battery">🔋</div>
-          </div>
-          <div class="card-value" id="battery-value">--%</div>
-          <div class="card-label">Battery</div>
-          <div class="progress-bar">
-            <div class="progress-fill low" id="battery-bar" style="width: 0%"></div>
-          </div>
-        </div>
-
-        <div class="status-card">
-          <div class="card-header">
-            <div class="card-icon disk">💾</div>
-          </div>
-          <div class="card-value" id="disk-value">0%</div>
-          <div class="card-label">Disk Used</div>
-          <div class="progress-bar">
-            <div class="progress-fill low" id="disk-bar" style="width: 0%"></div>
-          </div>
-        </div>
-
-        <div class="status-card">
-          <div class="card-header">
-            <div class="card-icon network">🌐</div>
-          </div>
-          <div class="card-value" id="network-value">--</div>
-          <div class="card-label">Public IP</div>
-        </div>
-
-        <div class="status-card">
-          <div class="card-header">
-            <div class="card-icon processes">📊</div>
-          </div>
-          <div class="card-value" id="process-value">0</div>
-          <div class="card-label">Processes</div>
+        <div class="stat-box">
+          <div class="stat-value" id="stat-uptime">--</div>
+          <div class="stat-label">Uptime</div>
         </div>
       </div>
-
-      <div class="section-title">Location Info</div>
-      
-      <div class="location-card">
-        <div class="location-row">
-          <span class="location-label">Method</span>
-          <span class="location-value" id="loc-method">--</span>
-        </div>
-        <div class="location-row">
-          <span class="location-label">City</span>
-          <span class="location-value" id="loc-city">--</span>
-        </div>
-        <div class="location-row">
-          <span class="location-label">Region</span>
-          <span class="location-value" id="loc-region">--</span>
-        </div>
-        <div class="location-row">
-          <span class="location-label">Country</span>
-          <span class="location-value" id="loc-country">--</span>
-        </div>
-        <div class="location-row">
-          <span class="location-label">Coordinates</span>
-          <span class="location-value" id="loc-coords">--</span>
-        </div>
-        <div class="location-row">
-          <span class="location-label">ISP</span>
-          <span class="location-value" id="loc-isp">--</span>
-        </div>
-      </div>
-    </section>
-
-    <div class="alarm-banner" id="alarm-banner">
-      <span>⚠️</span>
-      <span id="alarm-banner-text">ALARM ACTIVE</span>
     </div>
 
-    <div class="control-panel">
-      <div class="panel-handle"></div>
+    <div class="controls">
+      <div class="controls-handle"></div>
       
-      <div class="panel-header">
-        <span class="panel-title">Controls</span>
-        <div class="tracking-toggle" id="tracking-toggle"></div>
-      </div>
-
+      <div class="section-title">Alarms</div>
       <div class="alarm-grid">
-        <button class="alarm-btn siren" onclick="triggerAlarm('siren')">
-          <span class="icon">🚨</span>
-          Siren
+        <button class="alarm-btn siren" onclick="sendCommand('siren')">
+          <span class="icon">🚨</span> Siren
         </button>
-        <button class="alarm-btn alarm" onclick="triggerAlarm('alarm')">
-          <span class="icon">🔔</span>
-          Alarm
+        <button class="alarm-btn alarm" onclick="sendCommand('alarm')">
+          <span class="icon">🔔</span> Alarm
         </button>
-        <button class="alarm-btn noise" onclick="triggerAlarm('noise')">
-          <span class="icon">🔊</span>
-          Noise
+        <button class="alarm-btn noise" onclick="sendCommand('noise')">
+          <span class="icon">🔊</span> Noise
         </button>
-        <button class="alarm-btn sensor" onclick="triggerAlarm('sensor')">
-          <span class="icon">⚠️</span>
-          Sensor
+        <button class="alarm-btn sensor" onclick="sendCommand('sensor')">
+          <span class="icon">⚠️</span> Sensor
         </button>
       </div>
 
-      <div class="quick-actions">
-        <button class="action-btn" onclick="stopAlarm()">
-          <span class="icon">⏹️</span>
-          Stop All
+      <div class="section-title">Actions</div>
+      <div class="action-grid">
+        <button class="action-btn" onclick="sendCommand('lock')">
+          <span class="icon">🔒</span> Lock
         </button>
-        <button class="action-btn" onclick="lockLaptop()">
-          <span class="icon">🔒</span>
-          Lock
+        <button class="action-btn" onclick="sendCommand('netscan')">
+          <span class="icon">🌐</span> Scan
         </button>
-        <button class="action-btn" onclick="scanNetwork()">
-          <span class="icon">🌐</span>
-          Scan
+        <button class="action-btn" onclick="sendCommand('sysinfo')">
+          <span class="icon">📊</span> Info
         </button>
         <button class="action-btn danger" onclick="confirmShutdown()">
-          <span class="icon">⏻</span>
-          Shutdown
+          <span class="icon">⏻</span> Shutdown
         </button>
       </div>
     </div>
@@ -829,427 +441,242 @@
   <script>
     let ws = null;
     let map = null;
-    let marker = null;
-    let accuracyCircle = null;
-    let isAuthenticated = false;
-    let isTracking = false;
-    let currentLocation = null;
-    let serviceWorker = null;
+    let laptopMarker = null;
+    let phoneMarker = null;
+    let deviceId = null;
+    let pairKey = localStorage.getItem('pairKey') || '';
 
-    // Register Service Worker
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js')
-        .then(reg => {
-          serviceWorker = reg;
-          console.log('Service Worker registered');
-        })
-        .catch(err => console.error('SW registration failed:', err));
+    // Elements
+    const pairingModal = document.getElementById('pairing-modal');
+    const pairKeyInput = document.getElementById('pair-key-input');
+    const pairBtn = document.getElementById('pair-btn');
+    const generateBtn = document.getElementById('generate-btn');
+    const pairError = document.getElementById('pair-error');
+    const app = document.getElementById('app');
+
+    // Auto-fill saved pair key
+    if (pairKey) {
+      pairKeyInput.value = pairKey;
+      pairBtn.disabled = false;
     }
 
-    // Request notification permission
-    if ('Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission();
-    }
-
-    // PIN input handling
-    const pinDigits = document.querySelectorAll('.pin-digit');
-    const connectBtn = document.getElementById('connect-btn');
-    const errorMsg = document.getElementById('error-msg');
-
-    pinDigits.forEach((digit, index) => {
-      digit.addEventListener('input', (e) => {
-        e.target.value = e.target.value.replace(/[^0-9]/g, '');
-        if (e.target.value && index < pinDigits.length - 1) {
-          pinDigits[index + 1].focus();
-        }
-        updateConnectButton();
-      });
-
-      digit.addEventListener('keydown', (e) => {
-        if (e.key === 'Backspace' && !e.target.value && index > 0) {
-          pinDigits[index - 1].focus();
-        }
-        if (e.key === 'Enter') connect();
-      });
-
-      digit.addEventListener('paste', (e) => {
-        e.preventDefault();
-        const paste = (e.clipboardData || window.clipboardData).getData('text');
-        const digits = paste.replace(/[^0-9]/g, '').slice(0, 4);
-        digits.split('').forEach((d, i) => {
-          if (pinDigits[i]) pinDigits[i].value = d;
-        });
-        if (digits.length > 0) {
-          pinDigits[Math.min(digits.length, 3)].focus();
-        }
-        updateConnectButton();
-      });
+    // Pair key input
+    pairKeyInput.addEventListener('input', (e) => {
+      e.target.value = e.target.value.toUpperCase().replace(/[^A-F0-9]/g, '');
+      pairBtn.disabled = e.target.value.length !== 8;
     });
 
-    function updateConnectButton() {
-      const pin = Array.from(pinDigits).map(d => d.value).join('');
-      connectBtn.disabled = pin.length !== 4;
-    }
+    // Connect button
+    pairBtn.addEventListener('click', () => {
+      pairKey = pairKeyInput.value;
+      localStorage.setItem('pairKey', pairKey);
+      connectToCloud();
+    });
 
-    async function connect() {
-      const pin = Array.from(pinDigits).map(d => d.value).join('');
-      connectBtn.disabled = true;
-      connectBtn.textContent = 'Connecting...';
-      
-      try {
-        const response = await fetch('/api/auth', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ pin })
-        });
+    // Generate new key button
+    generateBtn.addEventListener('click', () => {
+      const newKey = Array.from(crypto.getRandomValues(new Uint8Array(4)))
+        .map(b => b.toString(16).padStart(2, '0').toUpperCase())
+        .join('');
+      pairKeyInput.value = newKey;
+      pairKey = newKey;
+      pairBtn.disabled = false;
+      navigator.clipboard?.writeText(newKey);
+      showToast('Key copied! Run agent with this key');
+    });
 
-        const data = await response.json();
-
-        if (data.success) {
-          isAuthenticated = true;
-          document.getElementById('login-screen').style.display = 'none';
-          document.getElementById('app-screen').style.display = 'block';
-          document.getElementById('laptop-name').textContent = data.laptopInfo.hostname;
-          initMap();
-          connectWebSocket();
-          refreshLocation();
-          requestStats();
-        } else {
-          errorMsg.textContent = 'Invalid PIN. Try again.';
-          connectBtn.textContent = 'Connect to Laptop';
-          connectBtn.disabled = false;
-          pinDigits.forEach(d => d.value = '');
-          pinDigits[0].focus();
-          navigator.vibrate && navigator.vibrate(100);
-        }
-      } catch (error) {
-        errorMsg.textContent = 'Connection failed. Check if server is running.';
-        connectBtn.textContent = 'Connect to Laptop';
-        connectBtn.disabled = false;
-      }
-    }
-
-    connectBtn.addEventListener('click', connect);
-
-    function initMap() {
-      // Wait for container to be visible
-      setTimeout(() => {
-        map = L.map('map', {
-          center: [20, 0],
-          zoom: 2,
-          zoomControl: false,
-          attributionControl: true
-        });
-
-        // Use multiple tile sources as fallback
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-          maxZoom: 19,
-          attribution: '&copy; OpenStreetMap contributors'
-        }).addTo(map);
-
-        // Force map to recalculate size
-        map.invalidateSize();
-        
-        // Invalidate size again after a delay (helps with rendering)
-        setTimeout(() => map.invalidateSize(), 500);
-      }, 200);
-    }
-
-    function updateMap(lat, lng, accuracy) {
-      if (!map) return;
-      const latlng = L.latLng(lat, lng);
-
-      if (marker) {
-        marker.setLatLng(latlng);
-      } else {
-        marker = L.marker(latlng, {
-          icon: L.divIcon({
-            className: 'custom-marker',
-            html: '<div class="marker-dot"></div>',
-            iconSize: [24, 24],
-            iconAnchor: [12, 12]
-          })
-        }).addTo(map);
-      }
-
-      if (accuracyCircle) {
-        accuracyCircle.setLatLng(latlng).setRadius(accuracy || 1000);
-      } else {
-        accuracyCircle = L.circle(latlng, {
-          radius: accuracy || 1000,
-          color: '#00d4ff',
-          fillColor: '#00d4ff',
-          fillOpacity: 0.1,
-          weight: 1
-        }).addTo(map);
-      }
-
-      map.setView(latlng, 15);
-    }
-
-    function connectWebSocket() {
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      ws = new WebSocket(`${protocol}//${window.location.host}`);
+    function connectToCloud() {
+      const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      ws = new WebSocket(`${protocol}//${location.host}`);
 
       ws.onopen = () => {
-        document.getElementById('status-dot').classList.remove('offline');
-        document.getElementById('status-text').textContent = 'Connected';
-        showToast('Connected to laptop');
+        ws.send(JSON.stringify({
+          type: 'phone_connect',
+          pairKey
+        }));
       };
 
       ws.onmessage = (event) => {
         const data = JSON.parse(event.data);
-        handleWebSocketMessage(data);
+        handleMessage(data);
       };
 
       ws.onclose = () => {
-        document.getElementById('status-dot').classList.add('offline');
+        document.getElementById('status-dot').classList.remove('online');
         document.getElementById('status-text').textContent = 'Disconnected';
-        
-        setTimeout(connectWebSocket, 3000);
+        setTimeout(connectToCloud, 3000);
       };
-
-      ws.onerror = () => {};
     }
 
-    function handleWebSocketMessage(data) {
+    function handleMessage(data) {
       switch (data.type) {
         case 'connected':
-          isTracking = data.isTracking;
-          updateTrackingToggle();
-          if (data.currentLocation) {
-            updateLocationDisplay(data.currentLocation);
+          if (data.isOnline) {
+            pairingModal.classList.add('hidden');
+            app.classList.add('active');
+            document.getElementById('status-dot').classList.add('online');
+            document.getElementById('status-text').textContent = 'Online';
+            document.getElementById('device-name').textContent = data.deviceInfo?.hostname || 'Laptop';
+            deviceId = data.deviceId;
+            
+            if (!map) initMap();
+            
+            if (data.deviceLocation) {
+              updateLaptopLocation(data.deviceLocation);
+            }
+          } else {
+            pairError.textContent = 'Laptop is offline. Make sure agent is running.';
           }
+          break;
+
+        case 'device_paired':
+          pairingModal.classList.add('hidden');
+          app.classList.add('active');
+          deviceId = data.deviceId;
+          document.getElementById('device-name').textContent = data.deviceInfo?.hostname || 'Laptop';
+          document.getElementById('status-dot').classList.add('online');
+          document.getElementById('status-text').textContent = 'Online';
+          if (!map) initMap();
           break;
 
         case 'location_update':
-          currentLocation = data.location;
-          updateLocationDisplay(data.location);
-          const accuracy = data.location.accuracy === 'city-level' ? 5000 : 1000;
-          updateMap(data.location.lat, data.location.lng, accuracy);
-          document.getElementById('last-update').textContent = 
+          updateLaptopLocation(data.location);
+          document.getElementById('last-seen').textContent = 
             new Date(data.timestamp).toLocaleTimeString();
           break;
 
-        case 'system_stats':
-          updateSystemStats(data.stats);
-          break;
-
-        case 'alarm_triggered':
-          document.getElementById('alarm-banner').classList.add('show');
-          document.getElementById('alarm-banner-text').textContent = 
-            `${data.alarmType.toUpperCase()} ALARM ACTIVE`;
-          
-          // Send notification
-          if ('Notification' in window && Notification.permission === 'granted') {
-            new Notification('Laptop Tracker', {
-              body: `${data.alarmType.toUpperCase()} alarm triggered!`,
-              icon: '/icons/icon.svg',
-              vibrate: [200, 100, 200]
-            });
-          }
-          
-          // Vibrate device
-          navigator.vibrate && navigator.vibrate([200, 100, 200, 100, 200]);
+        case 'command_result':
+          handleCommandResult(data);
           break;
       }
     }
 
-    function updateLocationDisplay(location) {
-      document.getElementById('loc-method').textContent = location.method || '--';
+    function initMap() {
+      map = L.map('map', {
+        center: [20, 0],
+        zoom: 2,
+        zoomControl: false
+      });
+
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; OpenStreetMap'
+      }).addTo(map);
+
+      setTimeout(() => map.invalidateSize(), 300);
+
+      // Track phone location
+      if (navigator.geolocation) {
+        navigator.geolocation.watchPosition(
+          (pos) => {
+            const { latitude, longitude } = pos.coords;
+            if (phoneMarker) {
+              phoneMarker.setLatLng([latitude, longitude]);
+            } else {
+              phoneMarker = L.marker([latitude, longitude], {
+                icon: L.divIcon({
+                  className: 'custom-marker',
+                  html: '<div class="marker-phone"></div>',
+                  iconSize: [20, 20],
+                  iconAnchor: [10, 10]
+                })
+              }).addTo(map);
+            }
+          },
+          () => {},
+          { enableHighAccuracy: true }
+        );
+      }
+    }
+
+    function updateLaptopLocation(location) {
+      if (!map || !location) return;
+
+      const latlng = [location.lat, location.lng];
+
+      if (laptopMarker) {
+        laptopMarker.setLatLng(latlng);
+      } else {
+        laptopMarker = L.marker(latlng, {
+          icon: L.divIcon({
+            className: 'custom-marker',
+            html: '<div class="marker-dot"></div>',
+            iconSize: [20, 20],
+            iconAnchor: [10, 10]
+          })
+        }).addTo(map);
+      }
+
+      map.setView(latlng, 13);
+
       document.getElementById('loc-city').textContent = location.city || '--';
       document.getElementById('loc-region').textContent = location.region || '--';
       document.getElementById('loc-country').textContent = location.country || '--';
+      document.getElementById('loc-ip').textContent = location.ip || '--';
       document.getElementById('loc-coords').textContent = 
-        location.lat && location.lng ? `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}` : '--';
-      document.getElementById('loc-isp').textContent = location.org || '--';
+        `${location.lat?.toFixed(4)}, ${location.lng?.toFixed(4)}`;
     }
 
-    function updateSystemStats(stats) {
-      // CPU
-      const cpuUsage = stats.cpu?.usage || 0;
-      document.getElementById('cpu-value').textContent = `${cpuUsage}%`;
-      updateProgressBar('cpu-bar', cpuUsage);
-
-      // Memory
-      const memUsage = stats.memory?.percentage || 0;
-      document.getElementById('memory-value').textContent = `${memUsage}%`;
-      updateProgressBar('memory-bar', memUsage);
-
-      // Battery
-      if (stats.battery?.available) {
-        const battery = stats.battery.percentage || 0;
-        document.getElementById('battery-value').textContent = `${battery}%`;
-        updateProgressBar('battery-bar', battery);
-      } else {
-        document.getElementById('battery-value').textContent = 'N/A';
+    function sendCommand(type, params = {}) {
+      if (!deviceId) {
+        showToast('Not connected to laptop');
+        return;
       }
 
-      // Disk
-      if (stats.disk?.available && stats.disk.total > 0) {
-        const diskUsage = Math.round((stats.disk.used / stats.disk.total) * 100);
-        document.getElementById('disk-value').textContent = `${diskUsage}%`;
-        updateProgressBar('disk-bar', diskUsage);
+      fetch('/api/command/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deviceId, type, params })
+      })
+      .then(r => r.json())
+      .then(data => {
+        if (data.success) {
+          showToast(`${type} command sent!`);
+        } else {
+          showToast('Failed to send command');
+        }
+      })
+      .catch(() => showToast('Error sending command'));
+    }
+
+    function handleCommandResult(data) {
+      if (data.commandType === 'sysinfo' && data.result) {
+        parseSystemInfo(data.result);
+      } else if (data.commandType === 'location' && data.result) {
+        try {
+          const loc = typeof data.result === 'string' ? JSON.parse(data.result) : data.result;
+          if (loc.location) updateLaptopLocation(loc.location);
+        } catch (e) {}
       }
-
-      // Network
-      document.getElementById('network-value').textContent = stats.hostname || '--';
-
-      // Processes
-      document.getElementById('process-value').textContent = stats.processes || '0';
-
-      document.getElementById('last-update').textContent = 
-        new Date(stats.timestamp).toLocaleTimeString();
+      showToast(data.error ? `Error: ${data.error}` : 'Command completed');
     }
 
-    function updateProgressBar(id, percentage) {
-      const bar = document.getElementById(id);
-      bar.style.width = `${percentage}%`;
-      bar.className = 'progress-fill';
-      if (percentage < 50) bar.classList.add('low');
-      else if (percentage < 80) bar.classList.add('medium');
-      else bar.classList.add('high');
-    }
-
-    function updateTrackingToggle() {
-      const toggle = document.getElementById('tracking-toggle');
-      toggle.classList.toggle('active', isTracking);
-    }
-
-    document.getElementById('tracking-toggle').addEventListener('click', async () => {
-      const endpoint = isTracking ? '/api/tracking/stop' : '/api/tracking/start';
-      
+    function parseSystemInfo(output) {
       try {
-        const response = await fetch(endpoint, { method: 'POST' });
-        const data = await response.json();
+        const cpuMatch = output.match(/LoadPercentage=(\d+)/);
+        const ramMatch = output.match(/FreePhysicalMemory=(\d+)/);
+        const totalRamMatch = output.match(/TotalVisibleMemorySize=(\d+)/);
+        const uptimeMatch = output.match(/(\d+)s/);
         
-        if (data.success) {
-          isTracking = !isTracking;
-          updateTrackingToggle();
-          showToast(isTracking ? 'Live tracking started' : 'Tracking stopped');
+        if (cpuMatch) document.getElementById('stat-cpu').textContent = cpuMatch[1] + '%';
+        if (ramMatch && totalRamMatch) {
+          const used = Math.round((1 - parseInt(ramMatch[1]) / parseInt(totalRamMatch[1])) * 100);
+          document.getElementById('stat-ram').textContent = used + '%';
         }
-      } catch (error) {
-        showToast('Failed to toggle tracking');
-      }
-    });
-
-    async function triggerAlarm(type) {
-      try {
-        const response = await fetch('/api/alarm/trigger', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ type, duration: 30 })
-        });
-
-        const data = await response.json();
-        if (data.success) {
-          showToast(`${type} alarm triggered!`);
-          document.getElementById('alarm-banner').classList.add('show');
-          document.getElementById('alarm-banner-text').textContent = `${type.toUpperCase()} ALARM ACTIVE`;
-          navigator.vibrate && navigator.vibrate([100, 50, 100]);
-        }
-      } catch (error) {
-        showToast('Failed to trigger alarm');
-      }
-    }
-
-    async function stopAlarm() {
-      try {
-        await fetch('/api/alarm/stop', { method: 'POST' });
-        showToast('All alarms stopped');
-        document.getElementById('alarm-banner').classList.remove('show');
-      } catch (error) {
-        showToast('Failed to stop alarm');
-      }
-    }
-
-    async function lockLaptop() {
-      try {
-        await fetch('/api/system/lock', { method: 'POST' });
-        showToast('Laptop locked');
-      } catch (error) {
-        showToast('Failed to lock laptop');
-      }
+      } catch (e) {}
     }
 
     function confirmShutdown() {
-      if (confirm('Are you sure you want to shutdown the laptop?')) {
-        fetch('/api/system/shutdown', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ confirm: true })
-        }).then(() => showToast('Shutdown initiated'));
+      if (confirm('Shutdown the laptop?')) {
+        sendCommand('shutdown');
       }
     }
 
-    async function refreshLocation() {
-      try {
-        const response = await fetch('/api/location');
-        const data = await response.json();
-        
-        if (data.success) {
-          currentLocation = data.location;
-          updateLocationDisplay(data.location);
-          const accuracy = data.location.accuracy === 'city-level' ? 5000 : 1000;
-          updateMap(data.location.lat, data.location.lng, accuracy);
-          showToast('Location refreshed');
-        }
-      } catch (error) {
-        showToast('Failed to get location');
-      }
-    }
-
-    async function scanNetwork() {
-      showToast('Scanning network...');
-      try {
-        const response = await fetch('/api/network/scan');
-        const data = await response.json();
-        
-        if (data.success) {
-          showToast(`Found ${data.networkInfo.devices.length} devices`);
-        }
-      } catch (error) {
-        showToast('Network scan failed');
-      }
-    }
-
-    function requestStats() {
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: 'request_stats' }));
-      }
-    }
-
-    // Request stats every 5 seconds
-    setInterval(requestStats, 5000);
-
-    function showToast(message) {
+    function showToast(msg) {
       const toast = document.getElementById('toast');
-      toast.textContent = message;
+      toast.textContent = msg;
       toast.classList.add('show');
-      
       setTimeout(() => toast.classList.remove('show'), 2500);
-    }
-
-    // Keyboard shortcuts
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') stopAlarm();
-    });
-
-    // Handle visibility change for reconnection
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible' && ws && ws.readyState !== WebSocket.OPEN) {
-        connectWebSocket();
-      }
-    });
-
-    // Handle quick action from shortcut
-    const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.get('action') === 'alarm') {
-      setTimeout(() => triggerAlarm('alarm'), 1000);
-    } else if (urlParams.get('action') === 'track') {
-      setTimeout(() => {
-        document.getElementById('tracking-toggle').click();
-      }, 1000);
     }
   </script>
 </body>

@@ -1,14 +1,15 @@
 {
   "name": "laptop-tracker",
-  "version": "1.0.0",
-  "description": "Laptop tracking app with live location, remote alarm, and network-based location",
-  "main": "server.js",
+  "version": "2.0.0",
+  "description": "Laptop tracking with real hardware control via cloud relay",
+  "scripts": {
+    "start": "node cloud-server.js",
+    "server": "node cloud-server.js",
+    "agent": "node agent.js",
+    "local": "node server.js"
+  },
   "engines": {
     "node": "18.x"
-  },
-  "scripts": {
-    "start": "node server.js",
-    "dev": "node server.js"
   },
   "dependencies": {
     "express": "^4.18.2",
