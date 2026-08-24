@@ -827,21 +827,62 @@
     }
 
     // ============= COMMANDS =============
+    let commandPollers = {};
+
     function sendCommand(type, params = {}) {
       if (!deviceId) { showToast('Not connected'); return; }
-      fetch('/api/command/send', {
+      
+      showToast(`${type} sending...`);
+      
+      fetch('/api/phone/command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ deviceId, type, params })
-      }).then(r => r.json()).then(data => {
-        if (!data.success) showToast('Failed');
-      }).catch(() => showToast('Error'));
+        body: JSON.stringify({ deviceId, commandType: type, params })
+      })
+      .then(r => r.json())
+      .then(data => {
+        if (data.success) {
+          showToast(`${type} queued! Waiting for laptop...`);
+          // Start polling for result
+          pollForResult(data.commandId, type);
+        } else {
+          showToast('Failed to send');
+        }
+      })
+      .catch(() => showToast('Error sending'));
+    }
+
+    function pollForResult(commandId, commandType) {
+      let attempts = 0;
+      const maxAttempts = 30; // 30 seconds max
+      
+      const poller = setInterval(() => {
+        attempts++;
+        
+        fetch(`/api/phone/result/${commandId}`)
+          .then(r => r.json())
+          .then(data => {
+            if (data.status === 'completed') {
+              clearInterval(poller);
+              delete commandPollers[commandId];
+              handleCommandResult({ commandType, result: data.result, error: data.error });
+              showToast(data.error ? `Error: ${data.error}` : `${commandType} completed!`);
+            } else if (attempts >= maxAttempts) {
+              clearInterval(poller);
+              delete commandPollers[commandId];
+              showToast(`${commandType} timeout - laptop may be offline`);
+            }
+          })
+          .catch(() => {});
+      }, 1000);
+      
+      commandPollers[commandId] = poller;
     }
 
     function handleCommandResult(data) {
       if (data.commandType === 'sysinfo' && data.result) {
         try {
-          const output = typeof data.result === 'string' ? data.result : '';
+          const output = typeof data.result === 'string' ? data.result : JSON.stringify(data.result);
           const cpuMatch = output.match(/LoadPercentage=(\d+)/);
           const freeMem = output.match(/FreePhysicalMemory=(\d+)/);
           const totalMem = output.match(/TotalVisibleMemorySize=(\d+)/);
@@ -850,6 +891,13 @@
             const used = Math.round((1 - parseInt(freeMem[1]) / parseInt(totalMem[1])) * 100);
             document.getElementById('stat-ram').textContent = used + '%';
           }
+        } catch (e) {}
+      }
+      
+      if (data.commandType === 'location' && data.result) {
+        try {
+          const loc = typeof data.result === 'string' ? JSON.parse(data.result) : data.result;
+          if (loc.location) updateLaptopLocation(loc.location);
         } catch (e) {}
       }
     }

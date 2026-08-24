@@ -3,9 +3,8 @@ const http = require('http');
 const { exec } = require('child_process');
 const os = require('os');
 const path = require('path');
-const WebSocket = require('ws');
 
-// Configuration
+// ============= CONFIGURATION =============
 const CLOUD_SERVER = process.env.CLOUD_SERVER || 'http://localhost:9999';
 const PAIR_KEY = process.env.PAIR_KEY || '';
 
@@ -13,17 +12,15 @@ if (!PAIR_KEY) {
   console.log('\n========================================');
   console.log('   LAPTOP AGENT - SETUP REQUIRED');
   console.log('========================================');
-  console.log('\n  No pair key provided.');
   console.log('\n  Usage:');
-  console.log('    set PAIR_KEY=YOUR_CODE_HERE');
+  console.log('    set PAIR_KEY=YOUR_CODE');
   console.log('    set CLOUD_SERVER=your-render-url');
   console.log('    node agent.js');
-  console.log('\n  Get the code from the web interface.');
-  console.log('========================================\n');
+  console.log('\n========================================\n');
   process.exit(1);
 }
 
-// System info
+// ============= SYSTEM INFO =============
 const systemInfo = {
   hostname: os.hostname(),
   platform: os.platform(),
@@ -32,7 +29,8 @@ const systemInfo = {
   totalMemory: os.totalmem()
 };
 
-// Get local IP
+let deviceId = null;
+
 function getLocalIP() {
   const interfaces = os.networkInterfaces();
   for (const name of Object.keys(interfaces)) {
@@ -45,7 +43,36 @@ function getLocalIP() {
   return '127.0.0.1';
 }
 
-// Get IP location
+// ============= HTTP HELPER =============
+function httpRequest(url, method, data) {
+  return new Promise((resolve, reject) => {
+    const urlObj = new URL(url);
+    const options = {
+      hostname: urlObj.hostname,
+      port: urlObj.port,
+      path: urlObj.pathname,
+      method: method,
+      headers: { 'Content-Type': 'application/json' }
+    };
+
+    const req = http.request(options, (res) => {
+      let body = '';
+      res.on('data', chunk => body += chunk);
+      res.on('end', () => {
+        try { resolve(JSON.parse(body)); }
+        catch (e) { resolve({ raw: body }); }
+      });
+    });
+
+    req.on('error', reject);
+    req.setTimeout(10000, () => { req.destroy(); reject(new Error('Timeout')); });
+
+    if (data) req.write(JSON.stringify(data));
+    req.end();
+  });
+}
+
+// ============= GET IP LOCATION =============
 function getIPLocation() {
   return new Promise((resolve, reject) => {
     https.get('https://ipapi.co/json/', (res) => {
@@ -63,15 +90,13 @@ function getIPLocation() {
             ip: json.ip,
             org: json.org
           });
-        } catch (e) {
-          reject(e);
-        }
+        } catch (e) { reject(e); }
       });
     }).on('error', reject);
   });
 }
 
-// Execute .bat file
+// ============= EXECUTE .BAT FILE =============
 function executeBat(batName, params = {}) {
   return new Promise((resolve) => {
     const batPath = path.join(__dirname, 'commands', `${batName}.bat`);
@@ -79,7 +104,7 @@ function executeBat(batName, params = {}) {
     if (params.duration) cmd += ` ${params.duration}`;
     if (params.target) cmd += ` ${params.target}`;
     
-    console.log(`Executing: ${batName}`);
+    console.log(`  Executing: ${batName}`);
     
     exec(cmd, { timeout: 60000, maxBuffer: 1024 * 1024 }, (error, stdout, stderr) => {
       resolve({ success: true, output: stdout || stderr || 'Done' });
@@ -87,13 +112,15 @@ function executeBat(batName, params = {}) {
   });
 }
 
-// Process command
-async function processCommand(type, params) {
-  switch (type) {
-    case 'siren': return await executeBat('siren', params);
-    case 'alarm': return await executeBat('alarm', params);
+// ============= PROCESS COMMAND =============
+async function processCommand(command) {
+  console.log(`\n  Command: ${command.commandType}`);
+  
+  switch (command.commandType) {
+    case 'siren': return await executeBat('siren', command.params);
+    case 'alarm': return await executeBat('alarm', command.params);
     case 'noise': return await executeBat('siren', { duration: 60 });
-    case 'sensor': return await executeBat('alarm', params);
+    case 'sensor': return await executeBat('alarm', command.params);
     case 'lock': return await executeBat('lock');
     case 'shutdown': return await executeBat('shutdown');
     case 'netscan': return await executeBat('netscan');
@@ -107,7 +134,7 @@ async function processCommand(type, params) {
       }
     case 'custom':
       return new Promise((resolve) => {
-        exec(params.command, { timeout: 60000 }, (error, stdout) => {
+        exec(command.params.command, { timeout: 60000 }, (error, stdout) => {
           resolve({ success: !error, output: stdout || error?.message });
         });
       });
@@ -116,118 +143,106 @@ async function processCommand(type, params) {
   }
 }
 
-// WebSocket connection
-let ws = null;
-let deviceId = null;
-
-function connect() {
-  const wsUrl = CLOUD_SERVER.replace('http', 'ws');
-  console.log(`Connecting to: ${wsUrl}`);
-  
-  ws = new WebSocket(wsUrl);
-  
-  ws.on('open', () => {
-    console.log('Connected to cloud!');
-    
-    // Register with pair code
-    ws.send(JSON.stringify({
-      type: 'laptop_register',
+// ============= REGISTER WITH CLOUD =============
+async function register() {
+  try {
+    console.log('Registering with cloud...');
+    const result = await httpRequest(`${CLOUD_SERVER}/api/agent/register`, 'POST', {
       pairKey: PAIR_KEY,
-      deviceInfo: {
-        ...systemInfo,
-        localIP: getLocalIP()
-      }
-    }));
-  });
-  
-  ws.on('message', async (data) => {
-    try {
-      const msg = JSON.parse(data);
-      
-      switch (msg.type) {
-        case 'registered':
-          deviceId = msg.deviceId;
-          console.log(`\nRegistered! Device ID: ${deviceId}`);
-          console.log('Waiting for phone to connect...\n');
-          
-          // Start heartbeat
-          startHeartbeat();
-          break;
-          
-        case 'pair_success':
-          console.log('\n✓ Phone connected successfully!\n');
-          break;
-          
-        case 'get_location':
-          const location = await getIPLocation();
-          ws.send(JSON.stringify({
-            type: 'laptop_location',
-            location
-          }));
-          break;
-          
-        case 'execute_command':
-          console.log(`Command: ${msg.commandType}`);
-          const result = await processCommand(msg.commandType, msg.params);
-          
-          ws.send(JSON.stringify({
-            type: 'laptop_result',
-            commandId: msg.commandId,
-            result: result.output || result,
-            error: result.error || null
-          }));
-          break;
-      }
-    } catch (e) {
-      console.error('Message error:', e.message);
+      systemInfo: { ...systemInfo, localIP: getLocalIP() }
+    });
+
+    if (result.success) {
+      deviceId = result.deviceId;
+      console.log(`  ✓ Registered! Device ID: ${deviceId}`);
+      return true;
+    } else {
+      console.log(`  ✗ Registration failed: ${result.error}`);
+      return false;
     }
-  });
-  
-  ws.on('close', () => {
-    console.log('Disconnected. Reconnecting in 5 seconds...');
-    setTimeout(connect, 5000);
-  });
-  
-  ws.on('error', (err) => {
-    console.error('Error:', err.message);
-  });
+  } catch (e) {
+    console.log(`  ✗ Connection error: ${e.message}`);
+    return false;
+  }
 }
 
-// Heartbeat with location
-function startHeartbeat() {
-  setInterval(async () => {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      try {
-        const location = await getIPLocation();
-        ws.send(JSON.stringify({
-          type: 'laptop_heartbeat',
-          location,
-          systemInfo: {
-            ...systemInfo,
-            localIP: getLocalIP(),
-            uptime: os.uptime()
-          }
-        }));
-      } catch (e) {
-        ws.send(JSON.stringify({
-          type: 'laptop_heartbeat',
-          location: null,
-          systemInfo
-        }));
+// ============= POLL FOR COMMANDS =============
+async function pollCommands() {
+  if (!deviceId) return;
+
+  try {
+    const result = await httpRequest(`${CLOUD_SERVER}/api/agent/poll/${deviceId}`, 'GET');
+
+    if (result.success && result.commands && result.commands.length > 0) {
+      console.log(`\n  Received ${result.commands.length} command(s)`);
+
+      for (const command of result.commands) {
+        // Execute command
+        const cmdResult = await processCommand(command);
+
+        // Send result back to cloud
+        await httpRequest(`${CLOUD_SERVER}/api/agent/result`, 'POST', {
+          commandId: command.commandId,
+          deviceId: deviceId,
+          result: cmdResult.output || cmdResult,
+          error: cmdResult.error || null
+        });
+
+        console.log(`  ✓ Result sent for ${command.commandType}`);
       }
     }
-  }, 5000);
+  } catch (e) {
+    console.log(`  Poll error: ${e.message}`);
+  }
 }
 
-// Start
-console.log('\n========================================');
-console.log('   LAPTOP AGENT - STARTING');
-console.log('========================================');
-console.log(`\n  Pair Code: ${PAIR_KEY}`);
-console.log(`  Cloud: ${CLOUD_SERVER}`);
-console.log(`  Hostname: ${systemInfo.hostname}`);
-console.log(`  Platform: ${systemInfo.platform}`);
-console.log(`  Local IP: ${getLocalIP()}`);
-console.log('\n========================================\n');
+// ============= SEND HEARTBEAT =============
+async function sendHeartbeat() {
+  if (!deviceId) return;
 
-connect();
+  try {
+    const location = await getIPLocation();
+    
+    await httpRequest(`${CLOUD_SERVER}/api/agent/heartbeat`, 'POST', {
+      deviceId,
+      location,
+      systemInfo: { ...systemInfo, localIP: getLocalIP(), uptime: os.uptime() }
+    });
+  } catch (e) {
+    // Silent fail for heartbeat
+  }
+}
+
+// ============= MAIN LOOP =============
+async function main() {
+  console.log('\n========================================');
+  console.log('   LAPTOP AGENT - STARTING');
+  console.log('========================================');
+  console.log(`\n  Pair Code: ${PAIR_KEY}`);
+  console.log(`  Cloud: ${CLOUD_SERVER}`);
+  console.log(`  Hostname: ${systemInfo.hostname}`);
+  console.log(`  Platform: ${systemInfo.platform}`);
+  console.log(`  Local IP: ${getLocalIP()}`);
+  console.log('\n========================================\n');
+
+  // Register
+  const registered = await register();
+  if (!registered) {
+    console.log('\nRetrying in 5 seconds...');
+    setTimeout(main, 5000);
+    return;
+  }
+
+  // Poll for commands every 2 seconds
+  console.log('\nPolling for commands every 2 seconds...\n');
+  setInterval(pollCommands, 2000);
+
+  // Send heartbeat every 5 seconds
+  setInterval(sendHeartbeat, 5000);
+
+  // Initial heartbeat
+  await sendHeartbeat();
+  console.log('✓ Heartbeat sent\n');
+}
+
+main();
