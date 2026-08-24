@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0a0a1a"/>
+      <stop offset="100%" style="stop-color:#1a0a2e"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#00d4ff"/>
+      <stop offset="100%" style="stop-color:#7c3aed"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- Background -->
+  <rect width="512" height="512" fill="url(#bg)" rx="100"/>
+  
+  <!-- Laptop body -->
+  <rect x="120" y="140" width="272" height="180" rx="15" fill="#1a1a2e" stroke="#00d4ff" stroke-width="4"/>
+  
+  <!-- Screen -->
+  <rect x="135" y="155" width="242" height="145" rx="8" fill="#0a0a1a"/>
+  
+  <!-- Map on screen -->
+  <circle cx="220" cy="210" r="25" fill="#00d4ff" opacity="0.3"/>
+  <circle cx="220" cy="210" r="8" fill="#00ff88"/>
+  <circle cx="220" cy="210" r="4" fill="#fff"/>
+  
+  <!-- Signal waves -->
+  <path d="M256 180 Q276 200 256 220" stroke="#00d4ff" stroke-width="3" fill="none" opacity="0.6"/>
+  <path d="M256 170 Q286 200 256 230" stroke="#00d4ff" stroke-width="3" fill="none" opacity="0.4"/>
+  <path d="M256 160 Q296 200 256 240" stroke="#00d4ff" stroke-width="3" fill="none" opacity="0.2"/>
+  
+  <!-- Laptop base -->
+  <path d="M100 320 L120 340 L392 340 L412 320 Z" fill="#1a1a2e" stroke="#00d4ff" stroke-width="4"/>
+  
+  <!-- Phone -->
+  <rect x="300" y="300" width="80" height="140" rx="10" fill="#1a1a2e" stroke="#7c3aed" stroke-width="3"/>
+  <rect x="308" y="315" width="64" height="100" rx="5" fill="#0a0a1a"/>
+  
+  <!-- Phone connection line -->
+  <path d="M256 280 Q280 300 310 330" stroke="url(#accent)" stroke-width="3" fill="none" stroke-dasharray="5,5">
+    <animate attributeName="stroke-dashoffset" values="0;10" dur="1s" repeatCount="indefinite"/>
+  </path>
+  
+  <!-- Location pin -->
+  <circle cx="340" cy="360" r="12" fill="#00ff88"/>
+  <circle cx="340" cy="360" r="6" fill="#fff"/>
+  
+  <!-- WiFi symbol -->
+  <path d="M236 350 L256 370 L276 350" stroke="#00d4ff" stroke-width="4" fill="none"/>
+  <circle cx="256" cy="380" r="4" fill="#00d4ff"/>
+</svg>

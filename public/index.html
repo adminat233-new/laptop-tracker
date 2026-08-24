@@ -1,0 +1,1244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#0a0a0f">
+  <meta name="description" content="Track and control your laptop remotely">
+  
+  <title>Laptop Tracker</title>
+  
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" type="image/svg+xml" href="/icons/icon.svg">
+  
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  
+  <style>
+    :root {
+      --bg-primary: #0a0a0f;
+      --bg-card: rgba(255,255,255,0.05);
+      --bg-card-hover: rgba(255,255,255,0.08);
+      --border: rgba(255,255,255,0.1);
+      --accent: #00d4ff;
+      --accent-glow: rgba(0,212,255,0.3);
+      --success: #00ff88;
+      --warning: #ffaa00;
+      --danger: #ff4444;
+      --text-primary: #fff;
+      --text-secondary: #888;
+      --safe-top: env(safe-area-inset-top, 0px);
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      min-height: 100vh;
+      overflow-x: hidden;
+      padding-top: var(--safe-top);
+      padding-bottom: var(--safe-bottom);
+    }
+
+    /* Login Screen */
+    #login-screen {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 20px;
+      background: linear-gradient(135deg, #0a0a1a 0%, #1a0a2e 50%, #0a1a2e 100%);
+    }
+
+    .login-logo {
+      width: 120px;
+      height: 120px;
+      margin-bottom: 24px;
+      animation: float 3s ease-in-out infinite;
+    }
+
+    @keyframes float {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-10px); }
+    }
+
+    .login-card {
+      background: var(--bg-card);
+      backdrop-filter: blur(20px);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      padding: 40px 30px;
+      width: 100%;
+      max-width: 360px;
+      text-align: center;
+    }
+
+    .login-title {
+      font-size: 28px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      background: linear-gradient(135deg, #fff 0%, #aaa 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .login-subtitle {
+      color: var(--text-secondary);
+      font-size: 14px;
+      margin-bottom: 32px;
+    }
+
+    .pin-input {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      margin-bottom: 24px;
+    }
+
+    .pin-digit {
+      width: 60px;
+      height: 70px;
+      background: rgba(255,255,255,0.06);
+      border: 2px solid var(--border);
+      border-radius: 14px;
+      text-align: center;
+      font-size: 28px;
+      font-weight: 700;
+      color: #fff;
+      outline: none;
+      transition: all 0.2s;
+    }
+
+    .pin-digit:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 25px var(--accent-glow);
+    }
+
+    .connect-btn {
+      width: 100%;
+      padding: 18px;
+      background: linear-gradient(135deg, var(--accent), #7c3aed);
+      border: none;
+      border-radius: 14px;
+      color: #fff;
+      font-size: 17px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .connect-btn::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+      transition: left 0.5s;
+    }
+
+    .connect-btn:hover::before {
+      left: 100%;
+    }
+
+    .connect-btn:active {
+      transform: scale(0.98);
+    }
+
+    .connect-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .error-msg {
+      color: var(--danger);
+      font-size: 13px;
+      margin-top: 12px;
+      min-height: 20px;
+    }
+
+    /* Main App */
+    #app-screen {
+      display: none;
+      min-height: 100vh;
+      padding-bottom: 300px;
+    }
+
+    /* Header */
+    .header {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 1000;
+      background: rgba(10,10,15,0.92);
+      backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 16px;
+      padding-top: calc(12px + var(--safe-top));
+    }
+
+    .header-content {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .laptop-info {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .laptop-icon {
+      width: 40px;
+      height: 40px;
+      background: linear-gradient(135deg, var(--accent), #7c3aed);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+    }
+
+    .laptop-name {
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    .connection-status {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--success);
+      animation: pulse 2s infinite;
+    }
+
+    .status-dot.offline {
+      background: var(--danger);
+      animation: none;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.6; transform: scale(0.8); }
+    }
+
+    /* Map */
+    #map {
+      position: fixed;
+      top: 70px;
+      left: 0;
+      right: 0;
+      height: 35vh;
+      z-index: 1;
+    }
+
+    /* Status Cards */
+    .status-section {
+      position: relative;
+      z-index: 10;
+      margin-top: calc(35vh + 70px);
+      padding: 16px;
+    }
+
+    .section-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 12px;
+    }
+
+    .status-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .status-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 16px;
+      transition: all 0.2s;
+    }
+
+    .status-card:active {
+      background: var(--bg-card-hover);
+      transform: scale(0.98);
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .card-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+    }
+
+    .card-icon.cpu { background: rgba(0,212,255,0.15); }
+    .card-icon.memory { background: rgba(124,58,237,0.15); }
+    .card-icon.battery { background: rgba(0,255,136,0.15); }
+    .card-icon.disk { background: rgba(255,170,0,0.15); }
+    .card-icon.network { background: rgba(255,68,68,0.15); }
+    .card-icon.processes { background: rgba(0,255,255,0.15); }
+
+    .card-value {
+      font-size: 28px;
+      font-weight: 700;
+      line-height: 1;
+      margin-bottom: 4px;
+    }
+
+    .card-label {
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .progress-bar {
+      width: 100%;
+      height: 4px;
+      background: rgba(255,255,255,0.1);
+      border-radius: 2px;
+      margin-top: 12px;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      border-radius: 2px;
+      transition: width 0.3s ease;
+    }
+
+    .progress-fill.low { background: var(--success); }
+    .progress-fill.medium { background: var(--warning); }
+    .progress-fill.high { background: var(--danger); }
+
+    /* Location Card */
+    .location-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 16px;
+      margin-bottom: 20px;
+    }
+
+    .location-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .location-row:last-child {
+      border-bottom: none;
+    }
+
+    .location-label {
+      color: var(--text-secondary);
+      font-size: 13px;
+    }
+
+    .location-value {
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    /* Control Panel */
+    .control-panel {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      z-index: 1000;
+      background: rgba(10,10,15,0.95);
+      backdrop-filter: blur(20px);
+      border-top: 1px solid var(--border);
+      padding: 16px;
+      padding-bottom: calc(16px + var(--safe-bottom));
+      border-radius: 24px 24px 0 0;
+    }
+
+    .panel-handle {
+      width: 36px;
+      height: 4px;
+      background: rgba(255,255,255,0.2);
+      border-radius: 2px;
+      margin: 0 auto 16px;
+    }
+
+    .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+
+    .panel-title {
+      font-size: 18px;
+      font-weight: 600;
+    }
+
+    .tracking-toggle {
+      position: relative;
+      width: 56px;
+      height: 30px;
+      background: rgba(255,255,255,0.1);
+      border-radius: 15px;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+
+    .tracking-toggle.active {
+      background: var(--success);
+    }
+
+    .tracking-toggle::after {
+      content: '';
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      width: 24px;
+      height: 24px;
+      background: #fff;
+      border-radius: 50%;
+      transition: transform 0.3s;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    }
+
+    .tracking-toggle.active::after {
+      transform: translateX(26px);
+    }
+
+    /* Alarm Buttons */
+    .alarm-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    .alarm-btn {
+      padding: 14px 8px;
+      border: none;
+      border-radius: 14px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s;
+    }
+
+    .alarm-btn:active {
+      transform: scale(0.92);
+    }
+
+    .alarm-btn .icon {
+      font-size: 22px;
+    }
+
+    .alarm-btn.siren {
+      background: linear-gradient(135deg, #ff4444, #cc0000);
+      color: #fff;
+    }
+
+    .alarm-btn.alarm {
+      background: linear-gradient(135deg, #ff8800, #cc6600);
+      color: #fff;
+    }
+
+    .alarm-btn.noise {
+      background: linear-gradient(135deg, #ff00ff, #cc00cc);
+      color: #fff;
+    }
+
+    .alarm-btn.sensor {
+      background: linear-gradient(135deg, #ffff00, #cccc00);
+      color: #000;
+    }
+
+    /* Quick Actions */
+    .quick-actions {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+    }
+
+    .action-btn {
+      padding: 12px 8px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      color: #fff;
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s;
+    }
+
+    .action-btn:active {
+      background: var(--bg-card-hover);
+      transform: scale(0.95);
+    }
+
+    .action-btn .icon {
+      font-size: 20px;
+    }
+
+    .action-btn.danger {
+      border-color: rgba(255,68,68,0.3);
+      color: var(--danger);
+    }
+
+    /* Toast */
+    .toast {
+      position: fixed;
+      top: calc(80px + var(--safe-top));
+      left: 50%;
+      transform: translateX(-50%) translateY(-20px);
+      background: rgba(0,212,255,0.95);
+      color: #fff;
+      padding: 12px 24px;
+      border-radius: 12px;
+      font-size: 14px;
+      font-weight: 500;
+      z-index: 2000;
+      opacity: 0;
+      transition: all 0.3s;
+      pointer-events: none;
+      box-shadow: 0 8px 32px rgba(0,212,255,0.3);
+    }
+
+    .toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    /* Alarm Active Banner */
+    .alarm-banner {
+      position: fixed;
+      top: calc(70px + var(--safe-top));
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--danger);
+      color: #fff;
+      padding: 10px 20px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 700;
+      z-index: 2000;
+      display: none;
+      animation: blink 0.5s infinite;
+      box-shadow: 0 4px 20px rgba(255,68,68,0.5);
+    }
+
+    .alarm-banner.show {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.6; }
+    }
+
+    /* Custom Marker */
+    .custom-marker {
+      background: none;
+      border: none;
+    }
+
+    .marker-dot {
+      width: 24px;
+      height: 24px;
+      background: var(--accent);
+      border: 3px solid #fff;
+      border-radius: 50%;
+      box-shadow: 0 0 20px var(--accent-glow);
+      position: relative;
+    }
+
+    .marker-dot::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 40px;
+      height: 40px;
+      background: var(--accent);
+      border-radius: 50%;
+      opacity: 0.3;
+      animation: marker-pulse 2s infinite;
+    }
+
+    @keyframes marker-pulse {
+      0% { transform: translate(-50%, -50%) scale(1); opacity: 0.3; }
+      100% { transform: translate(-50%, -50%) scale(2); opacity: 0; }
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar {
+      width: 4px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: rgba(255,255,255,0.2);
+      border-radius: 2px;
+    }
+  </style>
+</head>
+<body>
+  <!-- Login Screen -->
+  <div id="login-screen">
+    <img src="/icons/icon.svg" alt="Logo" class="login-logo">
+    
+    <div class="login-card">
+      <h1 class="login-title">Laptop Tracker</h1>
+      <p class="login-subtitle">Enter PIN to connect to your laptop</p>
+      
+      <div class="pin-input">
+        <input type="password" class="pin-digit" maxlength="1" data-index="0" inputmode="numeric" pattern="[0-9]">
+        <input type="password" class="pin-digit" maxlength="1" data-index="1" inputmode="numeric" pattern="[0-9]">
+        <input type="password" class="pin-digit" maxlength="1" data-index="2" inputmode="numeric" pattern="[0-9]">
+        <input type="password" class="pin-digit" maxlength="1" data-index="3" inputmode="numeric" pattern="[0-9]">
+      </div>
+      
+      <button class="connect-btn" id="connect-btn" disabled>Connect to Laptop</button>
+      <p class="error-msg" id="error-msg"></p>
+    </div>
+  </div>
+
+  <!-- Main App Screen -->
+  <div id="app-screen">
+    <header class="header">
+      <div class="header-content">
+        <div class="laptop-info">
+          <div class="laptop-icon">💻</div>
+          <div>
+            <div class="laptop-name" id="laptop-name">Laptop</div>
+            <div class="connection-status">
+              <div class="status-dot" id="status-dot"></div>
+              <span id="status-text">Connecting...</span>
+            </div>
+          </div>
+        </div>
+        <div class="last-update" id="last-update" style="font-size: 11px; color: var(--text-secondary);">--</div>
+      </div>
+    </header>
+
+    <div id="map"></div>
+
+    <section class="status-section">
+      <div class="section-title">System Status</div>
+      
+      <div class="status-grid">
+        <div class="status-card">
+          <div class="card-header">
+            <div class="card-icon cpu">⚡</div>
+          </div>
+          <div class="card-value" id="cpu-value">0%</div>
+          <div class="card-label">CPU Usage</div>
+          <div class="progress-bar">
+            <div class="progress-fill low" id="cpu-bar" style="width: 0%"></div>
+          </div>
+        </div>
+
+        <div class="status-card">
+          <div class="card-header">
+            <div class="card-icon memory">🧠</div>
+          </div>
+          <div class="card-value" id="memory-value">0%</div>
+          <div class="card-label">Memory Used</div>
+          <div class="progress-bar">
+            <div class="progress-fill low" id="memory-bar" style="width: 0%"></div>
+          </div>
+        </div>
+
+        <div class="status-card">
+          <div class="card-header">
+            <div class="card-icon battery">🔋</div>
+          </div>
+          <div class="card-value" id="battery-value">--%</div>
+          <div class="card-label">Battery</div>
+          <div class="progress-bar">
+            <div class="progress-fill low" id="battery-bar" style="width: 0%"></div>
+          </div>
+        </div>
+
+        <div class="status-card">
+          <div class="card-header">
+            <div class="card-icon disk">💾</div>
+          </div>
+          <div class="card-value" id="disk-value">0%</div>
+          <div class="card-label">Disk Used</div>
+          <div class="progress-bar">
+            <div class="progress-fill low" id="disk-bar" style="width: 0%"></div>
+          </div>
+        </div>
+
+        <div class="status-card">
+          <div class="card-header">
+            <div class="card-icon network">🌐</div>
+          </div>
+          <div class="card-value" id="network-value">--</div>
+          <div class="card-label">Public IP</div>
+        </div>
+
+        <div class="status-card">
+          <div class="card-header">
+            <div class="card-icon processes">📊</div>
+          </div>
+          <div class="card-value" id="process-value">0</div>
+          <div class="card-label">Processes</div>
+        </div>
+      </div>
+
+      <div class="section-title">Location Info</div>
+      
+      <div class="location-card">
+        <div class="location-row">
+          <span class="location-label">Method</span>
+          <span class="location-value" id="loc-method">--</span>
+        </div>
+        <div class="location-row">
+          <span class="location-label">City</span>
+          <span class="location-value" id="loc-city">--</span>
+        </div>
+        <div class="location-row">
+          <span class="location-label">Region</span>
+          <span class="location-value" id="loc-region">--</span>
+        </div>
+        <div class="location-row">
+          <span class="location-label">Country</span>
+          <span class="location-value" id="loc-country">--</span>
+        </div>
+        <div class="location-row">
+          <span class="location-label">Coordinates</span>
+          <span class="location-value" id="loc-coords">--</span>
+        </div>
+        <div class="location-row">
+          <span class="location-label">ISP</span>
+          <span class="location-value" id="loc-isp">--</span>
+        </div>
+      </div>
+    </section>
+
+    <div class="alarm-banner" id="alarm-banner">
+      <span>⚠️</span>
+      <span id="alarm-banner-text">ALARM ACTIVE</span>
+    </div>
+
+    <div class="control-panel">
+      <div class="panel-handle"></div>
+      
+      <div class="panel-header">
+        <span class="panel-title">Controls</span>
+        <div class="tracking-toggle" id="tracking-toggle"></div>
+      </div>
+
+      <div class="alarm-grid">
+        <button class="alarm-btn siren" onclick="triggerAlarm('siren')">
+          <span class="icon">🚨</span>
+          Siren
+        </button>
+        <button class="alarm-btn alarm" onclick="triggerAlarm('alarm')">
+          <span class="icon">🔔</span>
+          Alarm
+        </button>
+        <button class="alarm-btn noise" onclick="triggerAlarm('noise')">
+          <span class="icon">🔊</span>
+          Noise
+        </button>
+        <button class="alarm-btn sensor" onclick="triggerAlarm('sensor')">
+          <span class="icon">⚠️</span>
+          Sensor
+        </button>
+      </div>
+
+      <div class="quick-actions">
+        <button class="action-btn" onclick="stopAlarm()">
+          <span class="icon">⏹️</span>
+          Stop All
+        </button>
+        <button class="action-btn" onclick="lockLaptop()">
+          <span class="icon">🔒</span>
+          Lock
+        </button>
+        <button class="action-btn" onclick="scanNetwork()">
+          <span class="icon">🌐</span>
+          Scan
+        </button>
+        <button class="action-btn danger" onclick="confirmShutdown()">
+          <span class="icon">⏻</span>
+          Shutdown
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    let ws = null;
+    let map = null;
+    let marker = null;
+    let accuracyCircle = null;
+    let isAuthenticated = false;
+    let isTracking = false;
+    let currentLocation = null;
+    let serviceWorker = null;
+
+    // Register Service Worker
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js')
+        .then(reg => {
+          serviceWorker = reg;
+          console.log('Service Worker registered');
+        })
+        .catch(err => console.error('SW registration failed:', err));
+    }
+
+    // Request notification permission
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+
+    // PIN input handling
+    const pinDigits = document.querySelectorAll('.pin-digit');
+    const connectBtn = document.getElementById('connect-btn');
+    const errorMsg = document.getElementById('error-msg');
+
+    pinDigits.forEach((digit, index) => {
+      digit.addEventListener('input', (e) => {
+        e.target.value = e.target.value.replace(/[^0-9]/g, '');
+        if (e.target.value && index < pinDigits.length - 1) {
+          pinDigits[index + 1].focus();
+        }
+        updateConnectButton();
+      });
+
+      digit.addEventListener('keydown', (e) => {
+        if (e.key === 'Backspace' && !e.target.value && index > 0) {
+          pinDigits[index - 1].focus();
+        }
+        if (e.key === 'Enter') connect();
+      });
+
+      digit.addEventListener('paste', (e) => {
+        e.preventDefault();
+        const paste = (e.clipboardData || window.clipboardData).getData('text');
+        const digits = paste.replace(/[^0-9]/g, '').slice(0, 4);
+        digits.split('').forEach((d, i) => {
+          if (pinDigits[i]) pinDigits[i].value = d;
+        });
+        if (digits.length > 0) {
+          pinDigits[Math.min(digits.length, 3)].focus();
+        }
+        updateConnectButton();
+      });
+    });
+
+    function updateConnectButton() {
+      const pin = Array.from(pinDigits).map(d => d.value).join('');
+      connectBtn.disabled = pin.length !== 4;
+    }
+
+    async function connect() {
+      const pin = Array.from(pinDigits).map(d => d.value).join('');
+      connectBtn.disabled = true;
+      connectBtn.textContent = 'Connecting...';
+      
+      try {
+        const response = await fetch('/api/auth', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pin })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          isAuthenticated = true;
+          document.getElementById('login-screen').style.display = 'none';
+          document.getElementById('app-screen').style.display = 'block';
+          document.getElementById('laptop-name').textContent = data.laptopInfo.hostname;
+          initMap();
+          connectWebSocket();
+          refreshLocation();
+          requestStats();
+        } else {
+          errorMsg.textContent = 'Invalid PIN. Try again.';
+          connectBtn.textContent = 'Connect to Laptop';
+          connectBtn.disabled = false;
+          pinDigits.forEach(d => d.value = '');
+          pinDigits[0].focus();
+          navigator.vibrate && navigator.vibrate(100);
+        }
+      } catch (error) {
+        errorMsg.textContent = 'Connection failed. Check if server is running.';
+        connectBtn.textContent = 'Connect to Laptop';
+        connectBtn.disabled = false;
+      }
+    }
+
+    connectBtn.addEventListener('click', connect);
+
+    function initMap() {
+      map = L.map('map', {
+        center: [0, 0],
+        zoom: 2,
+        zoomControl: false,
+        attributionControl: false
+      });
+
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        maxZoom: 19
+      }).addTo(map);
+    }
+
+    function updateMap(lat, lng, accuracy) {
+      if (!map) return;
+      const latlng = L.latLng(lat, lng);
+
+      if (marker) {
+        marker.setLatLng(latlng);
+      } else {
+        marker = L.marker(latlng, {
+          icon: L.divIcon({
+            className: 'custom-marker',
+            html: '<div class="marker-dot"></div>',
+            iconSize: [24, 24],
+            iconAnchor: [12, 12]
+          })
+        }).addTo(map);
+      }
+
+      if (accuracyCircle) {
+        accuracyCircle.setLatLng(latlng).setRadius(accuracy || 1000);
+      } else {
+        accuracyCircle = L.circle(latlng, {
+          radius: accuracy || 1000,
+          color: '#00d4ff',
+          fillColor: '#00d4ff',
+          fillOpacity: 0.1,
+          weight: 1
+        }).addTo(map);
+      }
+
+      map.setView(latlng, 15);
+    }
+
+    function connectWebSocket() {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      ws = new WebSocket(`${protocol}//${window.location.host}`);
+
+      ws.onopen = () => {
+        document.getElementById('status-dot').classList.remove('offline');
+        document.getElementById('status-text').textContent = 'Connected';
+        showToast('Connected to laptop');
+      };
+
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        handleWebSocketMessage(data);
+      };
+
+      ws.onclose = () => {
+        document.getElementById('status-dot').classList.add('offline');
+        document.getElementById('status-text').textContent = 'Disconnected';
+        
+        setTimeout(connectWebSocket, 3000);
+      };
+
+      ws.onerror = () => {};
+    }
+
+    function handleWebSocketMessage(data) {
+      switch (data.type) {
+        case 'connected':
+          isTracking = data.isTracking;
+          updateTrackingToggle();
+          if (data.currentLocation) {
+            updateLocationDisplay(data.currentLocation);
+          }
+          break;
+
+        case 'location_update':
+          currentLocation = data.location;
+          updateLocationDisplay(data.location);
+          const accuracy = data.location.accuracy === 'city-level' ? 5000 : 1000;
+          updateMap(data.location.lat, data.location.lng, accuracy);
+          document.getElementById('last-update').textContent = 
+            new Date(data.timestamp).toLocaleTimeString();
+          break;
+
+        case 'system_stats':
+          updateSystemStats(data.stats);
+          break;
+
+        case 'alarm_triggered':
+          document.getElementById('alarm-banner').classList.add('show');
+          document.getElementById('alarm-banner-text').textContent = 
+            `${data.alarmType.toUpperCase()} ALARM ACTIVE`;
+          
+          // Send notification
+          if ('Notification' in window && Notification.permission === 'granted') {
+            new Notification('Laptop Tracker', {
+              body: `${data.alarmType.toUpperCase()} alarm triggered!`,
+              icon: '/icons/icon.svg',
+              vibrate: [200, 100, 200]
+            });
+          }
+          
+          // Vibrate device
+          navigator.vibrate && navigator.vibrate([200, 100, 200, 100, 200]);
+          break;
+      }
+    }
+
+    function updateLocationDisplay(location) {
+      document.getElementById('loc-method').textContent = location.method || '--';
+      document.getElementById('loc-city').textContent = location.city || '--';
+      document.getElementById('loc-region').textContent = location.region || '--';
+      document.getElementById('loc-country').textContent = location.country || '--';
+      document.getElementById('loc-coords').textContent = 
+        location.lat && location.lng ? `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}` : '--';
+      document.getElementById('loc-isp').textContent = location.org || '--';
+    }
+
+    function updateSystemStats(stats) {
+      // CPU
+      const cpuUsage = stats.cpu?.usage || 0;
+      document.getElementById('cpu-value').textContent = `${cpuUsage}%`;
+      updateProgressBar('cpu-bar', cpuUsage);
+
+      // Memory
+      const memUsage = stats.memory?.percentage || 0;
+      document.getElementById('memory-value').textContent = `${memUsage}%`;
+      updateProgressBar('memory-bar', memUsage);
+
+      // Battery
+      if (stats.battery?.available) {
+        const battery = stats.battery.percentage || 0;
+        document.getElementById('battery-value').textContent = `${battery}%`;
+        updateProgressBar('battery-bar', battery);
+      } else {
+        document.getElementById('battery-value').textContent = 'N/A';
+      }
+
+      // Disk
+      if (stats.disk?.available && stats.disk.total > 0) {
+        const diskUsage = Math.round((stats.disk.used / stats.disk.total) * 100);
+        document.getElementById('disk-value').textContent = `${diskUsage}%`;
+        updateProgressBar('disk-bar', diskUsage);
+      }
+
+      // Network
+      document.getElementById('network-value').textContent = stats.hostname || '--';
+
+      // Processes
+      document.getElementById('process-value').textContent = stats.processes || '0';
+
+      document.getElementById('last-update').textContent = 
+        new Date(stats.timestamp).toLocaleTimeString();
+    }
+
+    function updateProgressBar(id, percentage) {
+      const bar = document.getElementById(id);
+      bar.style.width = `${percentage}%`;
+      bar.className = 'progress-fill';
+      if (percentage < 50) bar.classList.add('low');
+      else if (percentage < 80) bar.classList.add('medium');
+      else bar.classList.add('high');
+    }
+
+    function updateTrackingToggle() {
+      const toggle = document.getElementById('tracking-toggle');
+      toggle.classList.toggle('active', isTracking);
+    }
+
+    document.getElementById('tracking-toggle').addEventListener('click', async () => {
+      const endpoint = isTracking ? '/api/tracking/stop' : '/api/tracking/start';
+      
+      try {
+        const response = await fetch(endpoint, { method: 'POST' });
+        const data = await response.json();
+        
+        if (data.success) {
+          isTracking = !isTracking;
+          updateTrackingToggle();
+          showToast(isTracking ? 'Live tracking started' : 'Tracking stopped');
+        }
+      } catch (error) {
+        showToast('Failed to toggle tracking');
+      }
+    });
+
+    async function triggerAlarm(type) {
+      try {
+        const response = await fetch('/api/alarm/trigger', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type, duration: 30 })
+        });
+
+        const data = await response.json();
+        if (data.success) {
+          showToast(`${type} alarm triggered!`);
+          document.getElementById('alarm-banner').classList.add('show');
+          document.getElementById('alarm-banner-text').textContent = `${type.toUpperCase()} ALARM ACTIVE`;
+          navigator.vibrate && navigator.vibrate([100, 50, 100]);
+        }
+      } catch (error) {
+        showToast('Failed to trigger alarm');
+      }
+    }
+
+    async function stopAlarm() {
+      try {
+        await fetch('/api/alarm/stop', { method: 'POST' });
+        showToast('All alarms stopped');
+        document.getElementById('alarm-banner').classList.remove('show');
+      } catch (error) {
+        showToast('Failed to stop alarm');
+      }
+    }
+
+    async function lockLaptop() {
+      try {
+        await fetch('/api/system/lock', { method: 'POST' });
+        showToast('Laptop locked');
+      } catch (error) {
+        showToast('Failed to lock laptop');
+      }
+    }
+
+    function confirmShutdown() {
+      if (confirm('Are you sure you want to shutdown the laptop?')) {
+        fetch('/api/system/shutdown', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ confirm: true })
+        }).then(() => showToast('Shutdown initiated'));
+      }
+    }
+
+    async function refreshLocation() {
+      try {
+        const response = await fetch('/api/location');
+        const data = await response.json();
+        
+        if (data.success) {
+          currentLocation = data.location;
+          updateLocationDisplay(data.location);
+          const accuracy = data.location.accuracy === 'city-level' ? 5000 : 1000;
+          updateMap(data.location.lat, data.location.lng, accuracy);
+          showToast('Location refreshed');
+        }
+      } catch (error) {
+        showToast('Failed to get location');
+      }
+    }
+
+    async function scanNetwork() {
+      showToast('Scanning network...');
+      try {
+        const response = await fetch('/api/network/scan');
+        const data = await response.json();
+        
+        if (data.success) {
+          showToast(`Found ${data.networkInfo.devices.length} devices`);
+        }
+      } catch (error) {
+        showToast('Network scan failed');
+      }
+    }
+
+    function requestStats() {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'request_stats' }));
+      }
+    }
+
+    // Request stats every 5 seconds
+    setInterval(requestStats, 5000);
+
+    function showToast(message) {
+      const toast = document.getElementById('toast');
+      toast.textContent = message;
+      toast.classList.add('show');
+      
+      setTimeout(() => toast.classList.remove('show'), 2500);
+    }
+
+    // Keyboard shortcuts
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') stopAlarm();
+    });
+
+    // Handle visibility change for reconnection
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && ws && ws.readyState !== WebSocket.OPEN) {
+        connectWebSocket();
+      }
+    });
+
+    // Handle quick action from shortcut
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('action') === 'alarm') {
+      setTimeout(() => triggerAlarm('alarm'), 1000);
+    } else if (urlParams.get('action') === 'track') {
+      setTimeout(() => {
+        document.getElementById('tracking-toggle').click();
+      }, 1000);
+    }
+  </script>
+</body>
+</html>
