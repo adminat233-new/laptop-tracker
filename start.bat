@@ -1,44 +1,32 @@
 @echo off
-title Laptop Tracker - Public Access
+title LAPTOP TRACKER v3
 color 0A
+cls
 
-echo ========================================
-echo    LAPTOP TRACKER - PUBLIC ACCESS
-echo ========================================
+echo ============================================
+echo    LAPTOP TRACKER v3 - UNIFIED
+echo ============================================
+echo.
+echo  1. Open browser to: http://localhost:9999
+echo  2. The page will show "Laptop Mode"  
+echo  3. Click "Generate New Code"
+echo  4. Open same URL on your phone
+echo  5. Phone will show "Phone Mode"
+echo  6. Enter the code from laptop
+echo  7. They will pair automatically!
+echo.
+echo ============================================
 echo.
 
-:: Set custom PIN (change this)
-if not defined TRACKER_PIN set TRACKER_PIN=1234
-if not defined PORT set PORT=7777
-
-echo [*] Starting server on port %PORT%...
-echo [*] PIN: %TRACKER_PIN%
-echo.
-
-:: Start the server in background
-start /B node server.js
-
-:: Wait for server to start
-timeout /t 3 /nobreak >nul
-
-echo ========================================
-echo    SERVER STARTED!
-echo ========================================
-echo.
-echo  LOCAL URL:   http://localhost:%PORT%
-echo  NETWORK URL: Check console output above
-echo.
-echo  To make PUBLIC, run this in another terminal:
-echo  cloudflared tunnel --url http://localhost:%PORT%
-echo.
-echo  Or use ngrok:
-echo  ngrok http %PORT%
-echo.
-echo ========================================
-echo  Press any key to stop server...
-echo ========================================
-pause >nul
-
-:: Kill node processes
 taskkill /F /IM node.exe >nul 2>&1
-echo Server stopped.
+
+set PORT=9999
+
+echo Starting server...
+echo.
+echo ============================================
+echo    OPEN http://localhost:9999
+echo ============================================
+echo.
+
+node cloud-server.js

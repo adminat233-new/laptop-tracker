@@ -1,6 +1,6 @@
-const http = require('http');
 const https = require('https');
-const { exec, execSync } = require('child_process');
+const http = require('http');
+const { exec } = require('child_process');
 const os = require('os');
 const path = require('path');
 const WebSocket = require('ws');
@@ -8,30 +8,28 @@ const WebSocket = require('ws');
 // Configuration
 const CLOUD_SERVER = process.env.CLOUD_SERVER || 'http://localhost:9999';
 const PAIR_KEY = process.env.PAIR_KEY || '';
-const DEVICE_ID = process.env.DEVICE_ID || '';
 
-// Validate configuration
 if (!PAIR_KEY) {
   console.log('\n========================================');
   console.log('   LAPTOP AGENT - SETUP REQUIRED');
   console.log('========================================');
   console.log('\n  No pair key provided.');
   console.log('\n  Usage:');
-  console.log('    set PAIR_KEY=YOUR_KEY_HERE');
+  console.log('    set PAIR_KEY=YOUR_CODE_HERE');
+  console.log('    set CLOUD_SERVER=your-render-url');
   console.log('    node agent.js');
-  console.log('\n  Get your pair key from the web interface.');
+  console.log('\n  Get the code from the web interface.');
   console.log('========================================\n');
   process.exit(1);
 }
 
 // System info
-let systemInfo = {
+const systemInfo = {
   hostname: os.hostname(),
   platform: os.platform(),
   arch: os.arch(),
   cpus: os.cpus().length,
-  totalMemory: os.totalmem(),
-  hostname: os.hostname()
+  totalMemory: os.totalmem()
 };
 
 // Get local IP
@@ -73,12 +71,10 @@ function getIPLocation() {
   });
 }
 
-// Execute a .bat file
-function executeBatCommand(batName, params = {}) {
-  return new Promise((resolve, reject) => {
+// Execute .bat file
+function executeBat(batName, params = {}) {
+  return new Promise((resolve) => {
     const batPath = path.join(__dirname, 'commands', `${batName}.bat`);
-    
-    // Build command with parameters
     let cmd = `"${batPath}"`;
     if (params.duration) cmd += ` ${params.duration}`;
     if (params.target) cmd += ` ${params.target}`;
@@ -86,186 +82,62 @@ function executeBatCommand(batName, params = {}) {
     console.log(`Executing: ${batName}`);
     
     exec(cmd, { timeout: 60000, maxBuffer: 1024 * 1024 }, (error, stdout, stderr) => {
-      if (error && error.killed) {
-        resolve({ success: true, output: 'Command completed (timed out)', partial: true });
-      } else if (error) {
-        // Some commands return error codes but still work
-        resolve({ success: true, output: stdout || stderr || 'Executed' });
-      } else {
-        resolve({ success: true, output: stdout });
-      }
+      resolve({ success: true, output: stdout || stderr || 'Done' });
     });
   });
 }
 
-// Execute a direct command (for custom requests)
-function executeDirectCommand(command) {
-  return new Promise((resolve, reject) => {
-    exec(command, { timeout: 60000, maxBuffer: 1024 * 1024 }, (error, stdout, stderr) => {
-      if (error && !stdout) {
-        resolve({ success: false, error: error.message });
-      } else {
-        resolve({ success: true, output: stdout || stderr });
-      }
-    });
-  });
-}
-
-// Process a command from cloud
-async function processCommand(cmd) {
-  console.log(`Processing command: ${cmd.type}`);
-  
-  let result;
-  
-  switch (cmd.type) {
-    case 'siren':
-      result = await executeBatCommand('siren', cmd.params);
-      break;
-      
-    case 'alarm':
-      result = await executeBatCommand('alarm', cmd.params);
-      break;
-      
-    case 'noise':
-      result = await executeBatCommand('siren', { duration: 60 });
-      break;
-      
-    case 'sensor':
-      result = await executeBatCommand('alarm', cmd.params);
-      break;
-      
-    case 'lock':
-      result = await executeBatCommand('lock');
-      break;
-      
-    case 'shutdown':
-      result = await executeBatCommand('shutdown');
-      break;
-      
+// Process command
+async function processCommand(type, params) {
+  switch (type) {
+    case 'siren': return await executeBat('siren', params);
+    case 'alarm': return await executeBat('alarm', params);
+    case 'noise': return await executeBat('siren', { duration: 60 });
+    case 'sensor': return await executeBat('alarm', params);
+    case 'lock': return await executeBat('lock');
+    case 'shutdown': return await executeBat('shutdown');
+    case 'netscan': return await executeBat('netscan');
+    case 'sysinfo': return await executeBat('sysinfo');
     case 'location':
       try {
         const location = await getIPLocation();
-        result = { success: true, location };
+        return { success: true, location };
       } catch (e) {
-        result = { success: false, error: e.message };
+        return { success: false, error: e.message };
       }
-      break;
-      
-    case 'netscan':
-      result = await executeBatCommand('netscan');
-      break;
-      
-    case 'sysinfo':
-      result = await executeBatCommand('sysinfo');
-      break;
-      
     case 'custom':
-      if (cmd.params.command) {
-        result = await executeDirectCommand(cmd.params.command);
-      } else {
-        result = { success: false, error: 'No command provided' };
-      }
-      break;
-      
+      return new Promise((resolve) => {
+        exec(params.command, { timeout: 60000 }, (error, stdout) => {
+          resolve({ success: !error, output: stdout || error?.message });
+        });
+      });
     default:
-      result = { success: false, error: `Unknown command: ${cmd.type}` };
+      return { success: false, error: 'Unknown command' };
   }
-  
-  return result;
 }
 
-// Send result to cloud
-function sendResult(commandId, result) {
-  const url = new URL('/api/agent/result', CLOUD_SERVER);
-  
-  const data = JSON.stringify({
-    commandId,
-    deviceId: DEVICE_ID,
-    result: result.output || result,
-    error: result.error || null
-  });
-
-  const options = {
-    hostname: url.hostname,
-    port: url.port,
-    path: url.pathname,
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Content-Length': Buffer.byteLength(data)
-    }
-  };
-
-  const req = http.request(options, (res) => {
-    let body = '';
-    res.on('data', chunk => body += chunk);
-    res.on('end', () => {
-      try {
-        console.log('Result sent:', JSON.parse(body));
-      } catch (e) {
-        console.log('Result sent');
-      }
-    });
-  });
-
-  req.on('error', (e) => console.error('Error sending result:', e.message));
-  req.write(data);
-  req.end();
-}
-
-// Send heartbeat with location
+// WebSocket connection
 let ws = null;
-let heartbeatInterval = null;
+let deviceId = null;
 
-function sendHeartbeat() {
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    getIPLocation().then(location => {
-      ws.send(JSON.stringify({
-        type: 'agent_heartbeat',
-        location,
-        systemInfo: {
-          ...systemInfo,
-          localIP: getLocalIP(),
-          uptime: os.uptime()
-        }
-      }));
-    }).catch(() => {
-      ws.send(JSON.stringify({
-        type: 'agent_heartbeat',
-        location: null,
-        systemInfo
-      }));
-    });
-  }
-}
-
-// Connect to cloud via WebSocket
-function connectToCloud() {
+function connect() {
   const wsUrl = CLOUD_SERVER.replace('http', 'ws');
-  
-  console.log(`Connecting to cloud: ${wsUrl}`);
+  console.log(`Connecting to: ${wsUrl}`);
   
   ws = new WebSocket(wsUrl);
   
   ws.on('open', () => {
-    console.log('Connected to cloud server!');
+    console.log('Connected to cloud!');
     
-    // Register as agent
+    // Register with pair code
     ws.send(JSON.stringify({
-      type: 'agent_connect',
-      deviceId: DEVICE_ID,
+      type: 'laptop_register',
       pairKey: PAIR_KEY,
-      systemInfo: {
+      deviceInfo: {
         ...systemInfo,
         localIP: getLocalIP()
       }
     }));
-    
-    // Start heartbeat
-    heartbeatInterval = setInterval(sendHeartbeat, 5000);
-    
-    // Send initial location
-    sendHeartbeat();
   });
   
   ws.on('message', async (data) => {
@@ -273,25 +145,37 @@ function connectToCloud() {
       const msg = JSON.parse(data);
       
       switch (msg.type) {
-        case 'new_command':
-          console.log(`New command received: ${msg.commandType}`);
-          const result = await processCommand({
-            type: msg.commandType,
-            params: msg.params
-          });
-          sendResult(msg.commandId, result);
+        case 'registered':
+          deviceId = msg.deviceId;
+          console.log(`\nRegistered! Device ID: ${deviceId}`);
+          console.log('Waiting for phone to connect...\n');
+          
+          // Start heartbeat
+          startHeartbeat();
+          break;
+          
+        case 'pair_success':
+          console.log('\n✓ Phone connected successfully!\n');
           break;
           
         case 'get_location':
           const location = await getIPLocation();
           ws.send(JSON.stringify({
-            type: 'location_update',
+            type: 'laptop_location',
             location
           }));
           break;
           
-        case 'connected':
-          console.log('Registration confirmed');
+        case 'execute_command':
+          console.log(`Command: ${msg.commandType}`);
+          const result = await processCommand(msg.commandType, msg.params);
+          
+          ws.send(JSON.stringify({
+            type: 'laptop_result',
+            commandId: msg.commandId,
+            result: result.output || result,
+            error: result.error || null
+          }));
           break;
       }
     } catch (e) {
@@ -300,26 +184,50 @@ function connectToCloud() {
   });
   
   ws.on('close', () => {
-    console.log('Disconnected from cloud. Reconnecting in 5 seconds...');
-    clearInterval(heartbeatInterval);
-    setTimeout(connectToCloud, 5000);
+    console.log('Disconnected. Reconnecting in 5 seconds...');
+    setTimeout(connect, 5000);
   });
   
   ws.on('error', (err) => {
-    console.error('WebSocket error:', err.message);
+    console.error('Error:', err.message);
   });
 }
 
-// Start the agent
+// Heartbeat with location
+function startHeartbeat() {
+  setInterval(async () => {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      try {
+        const location = await getIPLocation();
+        ws.send(JSON.stringify({
+          type: 'laptop_heartbeat',
+          location,
+          systemInfo: {
+            ...systemInfo,
+            localIP: getLocalIP(),
+            uptime: os.uptime()
+          }
+        }));
+      } catch (e) {
+        ws.send(JSON.stringify({
+          type: 'laptop_heartbeat',
+          location: null,
+          systemInfo
+        }));
+      }
+    }
+  }, 5000);
+}
+
+// Start
 console.log('\n========================================');
 console.log('   LAPTOP AGENT - STARTING');
 console.log('========================================');
-console.log(`\n  Pair Key: ${PAIR_KEY}`);
-console.log(`  Cloud Server: ${CLOUD_SERVER}`);
-console.log(`  Device ID: ${DEVICE_ID || 'Will be assigned'}`);
-console.log(`\n  Hostname: ${systemInfo.hostname}`);
+console.log(`\n  Pair Code: ${PAIR_KEY}`);
+console.log(`  Cloud: ${CLOUD_SERVER}`);
+console.log(`  Hostname: ${systemInfo.hostname}`);
 console.log(`  Platform: ${systemInfo.platform}`);
 console.log(`  Local IP: ${getLocalIP()}`);
 console.log('\n========================================\n');
 
-connectToCloud();
+connect();

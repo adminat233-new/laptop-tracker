@@ -18,65 +18,97 @@
       overflow-x: hidden;
     }
 
-    /* Pairing Modal */
-    .modal-overlay {
-      position: fixed;
-      top: 0; left: 0; right: 0; bottom: 0;
-      background: rgba(0,0,0,0.9);
+    /* Pairing Screen */
+    #pair-screen {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 20px;
+      background: linear-gradient(135deg, #0a0a1a 0%, #1a0a2e 50%, #0a1a2e 100%);
+    }
+
+    .pair-card {
+      background: rgba(255,255,255,0.05);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 24px;
+      padding: 40px 30px;
+      width: 100%;
+      max-width: 400px;
+      text-align: center;
+    }
+
+    .pair-icon {
+      width: 90px; height: 90px;
+      background: linear-gradient(135deg, #00d4ff, #7c3aed);
+      border-radius: 24px;
+      display: flex; align-items: center; justify-content: center;
+      margin: 0 auto 24px;
+      font-size: 42px;
+    }
+
+    .pair-card h1 { font-size: 24px; margin-bottom: 8px; }
+    .pair-card p { color: #888; font-size: 13px; margin-bottom: 24px; }
+
+    /* Code Display (Laptop) */
+    .code-display {
+      display: flex;
+      gap: 8px;
+      justify-content: center;
+      margin-bottom: 24px;
+    }
+
+    .code-box {
+      width: 48px;
+      height: 58px;
+      background: rgba(0,212,255,0.15);
+      border: 2px solid #00d4ff;
+      border-radius: 12px;
       display: flex;
       align-items: center;
       justify-content: center;
-      z-index: 9999;
-      padding: 20px;
+      font-size: 24px;
+      font-weight: 700;
+      color: #00d4ff;
+      text-transform: uppercase;
     }
 
-    .modal-overlay.hidden { display: none; }
-
-    .modal {
-      background: #1a1a2e;
-      border: 1px solid rgba(255,255,255,0.1);
-      border-radius: 20px;
-      padding: 30px;
-      width: 100%;
-      max-width: 360px;
-      text-align: center;
+    /* Code Input (Phone) */
+    .code-inputs {
+      display: flex;
+      gap: 8px;
+      justify-content: center;
+      margin-bottom: 24px;
     }
 
-    .modal-icon {
-      width: 80px; height: 80px;
-      background: linear-gradient(135deg, #00d4ff, #7c3aed);
-      border-radius: 20px;
-      display: flex; align-items: center; justify-content: center;
-      margin: 0 auto 20px;
-      font-size: 36px;
-    }
-
-    .modal h2 { font-size: 22px; margin-bottom: 8px; }
-    .modal p { color: #888; font-size: 13px; margin-bottom: 24px; }
-
-    .pair-key-input {
-      width: 100%;
-      padding: 16px;
+    .code-input {
+      width: 48px;
+      height: 58px;
       background: rgba(255,255,255,0.08);
       border: 2px solid rgba(255,255,255,0.15);
       border-radius: 12px;
-      color: #fff;
-      font-size: 28px;
-      font-weight: 700;
       text-align: center;
-      letter-spacing: 8px;
+      font-size: 24px;
+      font-weight: 700;
+      color: #fff;
       text-transform: uppercase;
       outline: none;
-      margin-bottom: 16px;
+      transition: all 0.2s;
+      caret-color: #00d4ff;
     }
 
-    .pair-key-input:focus { border-color: #00d4ff; }
+    .code-input:focus {
+      border-color: #00d4ff;
+      box-shadow: 0 0 20px rgba(0,212,255,0.3);
+    }
 
     .btn {
       width: 100%;
       padding: 16px;
       border: none;
-      border-radius: 12px;
+      border-radius: 14px;
       font-size: 16px;
       font-weight: 600;
       cursor: pointer;
@@ -88,7 +120,7 @@
       color: #fff;
     }
 
-    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
     .btn-primary:active { transform: scale(0.98); }
 
     .btn-secondary {
@@ -97,11 +129,34 @@
       margin-top: 10px;
     }
 
-    .error-text { color: #ff4444; font-size: 12px; margin-top: 10px; min-height: 18px; }
+    .error-text { color: #ff4444; font-size: 12px; margin-top: 12px; min-height: 18px; }
+    .success-text { color: #00ff88; font-size: 12px; margin-top: 12px; }
 
-    /* Main App */
-    #app { display: none; min-height: 100vh; padding-bottom: 200px; }
-    #app.active { display: block; }
+    .divider {
+      display: flex;
+      align-items: center;
+      margin: 20px 0;
+      color: #666;
+      font-size: 12px;
+    }
+
+    .divider::before, .divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: rgba(255,255,255,0.1);
+    }
+
+    .divider span { padding: 0 12px; }
+
+    /* Main Dashboard */
+    #dashboard {
+      display: none;
+      min-height: 100vh;
+      padding-bottom: 280px;
+    }
+
+    #dashboard.active { display: block; }
 
     .header {
       position: fixed; top: 0; left: 0; right: 0;
@@ -121,11 +176,11 @@
     .device-info { display: flex; align-items: center; gap: 10px; }
 
     .device-icon {
-      width: 40px; height: 40px;
+      width: 42px; height: 42px;
       background: linear-gradient(135deg, #00d4ff, #7c3aed);
-      border-radius: 10px;
+      border-radius: 12px;
       display: flex; align-items: center; justify-content: center;
-      font-size: 20px;
+      font-size: 22px;
     }
 
     .device-name { font-size: 15px; font-weight: 600; }
@@ -151,8 +206,8 @@
     /* Map */
     #map {
       position: fixed;
-      top: 65px; left: 0; right: 0;
-      height: 40vh;
+      top: 66px; left: 0; right: 0;
+      height: 38vh;
       z-index: 1;
     }
 
@@ -160,28 +215,37 @@
     .info-panel {
       position: relative;
       z-index: 10;
-      margin-top: calc(40vh + 65px);
+      margin-top: calc(38vh + 66px);
       padding: 16px;
+    }
+
+    .section-title {
+      font-size: 11px;
+      font-weight: 600;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 10px;
     }
 
     .info-card {
       background: rgba(255,255,255,0.05);
       border: 1px solid rgba(255,255,255,0.1);
       border-radius: 16px;
-      padding: 16px;
+      padding: 14px;
       margin-bottom: 12px;
     }
 
     .info-row {
       display: flex;
       justify-content: space-between;
-      padding: 8px 0;
+      padding: 7px 0;
       border-bottom: 1px solid rgba(255,255,255,0.05);
     }
 
     .info-row:last-child { border-bottom: none; }
-    .info-label { color: #888; font-size: 13px; }
-    .info-value { font-size: 13px; font-weight: 500; }
+    .info-label { color: #888; font-size: 12px; }
+    .info-value { font-size: 12px; font-weight: 500; }
 
     .stats-grid {
       display: grid;
@@ -194,21 +258,21 @@
       background: rgba(255,255,255,0.05);
       border: 1px solid rgba(255,255,255,0.1);
       border-radius: 12px;
-      padding: 12px;
+      padding: 12px 8px;
       text-align: center;
     }
 
-    .stat-value { font-size: 22px; font-weight: 700; }
-    .stat-label { font-size: 10px; color: #888; margin-top: 4px; }
+    .stat-value { font-size: 20px; font-weight: 700; }
+    .stat-label { font-size: 9px; color: #888; margin-top: 2px; }
 
-    /* Controls */
+    /* Controls Panel */
     .controls {
       position: fixed;
       bottom: 0; left: 0; right: 0;
       background: rgba(10,10,15,0.95);
       backdrop-filter: blur(20px);
       border-top: 1px solid rgba(255,255,255,0.1);
-      padding: 16px;
+      padding: 12px 16px 20px;
       border-radius: 20px 20px 0 0;
       z-index: 100;
     }
@@ -224,14 +288,14 @@
       display: grid;
       grid-template-columns: repeat(4, 1fr);
       gap: 8px;
-      margin-bottom: 12px;
+      margin-bottom: 10px;
     }
 
     .alarm-btn {
-      padding: 12px 6px;
+      padding: 10px 4px;
       border: none;
-      border-radius: 12px;
-      font-size: 10px;
+      border-radius: 10px;
+      font-size: 9px;
       font-weight: 600;
       cursor: pointer;
       display: flex;
@@ -243,8 +307,7 @@
     }
 
     .alarm-btn:active { transform: scale(0.92); }
-    .alarm-btn .icon { font-size: 20px; }
-
+    .alarm-btn .icon { font-size: 18px; }
     .alarm-btn.siren { background: linear-gradient(135deg, #ff4444, #cc0000); }
     .alarm-btn.alarm { background: linear-gradient(135deg, #ff8800, #cc6600); }
     .alarm-btn.noise { background: linear-gradient(135deg, #ff00ff, #cc00cc); }
@@ -257,12 +320,12 @@
     }
 
     .action-btn {
-      padding: 12px 6px;
+      padding: 10px 4px;
       background: rgba(255,255,255,0.08);
       border: 1px solid rgba(255,255,255,0.15);
-      border-radius: 12px;
+      border-radius: 10px;
       color: #fff;
-      font-size: 10px;
+      font-size: 9px;
       font-weight: 500;
       cursor: pointer;
       display: flex;
@@ -272,7 +335,7 @@
     }
 
     .action-btn:active { background: rgba(255,255,255,0.15); }
-    .action-btn .icon { font-size: 18px; }
+    .action-btn .icon { font-size: 16px; }
     .action-btn.danger { border-color: rgba(255,68,68,0.3); color: #ff4444; }
 
     /* Toast */
@@ -294,51 +357,67 @@
 
     .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
-    /* Custom marker */
+    /* Markers */
     .custom-marker { background: none; border: none; }
-    .marker-dot {
-      width: 20px; height: 20px;
+    .marker-laptop {
+      width: 22px; height: 22px;
       background: #00d4ff;
       border: 3px solid #fff;
       border-radius: 50%;
-      box-shadow: 0 0 15px rgba(0,212,255,0.5);
+      box-shadow: 0 0 15px rgba(0,212,255,0.6);
     }
-
     .marker-phone {
-      width: 20px; height: 20px;
+      width: 22px; height: 22px;
       background: #00ff88;
       border: 3px solid #fff;
       border-radius: 50%;
-      box-shadow: 0 0 15px rgba(0,255,136,0.5);
+      box-shadow: 0 0 15px rgba(0,255,136,0.6);
     }
 
-    .section-title {
-      font-size: 12px;
-      font-weight: 600;
-      color: #888;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      margin-bottom: 10px;
+    /* Loading spinner */
+    .spinner {
+      width: 20px; height: 20px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto;
     }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
-  <!-- Pairing Modal -->
-  <div class="modal-overlay" id="pairing-modal">
-    <div class="modal">
-      <div class="modal-icon">🔗</div>
-      <h2>Pair with Laptop</h2>
-      <p>Enter the 8-digit pair key shown on your laptop agent</p>
-      <input type="text" class="pair-key-input" id="pair-key-input" 
-             maxlength="8" placeholder="XXXXXXXX" autocomplete="off">
-      <button class="btn btn-primary" id="pair-btn" disabled>Connect</button>
-      <button class="btn btn-secondary" id="generate-btn">Generate New Key</button>
+  <!-- Pairing Screen -->
+  <div id="pair-screen">
+    <div class="pair-card">
+      <div class="pair-icon">🔗</div>
+      <h1 id="pair-title">Laptop Tracker</h1>
+      <p id="pair-subtitle">Generate a code on your laptop, then enter it here</p>
+
+      <!-- For LAPTOP: Show generated code -->
+      <div id="laptop-section" style="display:none;">
+        <div class="code-display" id="code-display"></div>
+        <button class="btn btn-primary" id="generate-btn" style="margin-bottom:10px;">Generate New Code</button>
+        <button class="btn btn-secondary" id="copy-code-btn">Copy Code</button>
+        <p class="success-text" id="wait-text" style="display:none;">
+          <span class="spinner"></span><br>Waiting for phone to connect...
+        </p>
+      </div>
+
+      <!-- For PHONE: Show input boxes -->
+      <div id="phone-section" style="display:none;">
+        <div class="code-inputs" id="code-inputs"></div>
+        <button class="btn btn-primary" id="connect-btn" disabled>Connect to Laptop</button>
+      </div>
+
       <div class="error-text" id="pair-error"></div>
+      <div class="success-text" id="pair-success"></div>
     </div>
   </div>
 
-  <!-- Main App -->
-  <div id="app">
+  <!-- Dashboard -->
+  <div id="dashboard">
     <header class="header">
       <div class="header-content">
         <div class="device-info">
@@ -346,12 +425,12 @@
           <div>
             <div class="device-name" id="device-name">Laptop</div>
             <div class="status-badge">
-              <div class="status-dot" id="status-dot"></div>
-              <span id="status-text">Connecting...</span>
+              <div class="status-dot online" id="status-dot"></div>
+              <span id="status-text">Connected</span>
             </div>
           </div>
         </div>
-        <div style="font-size:11px; color:#888;" id="last-seen">--</div>
+        <div style="font-size:10px; color:#888;" id="last-seen">--</div>
       </div>
     </header>
 
@@ -439,61 +518,158 @@
   <div class="toast" id="toast"></div>
 
   <script>
+    // ============= CONFIGURATION =============
+    const CODE_LENGTH = 8;
     let ws = null;
     let map = null;
     let laptopMarker = null;
     let phoneMarker = null;
     let deviceId = null;
-    let pairKey = localStorage.getItem('pairKey') || '';
+    let currentCode = null;
+    let isLaptop = false;
+    let pairKey = null;
 
-    // Elements
-    const pairingModal = document.getElementById('pairing-modal');
-    const pairKeyInput = document.getElementById('pair-key-input');
-    const pairBtn = document.getElementById('pair-btn');
-    const generateBtn = document.getElementById('generate-btn');
-    const pairError = document.getElementById('pair-error');
-    const app = document.getElementById('app');
+    // ============= DETECT DEVICE TYPE =============
+    function detectDevice() {
+      const params = new URLSearchParams(window.location.search);
+      
+      // Check URL param first
+      if (params.get('role') === 'laptop') {
+        isLaptop = true;
+        return;
+      }
+      if (params.get('role') === 'phone') {
+        isLaptop = false;
+        return;
+      }
 
-    // Auto-fill saved pair key
-    if (pairKey) {
-      pairKeyInput.value = pairKey;
-      pairBtn.disabled = false;
+      // Auto-detect based on screen size and platform
+      const isMobile = /Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      const isSmallScreen = window.innerWidth < 768;
+      
+      isLaptop = !isMobile && !isSmallScreen;
     }
 
-    // Pair key input
-    pairKeyInput.addEventListener('input', (e) => {
-      e.target.value = e.target.value.toUpperCase().replace(/[^A-F0-9]/g, '');
-      pairBtn.disabled = e.target.value.length !== 8;
-    });
+    // ============= CODE GENERATION =============
+    function generateCode() {
+      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // No I,O,0,1 to avoid confusion
+      let code = '';
+      for (let i = 0; i < CODE_LENGTH; i++) {
+        code += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      return code;
+    }
 
-    // Connect button
-    pairBtn.addEventListener('click', () => {
-      pairKey = pairKeyInput.value;
-      localStorage.setItem('pairKey', pairKey);
-      connectToCloud();
-    });
+    function displayCode(code) {
+      const container = document.getElementById('code-display');
+      container.innerHTML = '';
+      for (let i = 0; i < code.length; i++) {
+        const box = document.createElement('div');
+        box.className = 'code-box';
+        box.textContent = code[i];
+        container.appendChild(box);
+      }
+    }
 
-    // Generate new key button
-    generateBtn.addEventListener('click', () => {
-      const newKey = Array.from(crypto.getRandomValues(new Uint8Array(4)))
-        .map(b => b.toString(16).padStart(2, '0').toUpperCase())
-        .join('');
-      pairKeyInput.value = newKey;
-      pairKey = newKey;
-      pairBtn.disabled = false;
-      navigator.clipboard?.writeText(newKey);
-      showToast('Key copied! Run agent with this key');
-    });
+    function createInputBoxes() {
+      const container = document.getElementById('code-inputs');
+      container.innerHTML = '';
+      
+      for (let i = 0; i < CODE_LENGTH; i++) {
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'code-input';
+        input.maxLength = 1;
+        input.dataset.index = i;
+        input.inputMode = 'text';
+        input.autocomplete = 'off';
+        
+        input.addEventListener('input', (e) => {
+          e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+          
+          // Auto-advance
+          if (e.target.value && i < CODE_LENGTH - 1) {
+            container.children[i + 1].focus();
+          }
+          
+          // Check if all filled
+          checkCodeComplete();
+        });
+        
+        input.addEventListener('keydown', (e) => {
+          // Backspace: go to previous
+          if (e.key === 'Backspace' && !e.target.value && i > 0) {
+            container.children[i - 1].focus();
+          }
+          
+          // Enter: try to connect
+          if (e.key === 'Enter') {
+            tryConnect();
+          }
+        });
+        
+        // Handle paste
+        input.addEventListener('paste', (e) => {
+          e.preventDefault();
+          const paste = (e.clipboardData || window.clipboardData).getData('text');
+          const chars = paste.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, CODE_LENGTH);
+          
+          for (let j = 0; j < chars.length && j < CODE_LENGTH; j++) {
+            container.children[j].value = chars[j];
+          }
+          
+          if (chars.length > 0) {
+            const focusIdx = Math.min(chars.length, CODE_LENGTH - 1);
+            container.children[focusIdx].focus();
+          }
+          
+          checkCodeComplete();
+        });
+        
+        container.appendChild(input);
+      }
+      
+      // Focus first input
+      setTimeout(() => container.children[0].focus(), 100);
+    }
 
-    function connectToCloud() {
+    function checkCodeComplete() {
+      const inputs = document.querySelectorAll('.code-input');
+      let code = '';
+      inputs.forEach(input => code += input.value);
+      
+      const connectBtn = document.getElementById('connect-btn');
+      connectBtn.disabled = code.length !== CODE_LENGTH;
+    }
+
+    function getEnteredCode() {
+      const inputs = document.querySelectorAll('.code-input');
+      let code = '';
+      inputs.forEach(input => code += input.value);
+      return code;
+    }
+
+    // ============= WEBSOCKET =============
+    function connectWebSocket() {
       const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
       ws = new WebSocket(`${protocol}//${location.host}`);
 
       ws.onopen = () => {
-        ws.send(JSON.stringify({
-          type: 'phone_connect',
-          pairKey
-        }));
+        console.log('Connected to server');
+        
+        if (isLaptop) {
+          // Register as laptop with code
+          ws.send(JSON.stringify({
+            type: 'laptop_register',
+            pairKey: currentCode
+          }));
+        } else {
+          // Verify code
+          ws.send(JSON.stringify({
+            type: 'phone_verify',
+            pairKey: pairKey
+          }));
+        }
       };
 
       ws.onmessage = (event) => {
@@ -502,52 +678,82 @@
       };
 
       ws.onclose = () => {
-        document.getElementById('status-dot').classList.remove('online');
-        document.getElementById('status-text').textContent = 'Disconnected';
-        setTimeout(connectToCloud, 3000);
+        if (isLaptop) {
+          document.getElementById('status-dot').classList.remove('online');
+          document.getElementById('status-text').textContent = 'Disconnected';
+        }
+        setTimeout(connectWebSocket, 3000);
       };
     }
 
     function handleMessage(data) {
       switch (data.type) {
-        case 'connected':
-          if (data.isOnline) {
-            pairingModal.classList.add('hidden');
-            app.classList.add('active');
-            document.getElementById('status-dot').classList.add('online');
-            document.getElementById('status-text').textContent = 'Online';
-            document.getElementById('device-name').textContent = data.deviceInfo?.hostname || 'Laptop';
-            deviceId = data.deviceId;
-            
-            if (!map) initMap();
-            
-            if (data.deviceLocation) {
-              updateLaptopLocation(data.deviceLocation);
-            }
-          } else {
-            pairError.textContent = 'Laptop is offline. Make sure agent is running.';
-          }
+        // LAPTOP: Phone connected successfully
+        case 'pair_success':
+          document.getElementById('wait-text').innerHTML = '✓ Phone connected! Opening dashboard...';
+          document.getElementById('wait-text').style.color = '#00ff88';
+          deviceId = data.deviceId;
+          
+          setTimeout(() => {
+            showDashboard();
+            sendCommand('sysinfo');
+            sendCommand('location');
+          }, 1000);
           break;
 
-        case 'device_paired':
-          pairingModal.classList.add('hidden');
-          app.classList.add('active');
+        // PHONE: Verified, showing dashboard
+        case 'verified':
           deviceId = data.deviceId;
           document.getElementById('device-name').textContent = data.deviceInfo?.hostname || 'Laptop';
-          document.getElementById('status-dot').classList.add('online');
-          document.getElementById('status-text').textContent = 'Online';
-          if (!map) initMap();
+          
+          if (data.deviceLocation) {
+            updateLaptopLocation(data.deviceLocation);
+          }
+          
+          showDashboard();
+          sendCommand('sysinfo');
           break;
 
+        // PHONE: Pairing failed
+        case 'pair_failed':
+          document.getElementById('pair-error').textContent = data.error || 'Invalid code';
+          document.getElementById('connect-btn').disabled = false;
+          document.getElementById('connect-btn').textContent = 'Connect to Laptop';
+          break;
+
+        // Location update
         case 'location_update':
           updateLaptopLocation(data.location);
           document.getElementById('last-seen').textContent = 
             new Date(data.timestamp).toLocaleTimeString();
           break;
 
+        // Command result
         case 'command_result':
           handleCommandResult(data);
           break;
+
+        // Device went offline
+        case 'device_offline':
+          document.getElementById('status-dot').classList.remove('online');
+          document.getElementById('status-text').textContent = 'Offline';
+          break;
+
+        // Device came online
+        case 'device_online':
+          document.getElementById('status-dot').classList.add('online');
+          document.getElementById('status-text').textContent = 'Connected';
+          break;
+      }
+    }
+
+    // ============= UI FUNCTIONS =============
+    function showDashboard() {
+      document.getElementById('pair-screen').style.display = 'none';
+      document.getElementById('dashboard').classList.add('active');
+      
+      if (!map) {
+        setTimeout(initMap, 100);
       }
     }
 
@@ -577,8 +783,8 @@
                 icon: L.divIcon({
                   className: 'custom-marker',
                   html: '<div class="marker-phone"></div>',
-                  iconSize: [20, 20],
-                  iconAnchor: [10, 10]
+                  iconSize: [22, 22],
+                  iconAnchor: [11, 11]
                 })
               }).addTo(map);
             }
@@ -590,7 +796,7 @@
     }
 
     function updateLaptopLocation(location) {
-      if (!map || !location) return;
+      if (!map || !location || !location.lat) return;
 
       const latlng = [location.lat, location.lng];
 
@@ -600,14 +806,14 @@
         laptopMarker = L.marker(latlng, {
           icon: L.divIcon({
             className: 'custom-marker',
-            html: '<div class="marker-dot"></div>',
-            iconSize: [20, 20],
-            iconAnchor: [10, 10]
+            html: '<div class="marker-laptop"></div>',
+            iconSize: [22, 22],
+            iconAnchor: [11, 11]
           })
         }).addTo(map);
       }
 
-      map.setView(latlng, 13);
+      map.setView(latlng, 14);
 
       document.getElementById('loc-city').textContent = location.city || '--';
       document.getElementById('loc-region').textContent = location.region || '--';
@@ -619,7 +825,7 @@
 
     function sendCommand(type, params = {}) {
       if (!deviceId) {
-        showToast('Not connected to laptop');
+        showToast('Not connected');
         return;
       }
 
@@ -631,39 +837,36 @@
       .then(r => r.json())
       .then(data => {
         if (data.success) {
-          showToast(`${type} command sent!`);
+          showToast(`${type} sent!`);
         } else {
-          showToast('Failed to send command');
+          showToast('Failed to send');
         }
       })
-      .catch(() => showToast('Error sending command'));
+      .catch(() => showToast('Error'));
     }
 
     function handleCommandResult(data) {
       if (data.commandType === 'sysinfo' && data.result) {
-        parseSystemInfo(data.result);
-      } else if (data.commandType === 'location' && data.result) {
+        try {
+          const output = typeof data.result === 'string' ? data.result : JSON.stringify(data.result);
+          const cpuMatch = output.match(/LoadPercentage=(\d+)/);
+          const freeMem = output.match(/FreePhysicalMemory=(\d+)/);
+          const totalMem = output.match(/TotalVisibleMemorySize=(\d+)/);
+          
+          if (cpuMatch) document.getElementById('stat-cpu').textContent = cpuMatch[1] + '%';
+          if (freeMem && totalMem) {
+            const used = Math.round((1 - parseInt(freeMem[1]) / parseInt(totalMem[1])) * 100);
+            document.getElementById('stat-ram').textContent = used + '%';
+          }
+        } catch (e) {}
+      }
+      
+      if (data.commandType === 'location' && data.result) {
         try {
           const loc = typeof data.result === 'string' ? JSON.parse(data.result) : data.result;
           if (loc.location) updateLaptopLocation(loc.location);
         } catch (e) {}
       }
-      showToast(data.error ? `Error: ${data.error}` : 'Command completed');
-    }
-
-    function parseSystemInfo(output) {
-      try {
-        const cpuMatch = output.match(/LoadPercentage=(\d+)/);
-        const ramMatch = output.match(/FreePhysicalMemory=(\d+)/);
-        const totalRamMatch = output.match(/TotalVisibleMemorySize=(\d+)/);
-        const uptimeMatch = output.match(/(\d+)s/);
-        
-        if (cpuMatch) document.getElementById('stat-cpu').textContent = cpuMatch[1] + '%';
-        if (ramMatch && totalRamMatch) {
-          const used = Math.round((1 - parseInt(ramMatch[1]) / parseInt(totalRamMatch[1])) * 100);
-          document.getElementById('stat-ram').textContent = used + '%';
-        }
-      } catch (e) {}
     }
 
     function confirmShutdown() {
@@ -677,6 +880,70 @@
       toast.textContent = msg;
       toast.classList.add('show');
       setTimeout(() => toast.classList.remove('show'), 2500);
+    }
+
+    // ============= BUTTON HANDLERS =============
+    function tryConnect() {
+      pairKey = getEnteredCode();
+      
+      if (pairKey.length !== CODE_LENGTH) {
+        document.getElementById('pair-error').textContent = `Enter all ${CODE_LENGTH} characters`;
+        return;
+      }
+
+      document.getElementById('connect-btn').disabled = true;
+      document.getElementById('connect-btn').textContent = 'Connecting...';
+      document.getElementById('pair-error').textContent = '';
+      
+      connectWebSocket();
+    }
+
+    // ============= INITIALIZATION =============
+    detectDevice();
+
+    if (isLaptop) {
+      // LAPTOP MODE
+      document.getElementById('pair-title').textContent = 'Laptop Mode';
+      document.getElementById('pair-subtitle').textContent = 'Generate a code and enter it on your phone';
+      document.getElementById('laptop-section').style.display = 'block';
+      document.getElementById('phone-section').style.display = 'none';
+      
+      // Generate initial code
+      currentCode = generateCode();
+      displayCode(currentCode);
+      
+      // Generate button
+      document.getElementById('generate-btn').addEventListener('click', () => {
+        currentCode = generateCode();
+        displayCode(currentCode);
+        document.getElementById('wait-text').style.display = 'none';
+        document.getElementById('wait-text').innerHTML = '<span class="spinner"></span><br>Waiting for phone to connect...';
+        document.getElementById('wait-text').style.color = '#00d4ff';
+        
+        // Reconnect with new code
+        if (ws) ws.close();
+        connectWebSocket();
+      });
+      
+      // Copy button
+      document.getElementById('copy-code-btn').addEventListener('click', () => {
+        navigator.clipboard?.writeText(currentCode);
+        showToast('Code copied!');
+      });
+      
+      // Auto-connect
+      connectWebSocket();
+      
+    } else {
+      // PHONE MODE
+      document.getElementById('pair-title').textContent = 'Connect to Laptop';
+      document.getElementById('pair-subtitle').textContent = 'Enter the code shown on your laptop';
+      document.getElementById('laptop-section').style.display = 'none';
+      document.getElementById('phone-section').style.display = 'block';
+      
+      createInputBoxes();
+      
+      document.getElementById('connect-btn').addEventListener('click', tryConnect);
     }
   </script>
 </body>
