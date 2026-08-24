@@ -191,15 +191,12 @@
   <script>
     const CODE_LENGTH = 8;
     let map = null, laptopMarker = null, phoneMarker = null;
-    let deviceId = null, currentCode = null, isLaptop = false;
-    let phoneLocation = null, laptopLocation = null;
+    let laptopDeviceId = null, phoneDeviceId = null, isLaptop = false;
 
-    // Binary
     function charToBinary(c) { return c.charCodeAt(0).toString(2).padStart(8, '0'); }
     function codeToBinary(code) { return code.split('').map(charToBinary).join(' '); }
     function intToBinary(n) { return Math.round(n * 1000000).toString(2).padStart(32, '0'); }
 
-    // Detect
     function detectDevice() {
       const p = new URLSearchParams(window.location.search);
       if (p.get('role') === 'laptop') { isLaptop = true; return; }
@@ -212,15 +209,7 @@
       document.getElementById(id).classList.add('active');
     }
 
-    // Code
-    function generateCode() {
-      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-      let code = '';
-      for (let i = 0; i < CODE_LENGTH; i++) code += chars.charAt(Math.floor(Math.random() * chars.length));
-      return code;
-    }
-
-    function displayCode(code) {
+    function generateDisplay(code) {
       const c = document.getElementById('code-display');
       c.innerHTML = '';
       for (let i = 0; i < code.length; i++) {
@@ -279,13 +268,8 @@
       return code;
     }
 
-    // API
     async function api(url, data) {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
-      });
+      const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
       return res.json();
     }
 
@@ -294,14 +278,17 @@
       return res.json();
     }
 
-    // Laptop: Register
-    async function registerLaptop() {
-      deviceId = 'dev_' + Array.from(crypto.getRandomValues(new Uint8Array(8))).map(b => b.toString(16).padStart(2, '0')).join('');
-      const data = await api('/api/register', { pairKey: currentCode, systemInfo: { hostname: navigator.userAgent, platform: 'laptop' } });
+    // Laptop: Generate code
+    async function generateCode() {
+      const sysInfo = { hostname: navigator.userAgent, platform: navigator.platform };
+      const data = await api('/api/generate', { systemInfo: sysInfo });
+      
       if (data.success) {
-        deviceId = data.deviceId;
-        document.getElementById('laptop-status').textContent = 'Code ready! Waiting for phone...';
+        laptopDeviceId = data.deviceId;
+        generateDisplay(data.pairCode);
+        document.getElementById('laptop-status').textContent = 'Code: ' + data.pairCode + ' - Waiting for phone...';
         startLaptopPolling();
+        return data.pairCode;
       }
     }
 
@@ -311,20 +298,23 @@
       showScreen('verify-screen');
       document.getElementById('verify-binary').textContent = 'Comparing: ' + codeToBinary(code);
 
-      const data = await api('/api/verify', { pairKey: code });
+      const data = await api('/api/verify', { pairCode: code });
 
       if (data.success && data.verified) {
         document.getElementById('verify-icon').className = 'verify-check';
         document.getElementById('verify-icon').textContent = '✓';
         document.getElementById('verify-title').textContent = 'Verified!';
-        document.getElementById('verify-subtitle').textContent = 'Binary codes match';
+        document.getElementById('verify-subtitle').textContent = 'Binary codes match - Devices paired!';
         document.getElementById('verify-binary').textContent = 'Matched: ' + codeToBinary(code);
-        deviceId = data.deviceId;
+        
+        phoneDeviceId = data.phoneDeviceId;
+        laptopDeviceId = data.laptopDeviceId;
+        
         if (data.laptopLocation) updateLaptopLocation(data.laptopLocation);
+        
         setTimeout(() => {
           showScreen('dashboard');
           if (!map) initMap();
-          sendCommand('sysinfo');
           startPhonePolling();
         }, 1500);
       } else {
@@ -338,22 +328,18 @@
     // Laptop polling
     function startLaptopPolling() {
       setInterval(async () => {
-        if (!deviceId) return;
+        if (!laptopDeviceId) return;
         try {
-          const data = await apiGet('/api/poll/' + deviceId);
-          if (data.commands && data.commands.length > 0) {
-            for (const cmd of data.commands) {
-              const result = await executeCommand(cmd);
-              await api('/api/result', { commandId: cmd.commandId, deviceId, result: result.output, error: result.error });
+          const poll = await apiGet('/api/poll/' + laptopDeviceId);
+          if (poll.commands && poll.commands.length > 0) {
+            for (const cmd of poll.commands) {
+              const result = await executeBat(cmd.commandType, cmd.params);
+              await api('/api/result', { commandId: cmd.commandId, result: result });
             }
           }
-          if (data.phoneLocation) {
-            phoneLocation = data.phoneLocation;
-            updatePhoneLocationUI(data.phoneLocation);
-          }
-          // Send heartbeat
+          // Heartbeat
           const loc = await getLocation();
-          await api('/api/heartbeat', { deviceId, location: loc, systemInfo: { hostname: 'Laptop', platform: navigator.platform } });
+          await api('/api/heartbeat', { deviceId: laptopDeviceId, location: loc, systemInfo: { hostname: 'Laptop' } });
         } catch (e) {}
       }, 2000);
     }
@@ -361,38 +347,31 @@
     // Phone polling
     function startPhonePolling() {
       setInterval(async () => {
-        if (!deviceId) return;
+        if (!laptopDeviceId) return;
         try {
-          const data = await apiGet('/api/status/' + deviceId);
+          const data = await apiGet('/api/status/' + laptopDeviceId);
           document.getElementById('status-dot').className = data.isOnline ? 'status-dot' : 'status-dot offline';
           document.getElementById('status-text').textContent = data.isOnline ? 'Online' : 'Offline';
-          if (data.laptopLocation) updateLaptopLocation(data.laptopLocation);
-          if (data.systemInfo) {
-            if (data.systemInfo.hostname) document.getElementById('device-name').textContent = data.systemInfo.hostname;
-          }
           document.getElementById('last-seen').textContent = data.lastSeen ? new Date(data.lastSeen).toLocaleTimeString() : '--';
+          if (data.systemInfo) document.getElementById('device-name').textContent = data.systemInfo.hostname || 'Laptop';
+          if (data.pairedLocation) updateLaptopLocation(data.pairedLocation);
         } catch (e) {}
       }, 3000);
     }
 
-    // Execute command (runs on laptop agent)
-    async function executeCommand(cmd) {
-      // This would be handled by the laptop agent
-      return { output: 'Command received: ' + cmd.commandType };
+    function executeBat(type, params = {}) {
+      // Placeholder - laptop agent handles actual execution
+      return Promise.resolve('Command queued: ' + type);
     }
 
-    // Get location
     async function getLocation() {
       try {
         const res = await fetch('https://ipapi.co/json/');
         const data = await res.json();
-        const intLat = Math.round(data.latitude * 1000000);
-        const intLng = Math.round(data.longitude * 1000000);
-        return { lat: data.latitude, lng: data.longitude, intLat, intLng, city: data.city, region: data.region, country: data.country_name, ip: data.ip };
+        return { lat: data.latitude, lng: data.longitude, intLat: Math.round(data.latitude * 1000000), intLng: Math.round(data.longitude * 1000000), city: data.city, region: data.region, country: data.country_name, ip: data.ip };
       } catch (e) { return null; }
     }
 
-    // Map
     function initMap() {
       map = L.map('map', { center: [20, 0], zoom: 2, zoomControl: false });
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
@@ -401,16 +380,12 @@
       if (navigator.geolocation) {
         navigator.geolocation.watchPosition((pos) => {
           const { latitude, longitude } = pos.coords;
-          const intLat = Math.round(latitude * 1000000);
-          const intLng = Math.round(longitude * 1000000);
-
           if (phoneMarker) phoneMarker.setLatLng([latitude, longitude]);
           else phoneMarker = L.marker([latitude, longitude], { icon: L.divIcon({ className: 'custom-marker', html: '<div class="marker-phone"></div>', iconSize: [24, 24], iconAnchor: [12, 12] }) }).addTo(map);
 
-          api('/api/location/phone', { deviceId, location: { lat: latitude, lng: longitude, intLat, intLng } });
+          api('/api/location/phone', { deviceId: phoneDeviceId, location: { lat: latitude, lng: longitude } });
 
-          document.getElementById('phone-loc-text').textContent = 'Tracking...';
-          document.getElementById('phone-loc-coords').textContent = 'Int: ' + intLat + ', ' + intLng;
+          document.getElementById('phone-loc-coords').textContent = 'Int: ' + Math.round(latitude * 1000000) + ', ' + Math.round(longitude * 1000000);
           document.getElementById('phone-loc-binary').textContent = 'Binary: ' + intToBinary(latitude) + ' ' + intToBinary(longitude);
 
           if (laptopMarker) map.fitBounds(L.latLngBounds([latitude, longitude], laptopMarker.getLatLng()), { padding: [50, 50] });
@@ -419,65 +394,25 @@
     }
 
     function updateLaptopLocation(loc) {
-      if (!map || !loc || !loc.lat) return;
+      if (!map || !loc) return;
       const latlng = [loc.lat, loc.lng];
       if (laptopMarker) laptopMarker.setLatLng(latlng);
       else laptopMarker = L.marker(latlng, { icon: L.divIcon({ className: 'custom-marker', html: '<div class="marker-laptop"></div>', iconSize: [24, 24], iconAnchor: [12, 12] }) }).addTo(map);
 
-      const intLat = loc.intLat || Math.round(loc.lat * 1000000);
-      const intLng = loc.intLng || Math.round(loc.lng * 1000000);
-
       document.getElementById('laptop-loc-text').textContent = [loc.city, loc.region, loc.country].filter(Boolean).join(', ');
-      document.getElementById('laptop-loc-coords').textContent = 'Int: ' + intLat + ', ' + intLng;
+      document.getElementById('laptop-loc-coords').textContent = 'Int: ' + (loc.int_lat || '--') + ', ' + (loc.int_lng || '--');
       document.getElementById('laptop-loc-binary').textContent = 'Binary: ' + intToBinary(loc.lat) + ' ' + intToBinary(loc.lng);
 
       if (phoneMarker) map.fitBounds(L.latLngBounds(phoneMarker.getLatLng(), latlng), { padding: [50, 50] });
       else map.setView(latlng, 13);
     }
 
-    function updatePhoneLocationUI(loc) {
-      if (!loc) return;
-      document.getElementById('phone-loc-text').textContent = 'Located';
-      document.getElementById('phone-loc-coords').textContent = 'Int: ' + (loc.intLat || '--') + ', ' + (loc.intLng || '--');
-    }
-
-    // Commands
     function sendCommand(type) {
-      if (!deviceId) { showToast('Not connected'); return; }
+      if (!laptopDeviceId) { showToast('Not connected'); return; }
       showToast(type + ' sending...');
-      api('/api/command', { deviceId, commandType: type }).then(data => {
-        if (data.success) {
-          showToast(type + ' queued!');
-          pollResult(data.commandId, type);
-        }
+      api('/api/command', { deviceId: laptopDeviceId, commandType: type }).then(data => {
+        if (data.success) showToast(type + ' queued!');
       });
-    }
-
-    function pollResult(commandId, type) {
-      let attempts = 0;
-      const poller = setInterval(() => {
-        attempts++;
-        apiGet('/api/result/' + commandId).then(data => {
-          if (data.status === 'completed') {
-            clearInterval(painter);
-            showToast(type + ' done!');
-            if (data.result && type === 'sysinfo') parseSysinfo(data.result);
-          } else if (attempts >= 30) {
-            clearInterval(poller);
-            showToast('Timeout - laptop offline');
-          }
-        });
-      }, 1000);
-    }
-
-    function parseSysinfo(output) {
-      try {
-        const cpu = output.match(/LoadPercentage=(\d+)/);
-        const free = output.match(/FreePhysicalMemory=(\d+)/);
-        const total = output.match(/TotalVisibleMemorySize=(\d+)/);
-        if (cpu) document.getElementById('stat-cpu').textContent = cpu[1] + '%';
-        if (free && total) document.getElementById('stat-ram').textContent = Math.round((1 - parseInt(free[1]) / parseInt(total[1])) * 100) + '%';
-      } catch (e) {}
     }
 
     function confirmShutdown() { if (confirm('Shutdown laptop?')) sendCommand('shutdown'); }
@@ -492,22 +427,18 @@
       verifyPhone();
     }
 
-    // Init
     detectDevice();
     if (isLaptop) {
       document.getElementById('pair-title').textContent = 'Laptop Mode';
       document.getElementById('pair-subtitle').textContent = 'Generate code, share with phone';
       document.getElementById('laptop-section').classList.remove('hidden');
-      currentCode = generateCode();
-      displayCode(currentCode);
-      document.getElementById('generate-btn').addEventListener('click', () => {
-        currentCode = generateCode();
-        displayCode(currentCode);
-        document.getElementById('laptop-status').textContent = 'New code generated!';
-        registerLaptop();
+      generateCode();
+      document.getElementById('generate-btn').addEventListener('click', generateCode);
+      document.getElementById('copy-code-btn').addEventListener('click', () => {
+        const code = document.getElementById('code-display').textContent;
+        navigator.clipboard?.writeText(code);
+        showToast('Copied!');
       });
-      document.getElementById('copy-code-btn').addEventListener('click', () => { navigator.clipboard?.writeText(currentCode); showToast('Copied!'); });
-      registerLaptop();
     } else {
       document.getElementById('pair-title').textContent = 'Connect to Laptop';
       document.getElementById('pair-subtitle').textContent = 'Enter 8-character code from laptop';
