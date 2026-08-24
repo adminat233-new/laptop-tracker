@@ -14,16 +14,14 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
 
 // Storage
-const devices = new Map();      // deviceId -> { ws, info, lastSeen, location }
-const pairCodes = new Map();    // pairKey -> { deviceId, ws, createdAt, verified }
-const commands = new Map();     // commandId -> { deviceId, type, params, result, status }
+const devices = new Map();
+const pairCodes = new Map();
+const commands = new Map();
 
-// Generate device ID
 function generateDeviceId() {
   return 'dev_' + crypto.randomBytes(8).toString('hex');
 }
 
-// WebSocket connections
 wss.on('connection', (ws) => {
   console.log('WebSocket connected');
   
@@ -36,31 +34,33 @@ wss.on('connection', (ws) => {
       const msg = JSON.parse(data);
       
       switch (msg.type) {
-        // ============= LAPTOP REGISTERS WITH CODE =============
+        // ============= LAPTOP REGISTERS =============
         case 'laptop_register':
           connectionType = 'laptop';
           pairKey = msg.pairKey;
           deviceId = generateDeviceId();
           
-          // Store pair code
           pairCodes.set(pairKey, {
             deviceId,
             ws,
+            phoneWs: null,
             createdAt: Date.now(),
-            verified: false,
-            deviceInfo: msg.deviceInfo || null
+            deviceInfo: msg.deviceInfo || null,
+            laptopLocation: null,
+            phoneLocation: null
           });
           
           ws.send(JSON.stringify({ 
             type: 'registered', 
             pairKey,
-            deviceId 
+            deviceId,
+            message: 'Code generated. Waiting for phone...'
           }));
           
-          console.log(`Laptop registered with code: ${pairKey} -> ${deviceId}`);
+          console.log(`Laptop registered: ${pairKey} -> ${deviceId}`);
           break;
 
-        // ============= PHONE VERIFIES CODE =============
+        // ============= PHONE ENTERS CODE =============
         case 'phone_verify':
           connectionType = 'phone';
           pairKey = msg.pairKey;
@@ -69,83 +69,96 @@ wss.on('connection', (ws) => {
           
           if (!pairInfo) {
             ws.send(JSON.stringify({
-              type: 'pair_failed',
-              error: 'Invalid code. Make sure laptop is running and code is correct.'
+              type: 'verification_failed',
+              error: 'Invalid code. Make sure laptop generated this code.'
             }));
             return;
           }
           
-          // Mark as verified
-          pairInfo.verified = true;
+          // ============= VERIFICATION SUCCESS =============
           pairInfo.phoneWs = ws;
           deviceId = pairInfo.deviceId;
           
           // Store device
           devices.set(deviceId, {
-            ws: pairInfo.ws,
+            laptopWs: pairInfo.ws,
             phoneWs: ws,
             info: pairInfo.deviceInfo,
-            lastSeen: Date.now(),
-            location: null
+            laptopLocation: null,
+            phoneLocation: null,
+            lastSeen: Date.now()
           });
           
-          // Notify laptop that phone connected
+          // ============= NOTIFY LAPTOP: Phone Connected =============
           if (pairInfo.ws.readyState === WebSocket.OPEN) {
             pairInfo.ws.send(JSON.stringify({
-              type: 'pair_success',
-              deviceId
+              type: 'phone_connected',
+              deviceId,
+              message: 'Phone verified and connected!'
             }));
           }
           
-          // Send success to phone
+          // ============= NOTIFY PHONE: Verification Success =============
           ws.send(JSON.stringify({
-            type: 'verified',
+            type: 'verification_success',
             deviceId,
             deviceInfo: pairInfo.deviceInfo,
-            deviceLocation: null
+            message: 'Connected to laptop!'
           }));
           
-          console.log(`Phone verified code: ${pairKey} -> ${deviceId}`);
-          break;
-
-        // ============= LAPTOP SENDS HEARTBEAT =============
-        case 'laptop_heartbeat':
-          if (deviceId && devices.has(deviceId)) {
-            const device = devices.get(deviceId);
-            device.lastSeen = Date.now();
-            
-            if (msg.location) {
-              device.location = msg.location;
-            }
-            
-            if (msg.systemInfo) {
-              device.info = msg.systemInfo;
-            }
-            
-            // Forward to phone
-            if (device.phoneWs && device.phoneWs.readyState === WebSocket.OPEN) {
-              device.phoneWs.send(JSON.stringify({
-                type: 'location_update',
-                deviceId,
-                location: msg.location,
-                systemInfo: msg.systemInfo,
-                timestamp: Date.now()
-              }));
-            }
-          }
+          console.log(`Pair verified: ${pairKey}`);
           break;
 
         // ============= LAPTOP SENDS LOCATION =============
         case 'laptop_location':
           if (deviceId && devices.has(deviceId)) {
             const device = devices.get(deviceId);
-            device.location = msg.location;
+            device.laptopLocation = msg.location;
+            device.lastSeen = Date.now();
             
+            // Send to phone
             if (device.phoneWs && device.phoneWs.readyState === WebSocket.OPEN) {
               device.phoneWs.send(JSON.stringify({
-                type: 'location_update',
-                deviceId,
+                type: 'laptop_location_update',
                 location: msg.location,
+                timestamp: Date.now()
+              }));
+            }
+          }
+          break;
+
+        // ============= PHONE SENDS LOCATION =============
+        case 'phone_location':
+          if (deviceId && devices.has(deviceId)) {
+            const device = devices.get(deviceId);
+            device.phoneLocation = msg.location;
+            
+            // Send to laptop
+            if (device.laptopWs && device.laptopWs.readyState === WebSocket.OPEN) {
+              device.laptopWs.send(JSON.stringify({
+                type: 'phone_location_update',
+                location: msg.location,
+                timestamp: Date.now()
+              }));
+            }
+          }
+          break;
+
+        // ============= LAPTOP HEARTBEAT =============
+        case 'laptop_heartbeat':
+          if (deviceId && devices.has(deviceId)) {
+            const device = devices.get(deviceId);
+            device.lastSeen = Date.now();
+            
+            if (msg.location) device.laptopLocation = msg.location;
+            if (msg.systemInfo) device.info = msg.systemInfo;
+            
+            // Send to phone
+            if (device.phoneWs && device.phoneWs.readyState === WebSocket.OPEN) {
+              device.phoneWs.send(JSON.stringify({
+                type: 'laptop_heartbeat',
+                location: msg.location,
+                systemInfo: msg.systemInfo,
                 timestamp: Date.now()
               }));
             }
@@ -167,8 +180,8 @@ wss.on('connection', (ws) => {
             });
             
             // Send to laptop
-            if (device.ws && device.ws.readyState === WebSocket.OPEN) {
-              device.ws.send(JSON.stringify({
+            if (device.laptopWs && device.laptopWs.readyState === WebSocket.OPEN) {
+              device.laptopWs.send(JSON.stringify({
                 type: 'execute_command',
                 commandId,
                 commandType: msg.commandType,
@@ -181,8 +194,6 @@ wss.on('connection', (ws) => {
               commandId,
               commandType: msg.commandType
             }));
-            
-            console.log(`Command sent: ${msg.commandType} to ${deviceId}`);
           }
           break;
 
@@ -193,9 +204,7 @@ wss.on('connection', (ws) => {
             cmd.result = msg.result;
             cmd.error = msg.error;
             cmd.status = msg.error ? 'failed' : 'completed';
-            cmd.completedAt = Date.now();
             
-            // Forward to phone
             const device = devices.get(cmd.deviceId);
             if (device && device.phoneWs && device.phoneWs.readyState === WebSocket.OPEN) {
               device.phoneWs.send(JSON.stringify({
@@ -209,12 +218,12 @@ wss.on('connection', (ws) => {
           }
           break;
 
-        // ============= PHONE REQUESTS LOCATION =============
+        // ============= REQUEST LOCATION =============
         case 'request_location':
           if (deviceId && devices.has(deviceId)) {
             const device = devices.get(deviceId);
-            if (device.ws && device.ws.readyState === WebSocket.OPEN) {
-              device.ws.send(JSON.stringify({ type: 'get_location' }));
+            if (device.laptopWs && device.laptopWs.readyState === WebSocket.OPEN) {
+              device.laptopWs.send(JSON.stringify({ type: 'get_location' }));
             }
           }
           break;
@@ -226,41 +235,28 @@ wss.on('connection', (ws) => {
 
   ws.on('close', () => {
     if (connectionType === 'laptop' && deviceId) {
-      // Notify phone device went offline
       const device = devices.get(deviceId);
       if (device && device.phoneWs && device.phoneWs.readyState === WebSocket.OPEN) {
-        device.phoneWs.send(JSON.stringify({ type: 'device_offline' }));
+        device.phoneWs.send(JSON.stringify({ type: 'laptop_offline' }));
       }
       console.log(`Laptop disconnected: ${deviceId}`);
     }
-    
-    if (connectionType === 'phone') {
-      console.log('Phone disconnected');
-    }
-  });
-
-  ws.on('error', (err) => {
-    console.error('WebSocket error:', err.message);
   });
 });
 
-// Cleanup old codes every 10 minutes
+// Cleanup
 setInterval(() => {
   const now = Date.now();
   for (const [key, info] of pairCodes) {
-    if (now - info.createdAt > 600000) { // 10 minutes
-      pairCodes.delete(key);
-    }
+    if (now - info.createdAt > 600000) pairCodes.delete(key);
   }
 }, 600000);
 
-// Start server
 server.listen(PORT, '0.0.0.0', () => {
   console.log('\n========================================');
   console.log('   LAPTOP TRACKER - CLOUD SERVER');
   console.log('========================================');
-  console.log(`\n  Server running on port ${PORT}`);
-  console.log(`  Open http://localhost:${PORT} on your laptop`);
+  console.log(`\n  Running on port ${PORT}`);
   console.log('========================================\n');
 });
 
