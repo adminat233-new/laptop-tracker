@@ -1,12 +1,10 @@
 services:
   - type: web
     name: laptop-tracker
-    runtime: node
+    runtime: docker
     plan: free
-    buildCommand: npm install
-    startCommand: node server.js
     envVars:
-      - key: TRACKER_PIN
-        value: "1234"
       - key: NODE_ENV
         value: production
+      - key: TRACKER_PIN
+        value: "1234"

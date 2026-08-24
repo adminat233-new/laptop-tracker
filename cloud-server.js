@@ -6,12 +6,27 @@ const crypto = require('crypto');
 
 const app = express();
 const server = http.createServer(app);
-const wss = new WebSocket.Server({ server });
+
+// WebSocket with better config
+const wss = new WebSocket.Server({ 
+  server,
+  perMessageDeflate: false,
+  clientTracking: true
+});
 
 const PORT = process.env.PORT || 9999;
 
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
+
+// Health check
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: Date.now() });
+});
+
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', devices: devices.size, codes: pairCodes.size });
+});
 
 // ============= STORAGE =============
 const devices = new Map();
@@ -449,12 +464,26 @@ setInterval(() => {
   }
 }, 600000);
 
+// Error handling
+server.on('error', (err) => {
+  console.error('Server error:', err);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught exception:', err);
+});
+
+process.on('unhandledRejection', (err) => {
+  console.error('Unhandled rejection:', err);
+});
+
 server.listen(PORT, '0.0.0.0', () => {
   console.log('\n========================================');
   console.log('   LAPTOP TRACKER - CLOUD SERVER');
   console.log('========================================');
   console.log(`\n  Port: ${PORT}`);
   console.log('  Verification: Binary Algorithm');
+  console.log('  Status: RUNNING');
   console.log('========================================\n');
 });
 
