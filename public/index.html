@@ -58,18 +58,19 @@
       gap: 8px;
       justify-content: center;
       margin-bottom: 24px;
+      flex-wrap: wrap;
     }
 
     .code-box {
-      width: 48px;
-      height: 58px;
+      width: 50px;
+      height: 60px;
       background: rgba(0,212,255,0.15);
       border: 2px solid #00d4ff;
       border-radius: 12px;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 24px;
+      font-size: 26px;
       font-weight: 700;
       color: #00d4ff;
       text-transform: uppercase;
@@ -78,25 +79,36 @@
     /* Code Input (Phone) */
     .code-inputs {
       display: flex;
-      gap: 8px;
+      gap: 6px;
       justify-content: center;
       margin-bottom: 24px;
+      flex-wrap: wrap;
     }
 
     .code-input {
-      width: 48px;
-      height: 58px;
+      width: 42px;
+      height: 52px;
       background: rgba(255,255,255,0.08);
       border: 2px solid rgba(255,255,255,0.15);
-      border-radius: 12px;
+      border-radius: 10px;
       text-align: center;
-      font-size: 24px;
+      font-size: 22px;
       font-weight: 700;
       color: #fff;
       text-transform: uppercase;
       outline: none;
       transition: all 0.2s;
       caret-color: #00d4ff;
+    }
+
+    @media (max-width: 400px) {
+      .code-input {
+        width: 36px;
+        height: 46px;
+        font-size: 18px;
+        gap: 4px;
+      }
+      .code-inputs { gap: 4px; }
     }
 
     .code-input:focus {
