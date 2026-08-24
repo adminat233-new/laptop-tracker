@@ -9,454 +9,327 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       background: #0a0a0f;
       color: #fff;
       min-height: 100vh;
-      overflow-x: hidden;
     }
-
-    /* ============= SCREENS ============= */
     .screen { display: none; min-height: 100vh; }
     .screen.active { display: flex; }
 
-    /* ============= PAIR SCREEN ============= */
+    /* Pair Screen */
     #pair-screen {
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
+      flex-direction: column; align-items: center; justify-content: center;
       padding: 20px;
-      background: linear-gradient(135deg, #0a0a1a 0%, #1a0a2e 50%, #0a1a2e 100%);
+      background: linear-gradient(135deg, #0a0a1a, #1a0a2e, #0a1a2e);
     }
-
     .pair-card {
       background: rgba(255,255,255,0.05);
       backdrop-filter: blur(20px);
       border: 1px solid rgba(255,255,255,0.1);
       border-radius: 24px;
       padding: 40px 30px;
-      width: 100%;
-      max-width: 400px;
-      text-align: center;
+      width: 100%; max-width: 400px; text-align: center;
     }
-
     .pair-icon {
       width: 90px; height: 90px;
       background: linear-gradient(135deg, #00d4ff, #7c3aed);
       border-radius: 24px;
       display: flex; align-items: center; justify-content: center;
-      margin: 0 auto 20px;
-      font-size: 42px;
+      margin: 0 auto 20px; font-size: 42px;
     }
-
     .pair-card h1 { font-size: 22px; margin-bottom: 6px; }
     .pair-card .subtitle { color: #888; font-size: 12px; margin-bottom: 20px; }
 
-    /* ============= CODE DISPLAY (LAPTOP) ============= */
-    .code-display {
-      display: flex;
-      gap: 8px;
-      justify-content: center;
-      margin-bottom: 20px;
-      flex-wrap: wrap;
+    /* Binary Display */
+    .binary-display {
+      background: rgba(0,0,0,0.3);
+      border: 1px solid rgba(0,212,255,0.3);
+      border-radius: 12px;
+      padding: 12px;
+      margin-bottom: 16px;
+      font-family: monospace;
+      font-size: 10px;
+      color: #00d4ff;
+      word-break: break-all;
+      max-height: 60px;
+      overflow-y: auto;
     }
 
+    /* Code Display */
+    .code-display {
+      display: flex; gap: 8px; justify-content: center;
+      margin-bottom: 16px; flex-wrap: wrap;
+    }
     .code-box {
       width: 48px; height: 58px;
       background: rgba(0,212,255,0.15);
       border: 2px solid #00d4ff;
       border-radius: 12px;
       display: flex; align-items: center; justify-content: center;
-      font-size: 24px; font-weight: 700;
-      color: #00d4ff;
-      text-transform: uppercase;
+      font-size: 24px; font-weight: 700; color: #00d4ff;
       animation: glow 2s ease-in-out infinite;
     }
-
     @keyframes glow {
       0%, 100% { box-shadow: 0 0 5px rgba(0,212,255,0.3); }
       50% { box-shadow: 0 0 20px rgba(0,212,255,0.5); }
     }
 
-    /* ============= CODE INPUT (PHONE) ============= */
+    /* Code Input */
     .code-inputs {
-      display: flex;
-      gap: 6px;
-      justify-content: center;
-      margin-bottom: 20px;
-      flex-wrap: wrap;
+      display: flex; gap: 6px; justify-content: center;
+      margin-bottom: 16px; flex-wrap: wrap;
     }
-
     .code-input {
       width: 42px; height: 52px;
       background: rgba(255,255,255,0.08);
       border: 2px solid rgba(255,255,255,0.15);
       border-radius: 10px;
-      text-align: center;
-      font-size: 22px; font-weight: 700;
-      color: #fff;
-      text-transform: uppercase;
-      outline: none;
+      text-align: center; font-size: 22px; font-weight: 700;
+      color: #fff; text-transform: uppercase; outline: none;
       transition: all 0.2s;
     }
-
     .code-input:focus {
       border-color: #00d4ff;
       box-shadow: 0 0 15px rgba(0,212,255,0.3);
     }
-
     @media (max-width: 400px) {
       .code-input { width: 36px; height: 46px; font-size: 18px; }
-      .code-inputs { gap: 4px; }
     }
 
-    /* ============= BUTTONS ============= */
     .btn {
-      width: 100%;
-      padding: 16px;
-      border: none;
-      border-radius: 14px;
-      font-size: 15px; font-weight: 600;
-      cursor: pointer;
-      transition: all 0.2s;
+      width: 100%; padding: 16px; border: none; border-radius: 14px;
+      font-size: 15px; font-weight: 600; cursor: pointer; transition: all 0.2s;
     }
-
-    .btn-primary {
-      background: linear-gradient(135deg, #00d4ff, #7c3aed);
-      color: #fff;
-    }
-
+    .btn-primary { background: linear-gradient(135deg, #00d4ff, #7c3aed); color: #fff; }
     .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
-    .btn-primary:active { transform: scale(0.98); }
-
-    .btn-secondary {
-      background: rgba(255,255,255,0.1);
-      color: #fff;
-      margin-top: 10px;
-    }
-
+    .btn-secondary { background: rgba(255,255,255,0.1); color: #fff; margin-top: 10px; }
     .msg-text { font-size: 12px; margin-top: 12px; min-height: 18px; }
     .msg-error { color: #ff4444; }
     .msg-success { color: #00ff88; }
     .msg-info { color: #00d4ff; }
 
-    /* ============= VERIFICATION SCREEN ============= */
+    /* Verify Screen */
     #verify-screen {
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
+      flex-direction: column; align-items: center; justify-content: center;
       padding: 20px;
-      background: linear-gradient(135deg, #0a0a1a 0%, #1a0a2e 50%, #0a1a2e 100%);
+      background: linear-gradient(135deg, #0a0a1a, #1a0a2e, #0a1a2e);
     }
-
     .verify-animation {
       width: 100px; height: 100px;
       border: 4px solid rgba(0,212,255,0.2);
       border-top-color: #00d4ff;
       border-radius: 50%;
-      animation: spin 1s linear infinite;
+      animation: spin 0.8s linear infinite;
       margin: 0 auto 24px;
     }
-
     @keyframes spin { to { transform: rotate(360deg); } }
-
     .verify-check {
       width: 100px; height: 100px;
       background: linear-gradient(135deg, #00ff88, #00cc66);
       border-radius: 50%;
       display: flex; align-items: center; justify-content: center;
-      margin: 0 auto 24px;
-      font-size: 48px;
+      margin: 0 auto 24px; font-size: 48px;
       animation: pop 0.3s ease-out;
     }
-
     @keyframes pop {
       0% { transform: scale(0); }
       80% { transform: scale(1.1); }
       100% { transform: scale(1); }
     }
-
-    /* ============= DASHBOARD ============= */
-    #dashboard {
-      flex-direction: column;
-      min-height: 100vh;
-      padding-bottom: 260px;
+    .verify-binary {
+      background: rgba(0,255,136,0.1);
+      border: 1px solid rgba(0,255,136,0.3);
+      border-radius: 8px;
+      padding: 10px;
+      margin-top: 16px;
+      font-family: monospace;
+      font-size: 10px;
+      color: #00ff88;
+      word-break: break-all;
     }
 
+    /* Dashboard */
+    #dashboard { flex-direction: column; min-height: 100vh; padding-bottom: 260px; }
     .header {
       position: fixed; top: 0; left: 0; right: 0;
       background: rgba(10,10,15,0.95);
       backdrop-filter: blur(20px);
       border-bottom: 1px solid rgba(255,255,255,0.1);
-      padding: 12px 16px;
-      z-index: 100;
+      padding: 12px 16px; z-index: 100;
     }
-
-    .header-content {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-    }
-
+    .header-content { display: flex; align-items: center; justify-content: space-between; }
     .device-info { display: flex; align-items: center; gap: 10px; }
-
     .device-icon {
       width: 42px; height: 42px;
       background: linear-gradient(135deg, #00d4ff, #7c3aed);
       border-radius: 12px;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 22px;
+      display: flex; align-items: center; justify-content: center; font-size: 22px;
     }
-
     .device-name { font-size: 14px; font-weight: 600; }
-
-    .status-badge {
-      display: flex; align-items: center; gap: 6px;
-      font-size: 11px; color: #888;
-    }
-
+    .status-badge { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #888; }
     .status-dot {
-      width: 8px; height: 8px;
-      border-radius: 50%;
-      background: #00ff88;
-      animation: pulse 2s infinite;
+      width: 8px; height: 8px; border-radius: 50%;
+      background: #00ff88; animation: pulse 2s infinite;
     }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
 
-    @keyframes pulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.5; }
-    }
+    #map { position: fixed; top: 66px; left: 0; right: 0; height: 35vh; z-index: 1; }
 
-    /* ============= MAP ============= */
-    #map {
-      position: fixed;
-      top: 66px; left: 0; right: 0;
-      height: 35vh;
-      z-index: 1;
-    }
-
-    /* ============= INFO PANEL ============= */
     .info-panel {
-      position: relative;
-      z-index: 10;
-      margin-top: calc(35vh + 66px);
-      padding: 12px 16px;
+      position: relative; z-index: 10;
+      margin-top: calc(35vh + 66px); padding: 12px 16px;
     }
-
     .section-title {
-      font-size: 10px; font-weight: 600;
-      color: #888;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      margin-bottom: 8px;
+      font-size: 10px; font-weight: 600; color: #888;
+      text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px;
     }
 
-    /* Location Exchange Card */
     .location-exchange {
       background: rgba(255,255,255,0.05);
       border: 1px solid rgba(255,255,255,0.1);
-      border-radius: 16px;
-      padding: 14px;
-      margin-bottom: 12px;
+      border-radius: 16px; padding: 14px; margin-bottom: 12px;
     }
-
     .location-row {
-      display: flex;
-      align-items: center;
-      gap: 10px;
+      display: flex; align-items: center; gap: 10px;
       padding: 8px 0;
       border-bottom: 1px solid rgba(255,255,255,0.05);
     }
-
     .location-row:last-child { border-bottom: none; }
-
     .location-icon {
-      width: 32px; height: 32px;
-      border-radius: 8px;
+      width: 32px; height: 32px; border-radius: 8px;
       display: flex; align-items: center; justify-content: center;
-      font-size: 16px;
-      flex-shrink: 0;
+      font-size: 16px; flex-shrink: 0;
     }
-
     .location-icon.laptop { background: rgba(0,212,255,0.2); }
     .location-icon.phone { background: rgba(0,255,136,0.2); }
-
     .location-details { flex: 1; }
     .location-label { font-size: 11px; font-weight: 600; }
     .location-text { font-size: 10px; color: #888; }
-
-    .location-coords {
-      font-size: 9px;
-      color: #00d4ff;
-      font-family: monospace;
+    .location-coords { font-size: 9px; color: #00d4ff; font-family: monospace; }
+    .location-binary {
+      font-size: 8px; color: #7c3aed; font-family: monospace;
+      margin-top: 2px; word-break: break-all;
     }
 
-    /* Stats Grid */
     .stats-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 8px;
-      margin-bottom: 12px;
+      display: grid; grid-template-columns: repeat(3, 1fr);
+      gap: 8px; margin-bottom: 12px;
     }
-
     .stat-box {
       background: rgba(255,255,255,0.05);
       border: 1px solid rgba(255,255,255,0.1);
-      border-radius: 10px;
-      padding: 10px 6px;
-      text-align: center;
+      border-radius: 10px; padding: 10px 6px; text-align: center;
     }
-
     .stat-value { font-size: 18px; font-weight: 700; }
     .stat-label { font-size: 8px; color: #888; margin-top: 2px; }
 
-    /* ============= CONTROLS ============= */
     .controls {
-      position: fixed;
-      bottom: 0; left: 0; right: 0;
+      position: fixed; bottom: 0; left: 0; right: 0;
       background: rgba(10,10,15,0.95);
       backdrop-filter: blur(20px);
       border-top: 1px solid rgba(255,255,255,0.1);
       padding: 10px 16px 16px;
-      border-radius: 20px 20px 0 0;
-      z-index: 100;
+      border-radius: 20px 20px 0 0; z-index: 100;
     }
-
     .controls-handle {
       width: 36px; height: 4px;
       background: rgba(255,255,255,0.2);
-      border-radius: 2px;
-      margin: 0 auto 10px;
+      border-radius: 2px; margin: 0 auto 10px;
     }
-
     .alarm-grid {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 6px;
-      margin-bottom: 8px;
+      display: grid; grid-template-columns: repeat(4, 1fr);
+      gap: 6px; margin-bottom: 8px;
     }
-
     .alarm-btn {
-      padding: 10px 4px;
-      border: none;
-      border-radius: 10px;
-      font-size: 9px; font-weight: 600;
-      cursor: pointer;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 3px;
-      color: #fff;
-      transition: all 0.2s;
+      padding: 10px 4px; border: none; border-radius: 10px;
+      font-size: 9px; font-weight: 600; cursor: pointer;
+      display: flex; flex-direction: column; align-items: center;
+      gap: 3px; color: #fff; transition: all 0.2s;
     }
-
     .alarm-btn:active { transform: scale(0.92); }
     .alarm-btn .icon { font-size: 18px; }
     .alarm-btn.siren { background: linear-gradient(135deg, #ff4444, #cc0000); }
     .alarm-btn.alarm { background: linear-gradient(135deg, #ff8800, #cc6600); }
     .alarm-btn.noise { background: linear-gradient(135deg, #ff00ff, #cc00cc); }
     .alarm-btn.sensor { background: linear-gradient(135deg, #ffff00, #cccc00); color: #000; }
-
     .action-grid {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 6px;
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;
     }
-
     .action-btn {
       padding: 10px 4px;
       background: rgba(255,255,255,0.08);
       border: 1px solid rgba(255,255,255,0.15);
-      border-radius: 10px;
-      color: #fff;
-      font-size: 9px; font-weight: 500;
-      cursor: pointer;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 3px;
+      border-radius: 10px; color: #fff;
+      font-size: 9px; font-weight: 500; cursor: pointer;
+      display: flex; flex-direction: column; align-items: center; gap: 3px;
     }
-
     .action-btn:active { background: rgba(255,255,255,0.15); }
     .action-btn .icon { font-size: 16px; }
     .action-btn.danger { border-color: rgba(255,68,68,0.3); color: #ff4444; }
 
-    /* ============= TOAST ============= */
     .toast {
-      position: fixed;
-      top: 80px; left: 50%;
+      position: fixed; top: 80px; left: 50%;
       transform: translateX(-50%) translateY(-20px);
       background: rgba(0,212,255,0.95);
-      color: #fff;
-      padding: 10px 20px;
-      border-radius: 10px;
-      font-size: 12px; font-weight: 500;
-      z-index: 2000;
-      opacity: 0;
-      transition: all 0.3s;
-      pointer-events: none;
+      color: #fff; padding: 10px 20px; border-radius: 10px;
+      font-size: 12px; font-weight: 500; z-index: 2000;
+      opacity: 0; transition: all 0.3s; pointer-events: none;
     }
-
     .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
-    /* ============= MARKERS ============= */
     .custom-marker { background: none; border: none; }
     .marker-laptop {
-      width: 24px; height: 24px;
-      background: #00d4ff;
-      border: 3px solid #fff;
-      border-radius: 50%;
+      width: 24px; height: 24px; background: #00d4ff;
+      border: 3px solid #fff; border-radius: 50%;
       box-shadow: 0 0 15px rgba(0,212,255,0.6);
     }
     .marker-phone {
-      width: 24px; height: 24px;
-      background: #00ff88;
-      border: 3px solid #fff;
-      border-radius: 50%;
+      width: 24px; height: 24px; background: #00ff88;
+      border: 3px solid #fff; border-radius: 50%;
       box-shadow: 0 0 15px rgba(0,255,136,0.6);
     }
-
     .hidden { display: none !important; }
   </style>
 </head>
 <body>
-  <!-- ============= PAIR SCREEN ============= -->
+  <!-- PAIR SCREEN -->
   <div id="pair-screen" class="screen active">
     <div class="pair-card">
       <div class="pair-icon">🔗</div>
       <h1 id="pair-title">Laptop Tracker</h1>
       <p class="subtitle" id="pair-subtitle">Generate code on laptop, enter on phone</p>
 
-      <!-- LAPTOP SECTION -->
       <div id="laptop-section" class="hidden">
         <div class="code-display" id="code-display"></div>
+        <div class="binary-display" id="binary-display">Binary: --</div>
         <button class="btn btn-primary" id="generate-btn" style="margin-bottom:8px;">Generate New Code</button>
         <button class="btn btn-secondary" id="copy-code-btn">Copy Code</button>
         <p class="msg-text msg-info" id="laptop-status">Waiting for phone...</p>
       </div>
 
-      <!-- PHONE SECTION -->
       <div id="phone-section" class="hidden">
         <div class="code-inputs" id="code-inputs"></div>
-        <button class="btn btn-primary" id="connect-btn" disabled>Connect to Laptop</button>
+        <div class="binary-display" id="phone-binary">Binary: --</div>
+        <button class="btn btn-primary" id="connect-btn" disabled>Verify & Connect</button>
       </div>
 
       <p class="msg-text msg-error" id="pair-error"></p>
     </div>
   </div>
 
-  <!-- ============= VERIFY SCREEN ============= -->
+  <!-- VERIFY SCREEN -->
   <div id="verify-screen" class="screen">
     <div class="pair-card">
       <div id="verify-icon" class="verify-animation"></div>
       <h1 id="verify-title">Verifying...</h1>
-      <p class="subtitle" id="verify-subtitle">Matching pair codes</p>
+      <p class="subtitle" id="verify-subtitle">Comparing binary codes</p>
+      <div class="verify-binary" id="verify-binary"></div>
     </div>
   </div>
 
-  <!-- ============= DASHBOARD ============= -->
+  <!-- DASHBOARD -->
   <div id="dashboard" class="screen">
     <header class="header">
       <div class="header-content">
@@ -477,7 +350,7 @@
     <div id="map"></div>
 
     <div class="info-panel">
-      <div class="section-title">Location Exchange</div>
+      <div class="section-title">Location Exchange (Integer Coordinates)</div>
       <div class="location-exchange">
         <div class="location-row">
           <div class="location-icon laptop">💻</div>
@@ -485,6 +358,7 @@
             <div class="location-label">Laptop Location</div>
             <div class="location-text" id="laptop-loc-text">Waiting...</div>
             <div class="location-coords" id="laptop-loc-coords">--</div>
+            <div class="location-binary" id="laptop-loc-binary">Binary: --</div>
           </div>
         </div>
         <div class="location-row">
@@ -493,6 +367,7 @@
             <div class="location-label">Phone Location</div>
             <div class="location-text" id="phone-loc-text">Tracking...</div>
             <div class="location-coords" id="phone-loc-coords">--</div>
+            <div class="location-binary" id="phone-loc-binary">Binary: --</div>
           </div>
         </div>
       </div>
@@ -537,36 +412,40 @@
 
   <script>
     const CODE_LENGTH = 8;
-    let ws = null;
-    let map = null;
-    let laptopMarker = null;
-    let phoneMarker = null;
-    let deviceId = null;
-    let currentCode = null;
-    let isLaptop = false;
+    let ws = null, map = null, laptopMarker = null, phoneMarker = null;
+    let deviceId = null, currentCode = null, isLaptop = false;
+
+    // ============= BINARY ALGORITHM =============
+    function charToBinary(char) {
+      return char.charCodeAt(0).toString(2).padStart(8, '0');
+    }
+
+    function codeToBinary(code) {
+      return code.split('').map(charToBinary).join(' ');
+    }
+
+    function intToBinary(num) {
+      return Math.round(num * 1000000).toString(2).padStart(32, '0');
+    }
 
     // ============= DETECT DEVICE =============
     function detectDevice() {
       const params = new URLSearchParams(window.location.search);
       if (params.get('role') === 'laptop') { isLaptop = true; return; }
       if (params.get('role') === 'phone') { isLaptop = false; return; }
-      const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-      isLaptop = !isMobile && window.innerWidth >= 768;
+      isLaptop = !/Android|iPhone|iPad|iPod/i.test(navigator.userAgent) && window.innerWidth >= 768;
     }
 
-    // ============= SCREENS =============
     function showScreen(id) {
       document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
       document.getElementById(id).classList.add('active');
     }
 
-    // ============= GENERATE CODE =============
+    // ============= CODE GENERATION =============
     function generateCode() {
       const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
       let code = '';
-      for (let i = 0; i < CODE_LENGTH; i++) {
-        code += chars.charAt(Math.floor(Math.random() * chars.length));
-      }
+      for (let i = 0; i < CODE_LENGTH; i++) code += chars.charAt(Math.floor(Math.random() * chars.length));
       return code;
     }
 
@@ -579,6 +458,7 @@
         box.textContent = code[i];
         c.appendChild(box);
       }
+      document.getElementById('binary-display').textContent = `Binary: ${codeToBinary(code)}`;
     }
 
     function createInputBoxes() {
@@ -586,14 +466,12 @@
       c.innerHTML = '';
       for (let i = 0; i < CODE_LENGTH; i++) {
         const input = document.createElement('input');
-        input.type = 'text';
-        input.className = 'code-input';
-        input.maxLength = 1;
-        input.dataset.index = i;
-        input.autocomplete = 'off';
+        input.type = 'text'; input.className = 'code-input';
+        input.maxLength = 1; input.dataset.index = i; input.autocomplete = 'off';
         input.addEventListener('input', (e) => {
           e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
           if (e.target.value && i < CODE_LENGTH - 1) c.children[i + 1].focus();
+          updatePhoneBinary();
           checkCodeComplete();
         });
         input.addEventListener('keydown', (e) => {
@@ -605,11 +483,22 @@
           const chars = (e.clipboardData || window.clipboardData).getData('text').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, CODE_LENGTH);
           for (let j = 0; j < chars.length; j++) c.children[j].value = chars[j];
           if (chars.length > 0) c.children[Math.min(chars.length, CODE_LENGTH - 1)].focus();
+          updatePhoneBinary();
           checkCodeComplete();
         });
         c.appendChild(input);
       }
       setTimeout(() => c.children[0].focus(), 100);
+    }
+
+    function updatePhoneBinary() {
+      let code = '';
+      document.querySelectorAll('.code-input').forEach(i => code += i.value);
+      if (code.length > 0) {
+        document.getElementById('phone-binary').textContent = `Binary: ${codeToBinary(code)}`;
+      } else {
+        document.getElementById('phone-binary').textContent = 'Binary: --';
+      }
     }
 
     function checkCodeComplete() {
@@ -628,160 +517,125 @@
     function connectWebSocket() {
       const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
       ws = new WebSocket(`${protocol}//${location.host}`);
-
       ws.onopen = () => {
         if (isLaptop) {
-          ws.send(JSON.stringify({ type: 'laptop_register', pairKey: currentCode }));
+          ws.send(JSON.stringify({ type: 'laptop_register', deviceId }));
         } else {
-          // Show verifying screen
           showScreen('verify-screen');
-          ws.send(JSON.stringify({ type: 'phone_verify', pairKey: getEnteredCode() }));
+          document.getElementById('verify-binary').textContent = `Comparing: ${codeToBinary(getEnteredCode())}`;
+          verifyWithAPI();
         }
       };
-
-      ws.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        handleMessage(data);
-      };
-
-      ws.onclose = () => {
-        if (isLaptop) {
-          document.getElementById('laptop-status').textContent = 'Disconnected. Reconnecting...';
-        }
-        setTimeout(connectWebSocket, 3000);
-      };
+      ws.onmessage = (event) => handleMessage(JSON.parse(event.data));
+      ws.onclose = () => setTimeout(connectWebSocket, 3000);
     }
 
-    function handleMessage(data) {
-      switch (data.type) {
-        // LAPTOP: Registered
-        case 'registered':
-          document.getElementById('laptop-status').innerHTML = '<span class="spinner" style="display:inline-block;width:12px;height:12px;border:2px solid rgba(0,212,255,0.3);border-top-color:#00d4ff;border-radius:50%;animation:spin 0.8s linear infinite;"></span> Waiting for phone to connect...';
-          break;
-
-        // LAPTOP: Phone connected
-        case 'phone_connected':
-          document.getElementById('laptop-status').className = 'msg-text msg-success';
-          document.getElementById('laptop-status').textContent = '✓ Phone connected! Opening dashboard...';
-          setTimeout(() => {
-            showScreen('dashboard');
-            if (!map) initMap();
-            sendCommand('sysinfo');
-          }, 1000);
-          break;
-
-        // PHONE: Verification success
-        case 'verification_success':
+    async function verifyWithAPI() {
+      const code = getEnteredCode();
+      try {
+        const res = await fetch('/api/phone/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pairKey: code })
+        });
+        const data = await res.json();
+        
+        if (data.success && data.verified) {
           document.getElementById('verify-icon').className = 'verify-check';
           document.getElementById('verify-icon').textContent = '✓';
-          document.getElementById('verify-title').textContent = 'Connected!';
-          document.getElementById('verify-subtitle').textContent = 'Opening dashboard...';
+          document.getElementById('verify-title').textContent = 'Verified!';
+          document.getElementById('verify-subtitle').textContent = 'Binary codes match';
+          document.getElementById('verify-binary').textContent = `Matched: ${codeToBinary(code)}`;
           deviceId = data.deviceId;
+          
+          if (data.laptopLocation) updateLaptopLocation(data.laptopLocation);
+          
           setTimeout(() => {
             showScreen('dashboard');
             if (!map) initMap();
             sendCommand('sysinfo');
           }, 1500);
-          break;
-
-        // PHONE: Verification failed
-        case 'verification_failed':
+        } else {
           showScreen('pair-screen');
-          document.getElementById('pair-error').textContent = data.error;
+          document.getElementById('pair-error').textContent = data.error || 'Verification failed';
           document.getElementById('connect-btn').disabled = false;
-          document.getElementById('connect-btn').textContent = 'Connect to Laptop';
-          break;
+          document.getElementById('connect-btn').textContent = 'Verify & Connect';
+        }
+      } catch (e) {
+        showScreen('pair-screen');
+        document.getElementById('pair-error').textContent = 'Connection error';
+        document.getElementById('connect-btn').disabled = false;
+      }
+    }
 
-        // LAPTOP: Get location request
+    function handleMessage(data) {
+      switch (data.type) {
+        case 'registered':
+          document.getElementById('laptop-status').innerHTML = '⏳ Waiting for phone...';
+          break;
+        case 'phone_connected':
+          document.getElementById('laptop-status').className = 'msg-text msg-success';
+          document.getElementById('laptop-status').textContent = '✓ Phone connected!';
+          setTimeout(() => { showScreen('dashboard'); if (!map) initMap(); sendCommand('sysinfo'); }, 1000);
+          break;
         case 'get_location':
-          fetch('https://ipapi.co/json/')
-            .then(r => r.json())
-            .then(loc => {
-              ws.send(JSON.stringify({
-                type: 'laptop_location',
-                location: {
-                  lat: loc.latitude, lng: loc.longitude,
-                  city: loc.city, region: loc.region,
-                  country: loc.country_name, ip: loc.ip
-                }
-              }));
-            })
-            .catch(() => {});
+          fetch('https://ipapi.co/json/').then(r => r.json()).then(loc => {
+            ws.send(JSON.stringify({
+              type: 'laptop_location',
+              location: { lat: loc.latitude, lng: loc.longitude, city: loc.city, region: loc.region, country: loc.country_name, ip: loc.ip }
+            }));
+          }).catch(() => {});
           break;
-
-        // PHONE: Laptop location update
-        case 'laptop_location_update':
-          updateLaptopLocation(data.location);
-          break;
-
-        // LAPTOP: Phone location update
-        case 'phone_location_update':
-          updatePhoneLocation(data.location);
-          break;
-
-        // LAPTOP: Heartbeat with location
+        case 'laptop_location_update': updateLaptopLocation(data.location); break;
+        case 'phone_location_update': updatePhoneLocation(data.location); break;
         case 'laptop_heartbeat':
           if (data.location) updateLaptopLocation(data.location);
           if (data.systemInfo) updateSystemStats(data.systemInfo);
           document.getElementById('last-seen').textContent = new Date(data.timestamp).toLocaleTimeString();
           break;
-
-        // Command results
-        case 'command_result':
-          handleCommandResult(data);
-          break;
-
-        case 'command_sent':
-          showToast(`${data.commandType} command sent!`);
-          break;
-
-        case 'laptop_offline':
-          showToast('Laptop went offline');
-          break;
+        case 'command_result': handleCommandResult(data); break;
+        case 'command_sent': showToast(`${data.commandType} sent!`); break;
+        case 'laptop_offline': showToast('Laptop offline'); break;
       }
     }
 
     // ============= MAP =============
     function initMap() {
       map = L.map('map', { center: [20, 0], zoom: 2, zoomControl: false });
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19, attribution: '&copy; OpenStreetMap'
-      }).addTo(map);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
       setTimeout(() => map.invalidateSize(), 300);
 
-      // Track phone location
       if (navigator.geolocation) {
         navigator.geolocation.watchPosition((pos) => {
-          const { latitude, longitude, accuracy } = pos.coords;
-          
-          if (phoneMarker) {
-            phoneMarker.setLatLng([latitude, longitude]);
-          } else {
+          const { latitude, longitude } = pos.coords;
+          if (phoneMarker) phoneMarker.setLatLng([latitude, longitude]);
+          else {
             phoneMarker = L.marker([latitude, longitude], {
-              icon: L.divIcon({
-                className: 'custom-marker',
-                html: '<div class="marker-phone"></div>',
-                iconSize: [24, 24], iconAnchor: [12, 12]
-              })
+              icon: L.divIcon({ className: 'custom-marker', html: '<div class="marker-phone"></div>', iconSize: [24, 24], iconAnchor: [12, 12] })
             }).addTo(map);
           }
-
-          // Send phone location to server
+          
+          // Send location as integers
+          const intLat = Math.round(latitude * 1000000);
+          const intLng = Math.round(longitude * 1000000);
+          
           if (ws && ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({
-              type: 'phone_location',
-              location: { lat: latitude, lng: longitude, accuracy }
-            }));
+            ws.send(JSON.stringify({ type: 'phone_location', location: { lat: latitude, lng: longitude, intLat, intLng } }));
           }
+          
+          // POST location
+          fetch('/api/phone/location', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ deviceId, location: { lat: latitude, lng: longitude, intLat, intLng } })
+          }).catch(() => {});
 
-          // Update display
           document.getElementById('phone-loc-text').textContent = 'Tracking...';
-          document.getElementById('phone-loc-coords').textContent = `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
+          document.getElementById('phone-loc-coords').textContent = `Int: ${intLat}, ${intLng}`;
+          document.getElementById('phone-loc-binary').textContent = `Binary: ${intToBinary(latitude)} ${intToBinary(longitude)}`;
 
-          // Fit bounds if both markers exist
           if (laptopMarker) {
-            const bounds = L.latLngBounds([latitude, longitude], laptopMarker.getLatLng());
-            map.fitBounds(bounds, { padding: [50, 50] });
+            map.fitBounds(L.latLngBounds([latitude, longitude], laptopMarker.getLatLng()), { padding: [50, 50] });
           }
         }, () => {}, { enableHighAccuracy: true });
       }
@@ -790,136 +644,91 @@
     function updateLaptopLocation(loc) {
       if (!map || !loc || !loc.lat) return;
       const latlng = [loc.lat, loc.lng];
-
-      if (laptopMarker) {
-        laptopMarker.setLatLng(latlng);
-      } else {
+      if (laptopMarker) laptopMarker.setLatLng(latlng);
+      else {
         laptopMarker = L.marker(latlng, {
-          icon: L.divIcon({
-            className: 'custom-marker',
-            html: '<div class="marker-laptop"></div>',
-            iconSize: [24, 24], iconAnchor: [12, 12]
-          })
+          icon: L.divIcon({ className: 'custom-marker', html: '<div class="marker-laptop"></div>', iconSize: [24, 24], iconAnchor: [12, 12] })
         }).addTo(map);
       }
 
-      document.getElementById('laptop-loc-text').textContent = [loc.city, loc.region, loc.country].filter(Boolean).join(', ');
-      document.getElementById('laptop-loc-coords').textContent = `${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}`;
+      const intLat = Math.round(loc.lat * 1000000);
+      const intLng = Math.round(loc.lng * 1000000);
 
-      // Fit bounds if phone marker exists
-      if (phoneMarker) {
-        const bounds = L.latLngBounds(phoneMarker.getLatLng(), latlng);
-        map.fitBounds(bounds, { padding: [50, 50] });
-      } else {
-        map.setView(latlng, 13);
-      }
+      document.getElementById('laptop-loc-text').textContent = [loc.city, loc.region, loc.country].filter(Boolean).join(', ');
+      document.getElementById('laptop-loc-coords').textContent = `Int: ${intLat}, ${intLng}`;
+      document.getElementById('laptop-loc-binary').textContent = `Binary: ${intToBinary(loc.lat)} ${intToBinary(loc.lng)}`;
+
+      if (phoneMarker) map.fitBounds(L.latLngBounds(phoneMarker.getLatLng(), latlng), { padding: [50, 50] });
+      else map.setView(latlng, 13);
     }
 
     function updatePhoneLocation(loc) {
       if (!loc || !loc.lat) return;
       document.getElementById('phone-loc-text').textContent = 'Located';
-      document.getElementById('phone-loc-coords').textContent = `${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}`;
+      document.getElementById('phone-loc-coords').textContent = `Int: ${loc.intLat || Math.round(loc.lat * 1000000)}, ${loc.intLng || Math.round(loc.lng * 1000000)}`;
     }
 
     function updateSystemStats(info) {
-      if (info.localIP) document.getElementById('stat-cpu').textContent = info.platform || '--';
       if (info.hostname) document.getElementById('device-name').textContent = info.hostname;
     }
 
     // ============= COMMANDS =============
-    let commandPollers = {};
-
     function sendCommand(type, params = {}) {
       if (!deviceId) { showToast('Not connected'); return; }
-      
       showToast(`${type} sending...`);
-      
       fetch('/api/phone/command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ deviceId, commandType: type, params })
-      })
-      .then(r => r.json())
-      .then(data => {
+      }).then(r => r.json()).then(data => {
         if (data.success) {
-          showToast(`${type} queued! Waiting for laptop...`);
-          // Start polling for result
+          showToast(`${type} queued!`);
           pollForResult(data.commandId, type);
-        } else {
-          showToast('Failed to send');
         }
-      })
-      .catch(() => showToast('Error sending'));
+      }).catch(() => showToast('Error'));
     }
 
     function pollForResult(commandId, commandType) {
       let attempts = 0;
-      const maxAttempts = 30; // 30 seconds max
-      
       const poller = setInterval(() => {
         attempts++;
-        
-        fetch(`/api/phone/result/${commandId}`)
-          .then(r => r.json())
-          .then(data => {
-            if (data.status === 'completed') {
-              clearInterval(poller);
-              delete commandPollers[commandId];
-              handleCommandResult({ commandType, result: data.result, error: data.error });
-              showToast(data.error ? `Error: ${data.error}` : `${commandType} completed!`);
-            } else if (attempts >= maxAttempts) {
-              clearInterval(poller);
-              delete commandPollers[commandId];
-              showToast(`${commandType} timeout - laptop may be offline`);
-            }
-          })
-          .catch(() => {});
+        fetch(`/api/phone/result/${commandId}`).then(r => r.json()).then(data => {
+          if (data.status === 'completed') {
+            clearInterval(poller);
+            handleCommandResult({ commandType, result: data.result, error: data.error });
+            showToast(data.error ? `Error` : `${commandType} done!`);
+          } else if (attempts >= 30) {
+            clearInterval(poller);
+            showToast('Timeout');
+          }
+        }).catch(() => {});
       }, 1000);
-      
-      commandPollers[commandId] = poller;
     }
 
     function handleCommandResult(data) {
       if (data.commandType === 'sysinfo' && data.result) {
         try {
-          const output = typeof data.result === 'string' ? data.result : JSON.stringify(data.result);
-          const cpuMatch = output.match(/LoadPercentage=(\d+)/);
-          const freeMem = output.match(/FreePhysicalMemory=(\d+)/);
-          const totalMem = output.match(/TotalVisibleMemorySize=(\d+)/);
-          if (cpuMatch) document.getElementById('stat-cpu').textContent = cpuMatch[1] + '%';
-          if (freeMem && totalMem) {
-            const used = Math.round((1 - parseInt(freeMem[1]) / parseInt(totalMem[1])) * 100);
-            document.getElementById('stat-ram').textContent = used + '%';
-          }
-        } catch (e) {}
-      }
-      
-      if (data.commandType === 'location' && data.result) {
-        try {
-          const loc = typeof data.result === 'string' ? JSON.parse(data.result) : data.result;
-          if (loc.location) updateLaptopLocation(loc.location);
+          const output = typeof data.result === 'string' ? data.result : '';
+          const cpu = output.match(/LoadPercentage=(\d+)/);
+          const free = output.match(/FreePhysicalMemory=(\d+)/);
+          const total = output.match(/TotalVisibleMemorySize=(\d+)/);
+          if (cpu) document.getElementById('stat-cpu').textContent = cpu[1] + '%';
+          if (free && total) document.getElementById('stat-ram').textContent = Math.round((1 - parseInt(free[1]) / parseInt(total[1])) * 100) + '%';
         } catch (e) {}
       }
     }
 
-    function confirmShutdown() {
-      if (confirm('Shutdown the laptop?')) sendCommand('shutdown');
-    }
+    function confirmShutdown() { if (confirm('Shutdown laptop?')) sendCommand('shutdown'); }
 
     function showToast(msg) {
       const t = document.getElementById('toast');
-      t.textContent = msg;
-      t.classList.add('show');
+      t.textContent = msg; t.classList.add('show');
       setTimeout(() => t.classList.remove('show'), 2500);
     }
 
-    // ============= BUTTON HANDLERS =============
     function tryConnect() {
       const code = getEnteredCode();
-      if (code.length !== CODE_LENGTH) {
-        document.getElementById('pair-error').textContent = `Enter all ${CODE_LENGTH} characters`;
-        return;
-      }
+      if (code.length !== CODE_LENGTH) { document.getElementById('pair-error').textContent = `Enter ${CODE_LENGTH} chars`; return; }
       document.getElementById('connect-btn').disabled = true;
       document.getElementById('connect-btn').textContent = 'Verifying...';
       document.getElementById('pair-error').textContent = '';
@@ -928,37 +737,26 @@
 
     // ============= INIT =============
     detectDevice();
-
     if (isLaptop) {
       document.getElementById('pair-title').textContent = 'Laptop Mode';
       document.getElementById('pair-subtitle').textContent = 'Generate code, share with phone';
       document.getElementById('laptop-section').classList.remove('hidden');
-      document.getElementById('phone-section').classList.add('hidden');
-      
       currentCode = generateCode();
       displayCode(currentCode);
-      
+      deviceId = 'dev_' + Array.from(crypto.getRandomValues(new Uint8Array(8))).map(b => b.toString(16).padStart(2, '0')).join('');
       document.getElementById('generate-btn').addEventListener('click', () => {
         currentCode = generateCode();
         displayCode(currentCode);
         document.getElementById('laptop-status').className = 'msg-text msg-info';
-        document.getElementById('laptop-status').textContent = 'New code generated!';
         if (ws) ws.close();
         connectWebSocket();
       });
-      
-      document.getElementById('copy-code-btn').addEventListener('click', () => {
-        navigator.clipboard?.writeText(currentCode);
-        showToast('Code copied!');
-      });
-      
+      document.getElementById('copy-code-btn').addEventListener('click', () => { navigator.clipboard?.writeText(currentCode); showToast('Copied!'); });
       connectWebSocket();
     } else {
       document.getElementById('pair-title').textContent = 'Connect to Laptop';
-      document.getElementById('pair-subtitle').textContent = 'Enter the 8-character code from laptop';
-      document.getElementById('laptop-section').classList.add('hidden');
+      document.getElementById('pair-subtitle').textContent = 'Enter 8-character code from laptop';
       document.getElementById('phone-section').classList.remove('hidden');
-      
       createInputBoxes();
       document.getElementById('connect-btn').addEventListener('click', tryConnect);
     }
