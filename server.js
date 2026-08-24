@@ -26,11 +26,15 @@ let currentLocation = null;
 let systemStats = {};
 let previousCpuInfo = os.cpus();
 
+const isCloudHosted = process.env.RENDER || process.env.HEROKU || process.env.NODE_ENV === 'production';
+
 let laptopInfo = {
   hostname: os.hostname(),
   platform: os.platform(),
   arch: os.arch(),
-  networkInterfaces: os.networkInterfaces()
+  networkInterfaces: os.networkInterfaces(),
+  isCloudHosted: !!isCloudHosted,
+  note: isCloudHosted ? 'Running on cloud server - location tracked via IP' : 'Running locally on laptop'
 };
 
 // Get CPU usage percentage

@@ -13,8 +13,8 @@
   <link rel="manifest" href="/manifest.json">
   <link rel="icon" type="image/svg+xml" href="/icons/icon.svg">
   
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
   
   <style>
     :root {
@@ -666,6 +666,7 @@
             <div class="connection-status">
               <div class="status-dot" id="status-dot"></div>
               <span id="status-text">Connecting...</span>
+              <span id="cloud-badge" style="display:none; background:#7c3aed; color:#fff; padding:2px 6px; border-radius:4px; font-size:10px; margin-left:4px;">CLOUD</span>
             </div>
           </div>
         </div>
@@ -931,16 +932,27 @@
     connectBtn.addEventListener('click', connect);
 
     function initMap() {
-      map = L.map('map', {
-        center: [0, 0],
-        zoom: 2,
-        zoomControl: false,
-        attributionControl: false
-      });
+      // Wait for container to be visible
+      setTimeout(() => {
+        map = L.map('map', {
+          center: [20, 0],
+          zoom: 2,
+          zoomControl: false,
+          attributionControl: true
+        });
 
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-        maxZoom: 19
-      }).addTo(map);
+        // Use multiple tile sources as fallback
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          maxZoom: 19,
+          attribution: '&copy; OpenStreetMap contributors'
+        }).addTo(map);
+
+        // Force map to recalculate size
+        map.invalidateSize();
+        
+        // Invalidate size again after a delay (helps with rendering)
+        setTimeout(() => map.invalidateSize(), 500);
+      }, 200);
     }
 
     function updateMap(lat, lng, accuracy) {
