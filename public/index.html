@@ -91,6 +91,16 @@
     .marker-laptop { width: 24px; height: 24px; background: #00d4ff; border: 3px solid #fff; border-radius: 50%; box-shadow: 0 0 15px rgba(0,212,255,0.6); }
     .marker-phone { width: 24px; height: 24px; background: #00ff88; border: 3px solid #fff; border-radius: 50%; box-shadow: 0 0 15px rgba(0,255,136,0.6); }
     .hidden { display: none !important; }
+    .signal-tool { background: linear-gradient(135deg, #0a0e1a, #1a1e3a) !important; border: 1px solid #00d4ff44 !important; color: #00d4ff !important; }
+    .signal-tool:hover { border-color: #00d4ff !important; box-shadow: 0 0 12px rgba(0,212,255,0.3); }
+    .signal-tool.active { background: linear-gradient(135deg, #00d4ff22, #00d4ff11) !important; border-color: #00d4ff !important; animation: toolPulse 1.5s infinite; }
+    @keyframes toolPulse { 0%,100% { box-shadow: 0 0 5px #00d4ff44; } 50% { box-shadow: 0 0 20px #00d4ff88; } }
+    @keyframes radarSweep { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    @keyframes signalPing { 0% { transform: scale(0.3); opacity: 1; } 100% { transform: scale(3); opacity: 0; } }
+    @keyframes beaconPulse { 0%,100% { opacity: 0.4; transform: scale(1); } 50% { opacity: 1; transform: scale(1.5); } }
+    .radar-sweep { animation: radarSweep 3s linear infinite; transform-origin: center; }
+    .signal-ping { animation: signalPing 2s ease-out infinite; }
+    .beacon-dot { animation: beaconPulse 1.5s ease-in-out infinite; }
   </style>
 </head>
 <body>
@@ -192,6 +202,18 @@
         <button class="action-btn" onclick="sendCommand('sysinfo')"><span class="icon">&#128202;</span>Info</button>
         <button class="action-btn danger" onclick="confirmShutdown()"><span class="icon">&#9211;</span>Off</button>
       </div>
+      <div class="section-title">Signal Tools</div>
+      <div class="action-grid">
+        <button class="action-btn signal-tool" onclick="runTrilateration()"><span class="icon">&#128205;</span>Trilaterate</button>
+        <button class="action-btn signal-tool" onclick="runTriangulation()"><span class="icon">&#128208;</span>Triangulate</button>
+        <button class="action-btn signal-tool" onclick="runSignalScan()"><span class="icon">&#128225;</span>Signal Scan</button>
+        <button class="action-btn signal-tool" onclick="toggleLiveEffects()"><span class="icon">&#10024;</span>Live FX</button>
+      </div>
+    </div>
+    <div id="tools-panel" style="display:none;background:#0a0e1a;border:1px solid #00d4ff33;margin:8px;padding:10px;border-radius:8px;font-size:11px;color:#00d4ff;max-height:200px;overflow-y:auto;">
+      <div style="font-weight:600;margin-bottom:6px;">Signal Tools Output</div>
+      <div id="tools-output"></div>
+    </div>
     </div>
   </div>
 
@@ -207,6 +229,7 @@
     let laptopSystemInfo = {};
     let phonePath = [];
     let laptopPath = [];
+    let dashboardShown = false;
 
     // Signal Processing Engine (ported from BLE Locator)
     const SignalEngine = {
@@ -374,7 +397,7 @@
         lat: filteredLat, lon: filteredLon,
         accuracy: avgAccuracy,
         sources,
-        wifiCount: nets.length,
+        wifiCount: wifiNetworks.length,
         bleCount: bleDevices.length,
       };
     }
@@ -422,6 +445,18 @@
           if (msg.type === 'locationRequest') {
             // Paired device is asking for our location
             sendMyLocation();
+          }
+
+          if (msg.type === 'paired') {
+            // Server通知: 手机已验证, 立即切换到仪表盘
+            phoneDeviceId = msg.phoneDeviceId;
+            if (!dashboardShown) {
+              dashboardShown = true;
+              document.getElementById('laptop-status').textContent = 'Paired! Phone connected.';
+              document.getElementById('laptop-status').className = 'msg-text msg-success';
+              showScreen('dashboard');
+              setTimeout(() => { if (!map) initMap(); else map.invalidateSize(); }, 300);
+            }
           }
         } catch (e) {}
       };
@@ -682,7 +717,6 @@
 
     function startLaptopPolling() {
       let lastLocationFetch = 0;
-      let dashboardShown = false;
 
       laptopPollInterval = setInterval(async () => {
         if (!laptopDeviceId) return;
@@ -1075,6 +1109,160 @@
       if (dist < 1) distText = Math.round(dist * 1000) + 'm';
       else distText = dist.toFixed(2) + 'km';
       document.getElementById('laptop-loc-binary').textContent = 'Distance: ' + distText + ' | Binary: ' + intToBinary(lp.lat) + ' ' + intToBinary(lp.lng);
+    }
+
+    // ============= SIGNAL TOOLS & LIVE EFFECTS =============
+    let liveEffectsEnabled = false;
+    let liveEffectLayers = [];
+    let radarLayer = null;
+
+    function showToolsOutput(html) {
+      const panel = document.getElementById('tools-panel');
+      const out = document.getElementById('tools-output');
+      panel.style.display = 'block';
+      out.innerHTML = html;
+    }
+
+    function clearLiveEffects() {
+      if (!map) return;
+      liveEffectLayers.forEach(l => { try { map.removeLayer(l); } catch(e) {} });
+      liveEffectLayers = [];
+      if (radarLayer) { try { map.removeLayer(radarLayer); } catch(e) {} radarLayer = null; }
+    }
+
+    function toggleLiveEffects() {
+      liveEffectsEnabled = !liveEffectsEnabled;
+      const btns = document.querySelectorAll('.signal-tool');
+      btns.forEach(b => b.classList.remove('active'));
+      if (liveEffectsEnabled) {
+        btns[3].classList.add('active');
+        startLiveEffects();
+        showToast('Live effects ON');
+      } else {
+        clearLiveEffects();
+        showToast('Live effects OFF');
+      }
+    }
+
+    function startLiveEffects() {
+      if (!liveEffectsEnabled || !map) return;
+      clearLiveEffects();
+
+      // Radar sweep from laptop position
+      if (laptopMarker) {
+        const lp = laptopMarker.getLatLng();
+        radarLayer = L.circleMarker([lp.lat, lp.lng], {
+          radius: 80, color: '#00d4ff', weight: 1, fillOpacity: 0.05,
+          dashArray: '5,10', className: 'radar-sweep'
+        }).addTo(map);
+        liveEffectLayers.push(radarLayer);
+      }
+
+      // Pulsing beacon dots at WiFi AP positions
+      if (wifiNetworks && wifiNetworks.length > 0) {
+        wifiNetworks.forEach((n, i) => {
+          if (laptopMarker) {
+            const lp = laptopMarker.getLatLng();
+            const angle = (i * 2 * Math.PI) / wifiNetworks.length;
+            const dist = (n.distance || 50) / 111000;
+            const blat = lp.lat + Math.cos(angle) * dist;
+            const blng = lp.lng + Math.sin(angle) * dist / Math.cos(lp.lat * Math.PI / 180);
+            const beacon = L.circleMarker([blat, blng], {
+              radius: 4, color: n.rssi > -50 ? '#00ff88' : n.rssi > -70 ? '#ffaa00' : '#ff4444',
+              fillColor: n.rssi > -50 ? '#00ff88' : n.rssi > -70 ? '#ffaa00' : '#ff4444',
+              fillOpacity: 0.8, weight: 1
+            }).addTo(map);
+            beacon.bindTooltip(n.ssid || 'Hidden' + ' | ' + n.rssi + 'dBm | ' + (n.distance||'?') + 'm');
+            liveEffectLayers.push(beacon);
+
+            // Signal line from laptop to beacon
+            const line = L.polyline([[lp.lat, lp.lng], [blat, blng]], {
+              color: n.rssi > -50 ? '#00ff8866' : n.rssi > -70 ? '#ffaa0066' : '#ff444466',
+              weight: 1, dashArray: '3,6'
+            }).addTo(map);
+            liveEffectLayers.push(line);
+          }
+        });
+      }
+
+      // Signal ping effect at phone position
+      if (phoneMarker) {
+        const pp = phoneMarker.getLatLng();
+        for (let i = 0; i < 3; i++) {
+          setTimeout(() => {
+            if (!liveEffectsEnabled || !map) return;
+            const ping = L.circleMarker([pp.lat, pp.lng], {
+              radius: 10, color: '#00ff88', weight: 1, fillOpacity: 0.15, className: 'signal-ping'
+            }).addTo(map);
+            liveEffectLayers.push(ping);
+            setTimeout(() => { try { map.removeLayer(ping); } catch(e) {} }, 2000);
+          }, i * 600);
+        }
+      }
+
+      // Refresh every 10s
+      setTimeout(() => { if (liveEffectsEnabled) startLiveEffects(); }, 10000);
+    }
+
+    async function runTrilateration() {
+      showToast('Running trilateration...');
+      const nets = wifiNetworks.length > 0 ? wifiNetworks : await scanWifiNetworks();
+      if (nets.length < 3) {
+        showToolsOutput('<div style="color:#ff6b00;">Need 3+ WiFi networks for trilateration. Found: ' + nets.length + '</div>');
+        return;
+      }
+      const output = nets.slice(0, 8).map(n => {
+        const dist = n.distance || SignalEngine.rssiToDistance(n.rssi, -55, 3.5);
+        return '<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid #ffffff11;">' +
+          '<span>' + (n.ssid || 'Hidden') + '</span>' +
+          '<span style="color:' + (n.rssi > -50 ? '#00ff88' : n.rssi > -70 ? '#ffaa00' : '#ff4444') + ';">' + n.rssi + 'dBm</span>' +
+          '<span>' + dist.toFixed(1) + 'm</span>' +
+          '<span style="color:#888;">' + (n.vendor || '') + '</span></div>';
+      }).join('');
+      showToolsOutput('<div style="font-weight:600;margin-bottom:4px;">Trilateration — ' + nets.length + ' APs</div>' +
+        '<div style="color:#888;margin-bottom:4px;">RSSI → Distance conversion using log-distance path loss model</div>' + output);
+      if (liveEffectsEnabled) startLiveEffects();
+    }
+
+    async function runTriangulation() {
+      showToast('Running triangulation...');
+      const nets = wifiNetworks.length > 0 ? wifiNetworks : await scanWifiNetworks();
+      if (nets.length < 2) {
+        showToolsOutput('<div style="color:#ff6b00;">Need 2+ WiFi networks for triangulation. Found: ' + nets.length + '</div>');
+        return;
+      }
+      const output = nets.slice(0, 6).map((n, i) => {
+        const angle = (i * 360 / Math.min(nets.length, 6)).toFixed(0);
+        return '<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid #ffffff11;">' +
+          '<span>' + (n.ssid || 'Hidden') + '</span>' +
+          '<span>Angle: ' + angle + '°</span>' +
+          '<span style="color:#00d4ff;">' + n.rssi + 'dBm</span></div>';
+      }).join('');
+      showToolsOutput('<div style="font-weight:600;margin-bottom:4px;">Triangulation — ' + nets.length + ' APs</div>' +
+        '<div style="color:#888;margin-bottom:4px;">Angle-of-arrival estimation from signal strength distribution</div>' + output);
+      if (liveEffectsEnabled) startLiveEffects();
+    }
+
+    async function runSignalScan() {
+      showToast('Scanning signals...');
+      const nets = await scanWifiNetworks();
+      let html = '<div style="font-weight:600;margin-bottom:4px;">WiFi Scan — ' + nets.length + ' networks</div>';
+      if (nets.length > 0) {
+        html += nets.map(n => {
+          const bar = Math.min(100, Math.max(5, n.rssi + 100));
+          return '<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid #ffffff11;">' +
+            '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + (n.ssid || 'Hidden') + '</span>' +
+            '<span style="width:80px;background:#ffffff11;height:6px;border-radius:3px;margin:0 6px;position:relative;">' +
+              '<span style="width:' + bar + '%;height:100%;background:' + (n.rssi > -50 ? '#00ff88' : n.rssi > -70 ? '#ffaa00' : '#ff4444') + ';border-radius:3px;display:block;"></span></span>' +
+            '<span style="width:60px;text-align:right;color:' + (n.rssi > -50 ? '#00ff88' : n.rssi > -70 ? '#ffaa00' : '#ff4444') + ';">' + n.rssi + 'dBm</span>' +
+            '<span style="width:50px;text-align:right;">' + (n.distance || '?') + 'm</span>' +
+          '</div>';
+        }).join('');
+      } else {
+        html += '<div style="color:#888;">No networks found</div>';
+      }
+      showToolsOutput(html);
+      if (liveEffectsEnabled) startLiveEffects();
     }
 
     function sendCommand(type) {

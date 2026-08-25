@@ -204,6 +204,9 @@ app.post('/api/verify', async (req, res) => {
       data: { isPaired: true, pairedAt: Date.now() },
     });
 
+    // Invalidate cached paired status so laptop detects pairing immediately
+    cache.delete('paired:' + codeRecord.deviceId);
+
     const deviceRecord = await prisma.device.findUnique({
       where: { deviceId: codeRecord.deviceId },
     });
@@ -225,6 +228,14 @@ app.post('/api/verify', async (req, res) => {
     });
 
     console.log(`Verified & Paired: ${pairCode}`);
+
+    // Notify laptop via WebSocket that pairing is complete
+    if (deviceSockets.has(codeRecord.deviceId)) {
+      const laptopWs = deviceSockets.get(codeRecord.deviceId);
+      if (laptopWs.readyState === WebSocket.OPEN) {
+        laptopWs.send(JSON.stringify({ type: 'paired', phoneDeviceId }));
+      }
+    }
 
     res.json(sanitize({
       success: true,
