@@ -9,6 +9,23 @@ const PORT = process.env.PORT || 9999;
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
 
+// ============= BIGINT HELPERS =============
+function toNum(val) {
+  return typeof val === 'bigint' ? Number(val) : val;
+}
+
+function sanitize(obj) {
+  if (obj === null || obj === undefined) return obj;
+  if (typeof obj === 'bigint') return Number(obj);
+  if (Array.isArray(obj)) return obj.map(sanitize);
+  if (typeof obj === 'object') {
+    const out = {};
+    for (const [k, v] of Object.entries(obj)) out[k] = sanitize(v);
+    return out;
+  }
+  return obj;
+}
+
 // ============= DATABASE =============
 const prisma = new PrismaClient({
   datasources: {
@@ -125,14 +142,14 @@ app.post('/api/verify', async (req, res) => {
 
     console.log(`Verified & Paired: ${pairCode}`);
 
-    res.json({
+    res.json(sanitize({
       success: true,
       verified: true,
       laptopDeviceId: codeRecord.deviceId,
       phoneDeviceId,
       deviceInfo: deviceRecord ? JSON.parse(deviceRecord.systemInfo || '{}') : null,
       laptopLocation: locationRecord || null,
-    });
+    }));
   } catch (e) {
     console.error(e);
     res.status(500).json({ success: false, error: e.message });
@@ -346,14 +363,14 @@ app.get('/api/status/:deviceId', async (req, res) => {
       });
     }
 
-    res.json({
+    res.json(sanitize({
       success: true,
       isOnline,
       lastSeen: deviceRecord.lastSeen,
       systemInfo: JSON.parse(deviceRecord.systemInfo || '{}'),
       myLocation: locationRecord || null,
       pairedLocation,
-    });
+    }));
   } catch (e) {
     console.error(e);
     res.status(500).json({ success: false, error: e.message });
