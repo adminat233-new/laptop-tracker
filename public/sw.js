@@ -1,4 +1,4 @@
-const CACHE_NAME = 'laptop-tracker-v13-nativeagents';
+const CACHE_NAME = 'laptop-tracker-v14-history';
 const LOCATION_INTERVAL = 10000;
 let locationTimer = null;
 let trackedDeviceId = null;

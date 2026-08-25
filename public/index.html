@@ -870,6 +870,9 @@
     }
 
     function startRealTimeTracking() {
+      // Load location history on start
+      loadLocationHistory();
+
       setInterval(async () => {
         if (!laptopDeviceId || !map) return;
         try {
@@ -881,6 +884,27 @@
           }
         } catch (e) {}
       }, 10000);
+    }
+
+    async function loadLocationHistory() {
+      if (!laptopDeviceId) return;
+      try {
+        const data = await apiGet('/api/history/' + laptopDeviceId + '?hours=24&limit=200');
+        if (data.success && data.history && data.history.length >= 2) {
+          const points = data.history.reverse().map(h => [h.lat, h.lng]);
+          if (window._laptopHistoryLine) window._laptopHistoryLine.setLatLngs(points);
+          else window._laptopHistoryLine = L.polyline(points, { color: '#7c3aed', weight: 2, opacity: 0.5, dashArray: '5,10' }).addTo(map);
+
+          // Add small dots for history points
+          data.history.forEach((h, i) => {
+            if (i % 5 === 0) { // Every 5th point
+              L.circleMarker([h.lat, h.lng], {
+                radius: 2, fillColor: '#7c3aed', fillOpacity: 0.4, stroke: false
+              }).addTo(map);
+            }
+          });
+        }
+      } catch (e) {}
     }
 
     async function executeCommand(type, params) {
