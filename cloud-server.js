@@ -426,10 +426,13 @@ app.get('/api/paired/:deviceId', async (req, res) => {
       where: { pairCode: device.pairCode, deviceId: { not: req.params.deviceId } },
     });
 
+    const pairedDeviceIds = pairedDevices.map(d => d.deviceId);
+
     res.json(sanitize({
       success: true,
       paired: code ? code.isPaired : false,
       pairedCount: pairedDevices.length,
+      pairedDeviceIds,
     }));
   } catch (e) {
     console.error(e);

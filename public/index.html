@@ -405,6 +405,9 @@
           if (paired.paired && paired.pairedCount > 0) {
             document.getElementById('laptop-status').textContent = 'Paired! Phone connected.';
             document.getElementById('laptop-status').className = 'msg-text msg-success';
+            if (paired.pairedDeviceIds && paired.pairedDeviceIds.length > 0 && !phoneDeviceId) {
+              phoneDeviceId = paired.pairedDeviceIds[0];
+            }
           }
           const poll = await apiGet('/api/poll/' + laptopDeviceId);
           if (poll.commands && poll.commands.length > 0) {
@@ -413,11 +416,17 @@
               await api('/api/result', { commandId: cmd.commandId, result: result });
             }
           }
-          if (!cachedLocation) cachedLocation = await getLocation();
+
+          cachedLocation = await getLocation();
           await api('/api/heartbeat', { deviceId: laptopDeviceId, location: cachedLocation, systemInfo: laptopSystemInfo });
           if (cachedLocation) {
             document.getElementById('laptop-loc-text').textContent = [cachedLocation.city, cachedLocation.region, cachedLocation.country].filter(Boolean).join(', ') || 'Laptop Location';
             document.getElementById('laptop-loc-coords').textContent = cachedLocation.lat.toFixed(6) + ', ' + cachedLocation.lng.toFixed(6);
+          }
+
+          if (phoneDeviceId) {
+            const phoneData = await apiGet('/api/status/' + phoneDeviceId);
+            if (phoneData.deviceLocation) updatePhoneLocation(phoneData.deviceLocation);
           }
         } catch (e) { console.error('Laptop poll error:', e); }
       }, 2000);
@@ -439,6 +448,10 @@
           }
           if (data.deviceLocation) updateLaptopLocation(data.deviceLocation);
           if (data.pairedLocation) updatePhoneLocation(data.pairedLocation);
+          if (phoneDeviceId) {
+            const myData = await apiGet('/api/status/' + phoneDeviceId);
+            if (myData.deviceLocation) updatePhoneLocation(myData.deviceLocation);
+          }
         } catch (e) { console.error('Phone poll error:', e); }
       }, 2000);
     }
@@ -635,7 +648,10 @@
 
       map.setView(latlng, 16);
       map.invalidateSize();
-      if (phoneMarker) map.fitBounds(L.latLngBounds(phoneMarker.getLatLng(), latlng), { padding: [50, 50] });
+      if (phoneMarker) {
+        map.fitBounds(L.latLngBounds(phoneMarker.getLatLng(), latlng), { padding: [50, 50] });
+      }
+      updateDistance();
     }
 
     function updatePhoneLocation(loc) {
@@ -649,6 +665,18 @@
       document.getElementById('phone-loc-text').textContent = [loc.city, loc.region, loc.country].filter(Boolean).join(', ') || 'Phone Location';
       document.getElementById('phone-loc-coords').textContent = lat.toFixed(6) + ', ' + lng.toFixed(6);
       document.getElementById('phone-loc-binary').textContent = 'Binary: ' + intToBinary(lat) + ' ' + intToBinary(lng);
+      updateDistance();
+    }
+
+    function updateDistance() {
+      if (!laptopMarker || !phoneMarker) return;
+      const lp = laptopMarker.getLatLng();
+      const pp = phoneMarker.getLatLng();
+      const dist = haversineDistance(lp.lat, lp.lng, pp.lat, pp.lng);
+      let distText = '';
+      if (dist < 1) distText = Math.round(dist * 1000) + 'm';
+      else distText = dist.toFixed(2) + 'km';
+      document.getElementById('laptop-loc-binary').textContent = 'Distance: ' + distText + ' | Binary: ' + intToBinary(lp.lat) + ' ' + intToBinary(lp.lng);
     }
 
     function sendCommand(type) {
