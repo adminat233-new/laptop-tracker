@@ -10,10 +10,15 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
 
 // ============= DATABASE =============
+console.log('Connecting to database...');
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL?.replace(':5432:', ':6543:'),
+  connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false },
   family: 4
+});
+
+pool.on('error', (err) => {
+  console.error('Database pool error:', err.message);
 });
 
 async function initDB() {
