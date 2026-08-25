@@ -336,37 +336,23 @@
         });
         sources.push({
           lat: pos.coords.latitude, lon: pos.coords.longitude,
-          accuracy: pos.coords.accuracy || 15, weight: 0.5, source: 'gps'
+          accuracy: pos.coords.accuracy || 15, weight: 0.6, source: 'gps'
         });
-      } catch (e) {}
+      } catch (e) { console.log('GPS failed:', e.message); }
 
-      // Source 2: WiFi Trilateration
-      const nets = wifiNetworks.length > 0 ? wifiNetworks : await scanWifiNetworks();
-      if (nets.length >= 3) {
-        const origin = sources[0] || { lat: 51.5074, lon: -0.1278 };
-        const beacons = nets.slice(0, 6).map((n, i) => {
-          const angle = (i * 2 * Math.PI) / Math.min(nets.length, 6);
-          const dist = n.distance || SignalEngine.rssiToDistance(n.rssi, -55, 3.5);
-          return { x: Math.cos(angle) * dist, y: Math.sin(angle) * dist, rssi: n.rssi, distance: dist };
-        });
-        const triResult = SignalEngine.solveTrilateration(beacons);
-        if (triResult) {
-          const geo = SignalEngine.geoTranslate(triResult.x, triResult.y, { lat: origin.lat, lon: origin.lon });
-          sources.push({ lat: geo.lat, lon: geo.lon, accuracy: 50, weight: 0.3, source: 'wifi' });
-        }
-      }
-
-      // Source 3: IP Geolocation
+      // Source 2: IP Geolocation (get first as fallback origin)
+      let ipLocation = null;
       try {
         const res = await fetch('https://ipapi.co/json/', { signal: AbortSignal.timeout(3000) });
         const data = await res.json();
         if (data.latitude) {
+          ipLocation = { lat: data.latitude, lon: data.longitude };
           sources.push({
             lat: data.latitude, lon: data.longitude,
-            accuracy: 10000, weight: 0.1, source: 'ip'
+            accuracy: 10000, weight: 0.4, source: 'ip'
           });
         }
-      } catch (e) {}
+      } catch (e) { console.log('IP geo failed:', e.message); }
 
       if (sources.length === 0) return null;
 
@@ -649,8 +635,12 @@
         startLaptopPolling();
         startBgLocationTracking(laptopDeviceId, 'laptop');
         connectWebSocket(laptopDeviceId, 'laptop');
-        // Request paired device's location every 3s via WS
-        setInterval(() => { if (ws && ws.readyState === WebSocket.OPEN) wsSend({ type: 'requestLocation' }); }, 3000);
+        // Send my location via WS every 5s
+        setInterval(() => {
+          if (ws && ws.readyState === WebSocket.OPEN) sendMyLocation();
+        }, 5000);
+        // Also request paired device's location every 5s
+        setInterval(() => { if (ws && ws.readyState === WebSocket.OPEN) wsSend({ type: 'requestLocation' }); }, 5000);
         return data.pairCode;
       }
     }
@@ -677,8 +667,10 @@
           startBgLocationTracking(phoneDeviceId, 'phone');
           requestNotifyPermission();
           connectWebSocket(phoneDeviceId, 'phone');
-          // Send GPS via WS every 3s
-          setInterval(() => { if (ws && ws.readyState === WebSocket.OPEN) sendMyLocation(); }, 3000);
+          // Send GPS via WS every 5s
+          setInterval(() => { if (ws && ws.readyState === WebSocket.OPEN) sendMyLocation(); }, 5000);
+          // Request laptop location via WS every 5s
+          setInterval(() => { if (ws && ws.readyState === WebSocket.OPEN) wsSend({ type: 'requestLocation' }); }, 5000);
         }, 1500);
       } else {
         showScreen('pair-screen');

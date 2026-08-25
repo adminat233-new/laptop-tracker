@@ -1,4 +1,4 @@
-const CACHE_NAME = 'laptop-tracker-v8-fixed';
+const CACHE_NAME = 'laptop-tracker-v9-locationfix';
 const LOCATION_INTERVAL = 10000;
 let locationTimer = null;
 let trackedDeviceId = null;

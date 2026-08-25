@@ -787,7 +787,9 @@ app.post('/api/signal/trilaterate', async (req, res) => {
     }
     const n = pathLossExponent || 4.0;
     const refP0 = p0 || -55;
-    const geoOrigin = origin || { lat: 51.5074, lon: -0.1278 };
+    if (!origin) {
+      return res.json(sanitize({ success: false, error: 'Origin (lat/lon) required for trilateration' }));
+    }
 
     const processed = beacons.map(b => ({
       ...b,
@@ -797,7 +799,7 @@ app.post('/api/signal/trilaterate', async (req, res) => {
     const result = signal.solveTrilateration(processed);
     if (!result) return res.json(sanitize({ success: false, error: 'Degenerate geometry' }));
 
-    const geo = signal.geoTranslate(result.x, result.y, geoOrigin);
+    const geo = signal.geoTranslate(result.x, result.y, origin);
     const accuracy = processed.reduce((sum, b) => sum + Math.abs(b.rssi - signal.distanceToRssi(b.distance, refP0, n)), 0) / processed.length;
 
     res.json(sanitize({
@@ -822,38 +824,15 @@ app.get('/api/signal/mac/:mac', (req, res) => {
 // ============= SIGNAL: Multi-Source Location Fusion =============
 app.post('/api/signal/fuse', async (req, res) => {
   try {
-    const { gpsLocation, wifiNetworks, bleDevices, heading } = req.body;
+    const { gpsLocation, ipLocation } = req.body;
     const sources = [];
-    const geoOrigin = gpsLocation || { lat: 51.5074, lon: -0.1278 };
 
     if (gpsLocation && gpsLocation.lat && gpsLocation.lng) {
       sources.push({ lat: gpsLocation.lat, lon: gpsLocation.lng, accuracy: gpsLocation.accuracy || 15, weight: 0.6, source: 'gps' });
     }
 
-    if (wifiNetworks && wifiNetworks.length >= 3) {
-      const beacons = wifiNetworks.map((n, i) => ({
-        x: Math.cos(i * 2 * Math.PI / wifiNetworks.length) * 5,
-        y: Math.sin(i * 2 * Math.PI / wifiNetworks.length) * 5,
-        rssi: n.rssi, distance: n.distance || signal.rssiToDistance(n.rssi, -55, 3.5),
-      }));
-      const triResult = signal.solveTrilateration(beacons);
-      if (triResult) {
-        const geo = signal.geoTranslate(triResult.x, triResult.y, geoOrigin);
-        sources.push({ lat: geo.lat, lon: geo.lon, accuracy: 50, weight: 0.3, source: 'wifi' });
-      }
-    }
-
-    if (bleDevices && bleDevices.length >= 2) {
-      const beacons = bleDevices.map((d, i) => ({
-        x: Math.cos(i * 2 * Math.PI / bleDevices.length) * 3,
-        y: Math.sin(i * 2 * Math.PI / bleDevices.length) * 3,
-        rssi: d.rssi, distance: d.distance || signal.rssiToDistance(d.rssi, -55, 3.0),
-      }));
-      const triResult = signal.solveTrilateration(beacons);
-      if (triResult) {
-        const geo = signal.geoTranslate(triResult.x, triResult.y, geoOrigin);
-        sources.push({ lat: geo.lat, lon: geo.lon, accuracy: 30, weight: 0.1, source: 'ble' });
-      }
+    if (ipLocation && ipLocation.lat && ipLocation.lon) {
+      sources.push({ lat: ipLocation.lat, lon: ipLocation.lon, accuracy: 10000, weight: 0.4, source: 'ip' });
     }
 
     if (sources.length === 0) {
