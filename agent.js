@@ -107,25 +107,27 @@ async function getWifiLocation() {
 }
 
 async function getIpLocation() {
-  try {
-    const result = await runCommand('curl -s --max-time 5 https://ipapi.co/json/', 8000);
-    if (result.success) {
-      const data = JSON.parse(result.stdout);
-      if (data.latitude && data.longitude) {
-        return {
-          lat: data.latitude,
-          lng: data.longitude,
-          accuracy: 5000,
-          source: 'ip-geolocation',
-          city: data.city,
-          region: data.region,
-          country: data.country_name
-        };
+  const services = [
+    { url: 'https://ip-api.com/json/', parse: (d) => ({ lat: d.lat, lng: d.lon, city: d.city, region: d.regionName, country: d.country }) },
+    { url: 'https://ipapi.co/json/', parse: (d) => ({ lat: d.latitude, lng: d.longitude, city: d.city, region: d.region, country: d.country_name }) },
+    { url: 'https://ipwho.is/', parse: (d) => ({ lat: d.latitude, lng: d.longitude, city: d.city, region: d.region, country: d.country }) },
+    { url: 'https://freeipapi.com/api/json', parse: (d) => ({ lat: d.latitude, lng: d.longitude, city: d.city, region: d.regionName, country: d.countryName }) },
+  ];
+
+  for (const svc of services) {
+    try {
+      const result = await runCommand(`curl -s --max-time 5 "${svc.url}"`, 8000);
+      if (result.success && result.stdout && result.stdout.startsWith('{')) {
+        const data = JSON.parse(result.stdout);
+        const parsed = svc.parse(data);
+        if (parsed.lat && parsed.lng && parsed.lat !== 0) {
+          log('info', `IP location: ${parsed.city}, ${parsed.country} via ${svc.url}`);
+          return { ...parsed, accuracy: 5000, source: 'ip-geolocation' };
+        }
       }
-    }
-  } catch (e) {
-    log('warn', 'IP geolocation failed:', e.message);
+    } catch (e) {}
   }
+  log('warn', 'All IP geolocation services failed');
   return null;
 }
 
