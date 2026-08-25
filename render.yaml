@@ -6,5 +6,5 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
-      - key: TRACKER_PIN
-        value: "1234"
+      - key: DATABASE_URL
+        sync: false
