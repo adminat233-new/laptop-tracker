@@ -1,4 +1,5 @@
-import { Platform, PermissionsAndroid, NativeModules, NativeEventEmitter } from 'react-native';
+import { Platform, PermissionsAndroid } from 'react-native';
+import Geolocation from 'react-native-geolocation-service';
 import { ServerService } from './ServerService';
 
 const LOCATION_INTERVAL = 5000;
@@ -22,22 +23,31 @@ export class LocationService {
       }
     }
 
-    navigator.geolocation.watchPosition(
+    LocationService.watchId = Geolocation.watchPosition(
       (pos) => {
-        const { latitude, longitude, accuracy } = pos.coords;
+        const { latitude, longitude, accuracy, speed, heading } = pos.coords;
         const loc = {
           lat: latitude,
           lng: longitude,
           intLat: Math.round(latitude * 1000000),
           intLng: Math.round(longitude * 1000000),
           accuracy: accuracy || 10,
+          speed: speed || 0,
+          heading: heading || 0,
           source: 'gps',
         };
         LocationService.lastLocation = loc;
         serverService.sendLocation(loc);
       },
       (err) => console.log('[Location] Error:', err.message),
-      { enableHighAccuracy: true, distanceFilter: 5, interval: LOCATION_INTERVAL, fastestInterval: 2000 }
+      {
+        enableHighAccuracy: true,
+        distanceFilter: 5,
+        interval: LOCATION_INTERVAL,
+        fastestInterval: 2000,
+        showLocationDialog: true,
+        forceRequestLocation: true,
+      }
     );
 
     LocationService.bgTimer = setInterval(() => {
@@ -49,7 +59,7 @@ export class LocationService {
 
   static stopTracking() {
     if (LocationService.watchId !== null) {
-      navigator.geolocation.clearWatch(LocationService.watchId);
+      Geolocation.clearWatch(LocationService.watchId);
       LocationService.watchId = null;
     }
     if (LocationService.bgTimer) {
