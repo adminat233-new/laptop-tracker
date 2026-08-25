@@ -2238,41 +2238,35 @@
       }
     });
 
-    if (isLaptop) {
-      document.getElementById('pair-title').textContent = 'Laptop Mode';
-      document.getElementById('pair-subtitle').textContent = 'Generate code, share with phone';
-      document.getElementById('laptop-section').classList.remove('hidden');
-      generateCode();
-      // Auto-request location permission on laptop load
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-          (pos) => {
-            console.log('Location granted:', pos.coords.latitude, pos.coords.longitude);
-            const gpsFix = LocationTracker.updateGps(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy || 10);
-            cachedLocation = { lat: gpsFix.lat, lng: gpsFix.lng, accuracy: gpsFix.accuracy, source: 'gps',
-              intLat: Math.round(gpsFix.lat * 1000000), intLng: Math.round(gpsFix.lng * 1000000) };
-            if (ws && ws.readyState === WebSocket.OPEN) wsSend({ type: 'location', location: cachedLocation });
-            document.getElementById('loc-grant-btn').style.display = 'none';
-          },
-          (err) => {
-            console.log('Location denied:', err.message);
-            document.getElementById('loc-grant-btn').style.display = 'block';
-          },
-          { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-        );
-      }
-      document.getElementById('generate-btn').addEventListener('click', generateCode);
-      document.getElementById('copy-code-btn').addEventListener('click', () => {
-        navigator.clipboard?.writeText(document.getElementById('code-display').textContent);
-        showToast('Copied!');
-      });
-    } else {
-      document.getElementById('pair-title').textContent = 'Connect to Laptop';
-      document.getElementById('pair-subtitle').textContent = 'Enter 8-character code from laptop';
-      document.getElementById('phone-section').classList.remove('hidden');
-      createInputBoxes();
-      document.getElementById('connect-btn').addEventListener('click', tryConnect);
+    // Always show laptop interface and generate code
+    isLaptop = true;
+    document.getElementById('pair-title').textContent = 'Laptop Mode';
+    document.getElementById('pair-subtitle').textContent = 'Generate code, share with phone';
+    document.getElementById('laptop-section').classList.remove('hidden');
+    generateCode();
+    // Auto-request location permission on load
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          console.log('Location granted:', pos.coords.latitude, pos.coords.longitude);
+          const gpsFix = LocationTracker.updateGps(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy || 10);
+          cachedLocation = { lat: gpsFix.lat, lng: gpsFix.lng, accuracy: gpsFix.accuracy, source: 'gps',
+            intLat: Math.round(gpsFix.lat * 1000000), intLng: Math.round(gpsFix.lng * 1000000) };
+          if (ws && ws.readyState === WebSocket.OPEN) wsSend({ type: 'location', location: cachedLocation });
+          document.getElementById('loc-grant-btn').style.display = 'none';
+        },
+        (err) => {
+          console.log('Location denied:', err.message);
+          document.getElementById('loc-grant-btn').style.display = 'block';
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
     }
+    document.getElementById('generate-btn').addEventListener('click', generateCode);
+    document.getElementById('copy-code-btn').addEventListener('click', () => {
+      navigator.clipboard?.writeText(document.getElementById('code-display').textContent);
+      showToast('Copied!');
+    });
   </script>
 </body>
 </html>
