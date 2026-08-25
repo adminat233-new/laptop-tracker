@@ -11,14 +11,12 @@ app.use(express.json());
 
 // ============= DATABASE =============
 console.log('Connecting to database...');
+const dbUrl = process.env.DATABASE_URL?.replace(':5432:', ':6543:');
+console.log('DB URL (pooler):', dbUrl?.substring(0, 50) + '...');
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
+  connectionString: dbUrl,
   ssl: { rejectUnauthorized: false },
   family: 4
-});
-
-pool.on('error', (err) => {
-  console.error('Database pool error:', err.message);
 });
 
 async function initDB() {
