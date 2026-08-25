@@ -3,6 +3,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { exec } = require('child_process');
 const { PrismaClient } = require('@prisma/client');
+const signal = require('./signal-engine');
 
 const app = express();
 const PORT = process.env.PORT || 9999;
@@ -655,6 +656,173 @@ app.get('/api/status/:deviceId', async (req, res) => {
       systemInfo: JSON.parse(deviceRecord.systemInfo || '{}'),
       deviceLocation,
       pairedLocation,
+    }));
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// ============= SIGNAL: WiFi Scan with RSSI =============
+app.get('/api/signal/wifi/:deviceId', async (req, res) => {
+  try {
+    const platform = process.platform;
+    let networks = [];
+
+    if (platform === 'win32') {
+      const { stdout } = await new Promise((resolve, reject) => {
+        exec('netsh wlan show networks mode=bssid', { timeout: 10000 }, (err, stdout, stderr) => {
+          if (err) reject(err); else resolve({ stdout: stdout || '', stderr: stderr || '' });
+        });
+      });
+      let current = {};
+      for (const line of stdout.split('\n')) {
+        const t = line.trim();
+        if (t.startsWith('SSID') && !t.includes('BSSID')) {
+          if (current.ssid) networks.push(current);
+          current = { ssid: t.split(':').slice(1).join(':').trim() };
+        } else if (t.startsWith('BSSID')) current.bssid = t.split(':').slice(1).join(':').trim();
+        else if (t.startsWith('Signal')) current.signal = parseInt(t.split(':').pop().trim().replace('%',''));
+        else if (t.startsWith('Frequency')) current.frequency = t.split(':').slice(1).join(':').trim();
+        else if (t.startsWith('Channel')) current.channel = parseInt(t.split(':').pop().trim());
+        else if (t.startsWith('Radio type')) current.type = t.split(':').slice(1).join(':').trim();
+      }
+      if (current.ssid) networks.push(current);
+      networks = networks.map(n => ({
+        ...n,
+        rssi: n.signal != null ? Math.round((n.signal / 2) - 100) : -50,
+        vendor: signal.lookupMacVendor(n.bssid || ''),
+      }));
+    } else {
+      try {
+        const { stdout } = await new Promise((resolve, reject) => {
+          exec('iwlist wlan0 scan 2>/dev/null || iw dev wlan0 scan 2>/dev/null', { timeout: 15000 }, (err, stdout) => {
+            if (err) reject(err); else resolve({ stdout: stdout || '' });
+          });
+        });
+        const cells = stdout.split('Cell');
+        for (const cell of cells) {
+          const ssid = cell.match(/ESSID:"([^"]+)"/);
+          const bssid = cell.match(/Address:\s*([0-9A-F:]{17})/i);
+          const signalMatch = cell.match(/Signal level=(-?\d+)/);
+          const freqMatch = cell.match(/Frequency:(\d+\.\d+)/);
+          if (ssid) networks.push({
+            ssid: ssid[1], bssid: bssid ? bssid[1] : '',
+            rssi: signalMatch ? parseInt(signalMatch[1]) : -50,
+            signal: signalMatch ? Math.round(((parseInt(signalMatch[1])+100)/2)*100/50) : 50,
+            frequency: freqMatch ? freqMatch[1] + ' GHz' : '',
+            vendor: signal.lookupMacVendor(bssid ? bssid[1] : ''),
+          });
+        }
+      } catch (e) {}
+    }
+
+    for (const net of networks) {
+      net.distance = parseFloat(signal.rssiToDistance(net.rssi, -55, 3.5).toFixed(2));
+    }
+
+    await prisma.device.update({ where: { deviceId: req.params.deviceId }, data: { lastSeen: Date.now() } });
+    res.json(sanitize({ success: true, networks, count: networks.length, platform }));
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// ============= SIGNAL: Trilateration Solve =============
+app.post('/api/signal/trilaterate', async (req, res) => {
+  try {
+    const { beacons, origin, pathLossExponent, p0 } = req.body;
+    if (!beacons || beacons.length < 3) {
+      return res.json(sanitize({ success: false, error: 'Need 3+ beacons' }));
+    }
+    const n = pathLossExponent || 4.0;
+    const refP0 = p0 || -55;
+    const geoOrigin = origin || { lat: 51.5074, lon: -0.1278 };
+
+    const processed = beacons.map(b => ({
+      ...b,
+      distance: b.distance || parseFloat(signal.rssiToDistance(b.rssi, refP0, n).toFixed(3)),
+    }));
+
+    const result = signal.solveTrilateration(processed);
+    if (!result) return res.json(sanitize({ success: false, error: 'Degenerate geometry' }));
+
+    const geo = signal.geoTranslate(result.x, result.y, geoOrigin);
+    const accuracy = processed.reduce((sum, b) => sum + Math.abs(b.rssi - signal.distanceToRssi(b.distance, refP0, n)), 0) / processed.length;
+
+    res.json(sanitize({
+      success: true,
+      position: result,
+      geo,
+      accuracy: parseFloat(accuracy.toFixed(1)),
+      beacons: processed,
+    }));
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// ============= SIGNAL: MAC Vendor Lookup =============
+app.get('/api/signal/mac/:mac', (req, res) => {
+  const vendor = signal.lookupMacVendor(req.params.mac);
+  res.json(sanitize({ success: true, mac: req.params.mac, vendor }));
+});
+
+// ============= SIGNAL: Multi-Source Location Fusion =============
+app.post('/api/signal/fuse', async (req, res) => {
+  try {
+    const { gpsLocation, wifiNetworks, bleDevices, heading } = req.body;
+    const sources = [];
+    const geoOrigin = gpsLocation || { lat: 51.5074, lon: -0.1278 };
+
+    if (gpsLocation && gpsLocation.lat && gpsLocation.lng) {
+      sources.push({ lat: gpsLocation.lat, lon: gpsLocation.lng, accuracy: gpsLocation.accuracy || 15, weight: 0.6, source: 'gps' });
+    }
+
+    if (wifiNetworks && wifiNetworks.length >= 3) {
+      const beacons = wifiNetworks.map((n, i) => ({
+        x: Math.cos(i * 2 * Math.PI / wifiNetworks.length) * 5,
+        y: Math.sin(i * 2 * Math.PI / wifiNetworks.length) * 5,
+        rssi: n.rssi, distance: n.distance || signal.rssiToDistance(n.rssi, -55, 3.5),
+      }));
+      const triResult = signal.solveTrilateration(beacons);
+      if (triResult) {
+        const geo = signal.geoTranslate(triResult.x, triResult.y, geoOrigin);
+        sources.push({ lat: geo.lat, lon: geo.lon, accuracy: 50, weight: 0.3, source: 'wifi' });
+      }
+    }
+
+    if (bleDevices && bleDevices.length >= 2) {
+      const beacons = bleDevices.map((d, i) => ({
+        x: Math.cos(i * 2 * Math.PI / bleDevices.length) * 3,
+        y: Math.sin(i * 2 * Math.PI / bleDevices.length) * 3,
+        rssi: d.rssi, distance: d.distance || signal.rssiToDistance(d.rssi, -55, 3.0),
+      }));
+      const triResult = signal.solveTrilateration(beacons);
+      if (triResult) {
+        const geo = signal.geoTranslate(triResult.x, triResult.y, geoOrigin);
+        sources.push({ lat: geo.lat, lon: geo.lon, accuracy: 30, weight: 0.1, source: 'ble' });
+      }
+    }
+
+    if (sources.length === 0) {
+      return res.json(sanitize({ success: false, error: 'No location sources available' }));
+    }
+
+    let totalWeight = sources.reduce((s, src) => s + src.weight, 0);
+    let fusedLat = 0, fusedLon = 0;
+    for (const src of sources) {
+      fusedLat += src.lat * (src.weight / totalWeight);
+      fusedLon += src.lon * (src.weight / totalWeight);
+    }
+    const avgAccuracy = sources.reduce((s, src) => s + src.accuracy, 0) / sources.length;
+
+    res.json(sanitize({
+      success: true,
+      fused: { lat: fusedLat, lon: fusedLon, accuracy: avgAccuracy },
+      sources,
     }));
   } catch (e) {
     console.error(e);
