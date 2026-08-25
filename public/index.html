@@ -421,8 +421,8 @@
           // Execute commands immediately
           if (poll.commands && poll.commands.length > 0) {
             for (const cmd of poll.commands) {
-              const result = executeCommand(cmd.commandType, cmd.params);
-              api('/api/result', { commandId: cmd.commandId, result: result });
+              const result = await executeCommand(cmd.commandType, cmd.params);
+              await api('/api/result', { commandId: cmd.commandId, result: result });
             }
           }
 
@@ -454,12 +454,9 @@
     }
 
     function startPhonePolling() {
-      let lastHeartbeat = 0;
-
       setInterval(async () => {
         if (!laptopDeviceId) return;
         try {
-          // Get laptop status
           const data = await apiGet('/api/status/' + laptopDeviceId);
           document.getElementById('status-dot').className = data.isOnline ? 'status-dot' : 'status-dot offline';
           document.getElementById('status-text').textContent = data.isOnline ? 'Online' : 'Offline';
@@ -470,25 +467,8 @@
             if (data.systemInfo.memory) document.getElementById('stat-ram').textContent = data.systemInfo.memory;
           }
           if (data.deviceLocation) updateLaptopLocation(data.deviceLocation);
-          if (data.pairedLocation) updatePhoneLocation(data.pairedLocation);
-
-          // Send phone heartbeat every 3s with GPS
-          const now = Date.now();
-          if (now - lastHeartbeat > 3000 && phoneDeviceId) {
-            lastHeartbeat = now;
-            if (navigator.geolocation) {
-              navigator.geolocation.getCurrentPosition(async (pos) => {
-                const locData = {
-                  lat: pos.coords.latitude, lng: pos.coords.longitude,
-                  intLat: Math.round(pos.coords.latitude * 1000000),
-                  intLng: Math.round(pos.coords.longitude * 1000000),
-                  accuracy: pos.coords.accuracy, source: 'gps'
-                };
-                await api('/api/heartbeat', { deviceId: phoneDeviceId, location: locData, systemInfo: { type: 'phone' } });
-                await api('/api/location/phone', { deviceId: phoneDeviceId, location: locData });
-              }, () => {}, { enableHighAccuracy: true, timeout: 5000 });
-            }
-          }
+          // Do NOT overwrite phone's own GPS marker with server data
+          // Phone GPS is always more accurate than what's stored in the server
         } catch (e) { console.error('Phone poll error:', e); }
       }, 2000);
     }
@@ -595,27 +575,40 @@
     }
 
     async function getLocation() {
+      // First try browser GPS
+      try {
+        const pos = await new Promise((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            enableHighAccuracy: true, timeout: 8000, maximumAge: 5000
+          });
+        });
+        const { latitude, longitude, accuracy } = pos.coords;
+        return {
+          lat: latitude, lng: longitude,
+          intLat: Math.round(latitude * 1000000), intLng: Math.round(longitude * 1000000),
+          accuracy: accuracy || 10, city: '', region: '', country: '',
+          source: 'gps',
+          signalStrength: navigator.connection ? navigator.connection.effectiveType : 'unknown',
+          pathLossEstimate: pathLossDistance(-50, 2400, -40),
+        };
+      } catch (e) {
+        // GPS denied, fallback to IP geolocation
+      }
+
+      // Fallback: IP geolocation APIs
       const apis = ['https://ipapi.co/json/', 'https://ipwhois.app/json/', 'https://freeipapi.com/api/json'];
-      const sources = [];
       for (const url of apis) {
         try {
           const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
           const data = await res.json();
           const lat = data.latitude || data.lat;
           const lng = data.longitude || data.lon || data.lng;
-          const accuracy = data.accuracy || 1000;
           if (lat && lng) {
-            sources.push({ lat, lng, accuracy, city: data.city || '', region: data.region || data.region_name || '', country: data.country_name || data.country || '', ip: data.ip || '', source: url });
+            return { lat, lng, accuracy: 1000, city: data.city || '', region: data.region || data.region_name || '', country: data.country_name || data.country || '', ip: data.ip || '', source: 'ip-approx', signalStrength: navigator.connection ? navigator.connection.effectiveType : 'unknown', pathLossEstimate: pathLossDistance(-50, 2400, -40) };
           }
         } catch (e) { continue; }
       }
-      if (sources.length === 0) return null;
-      if (sources.length === 1) return sources[0];
-      if (sources.length >= 3) {
-        const triResult = trilaterate(sources[0], sources[1], sources[2]);
-        if (triResult) return { ...triResult, city: sources[0].city, region: sources[0].region, country: sources[0].country, ip: sources[0].ip, source: 'trilateration', accuracy: triResult.accuracy, signalStrength: navigator.connection ? navigator.connection.effectiveType : 'unknown', pathLossEstimate: pathLossDistance(-50, 2400, -40) };
-      }
-      return triangulateFromIPs(sources);
+      return null;
     }
 
     function initMap() {
@@ -679,15 +672,18 @@
       }
 
       const sourceLabel = loc.source || 'ip';
-      document.getElementById('laptop-loc-text').textContent = [loc.city, loc.region, loc.country].filter(Boolean).join(', ') + ' (' + sourceLabel + ')';
+      const accuracy = loc.accuracy ? ' +/- ' + (loc.accuracy < 1000 ? Math.round(loc.accuracy) + 'm' : (loc.accuracy / 1000).toFixed(1) + 'km') : '';
+      const locParts = [loc.city, loc.region, loc.country].filter(Boolean);
+      document.getElementById('laptop-loc-text').textContent = (locParts.length > 0 ? locParts.join(', ') : 'GPS Coordinates') + ' (' + sourceLabel + accuracy + ')';
       document.getElementById('laptop-loc-coords').textContent = lat.toFixed(6) + ', ' + lng.toFixed(6);
       document.getElementById('laptop-loc-binary').textContent = 'Binary: ' + intToBinary(lat) + ' ' + intToBinary(lng);
 
-      map.setView(latlng, 16);
-      map.invalidateSize();
       if (phoneMarker) {
         map.fitBounds(L.latLngBounds(phoneMarker.getLatLng(), latlng), { padding: [50, 50] });
+      } else {
+        map.setView(latlng, 16);
       }
+      map.invalidateSize();
       updateDistance();
     }
 
@@ -699,7 +695,11 @@
       const latlng = [lat, lng];
       if (phoneMarker) phoneMarker.setLatLng(latlng);
       else phoneMarker = L.marker(latlng, { icon: L.divIcon({ className: 'custom-marker', html: '<div class="marker-phone"></div>', iconSize: [24, 24], iconAnchor: [12, 12] }) }).addTo(map);
-      document.getElementById('phone-loc-text').textContent = [loc.city, loc.region, loc.country].filter(Boolean).join(', ') || 'Phone Location';
+
+      const sourceLabel = loc.source || 'gps';
+      const accuracy = loc.accuracy ? ' +/- ' + Math.round(loc.accuracy) + 'm' : '';
+      const locParts = [loc.city, loc.region, loc.country].filter(Boolean);
+      document.getElementById('phone-loc-text').textContent = (locParts.length > 0 ? locParts.join(', ') : 'GPS Coordinates') + ' (' + sourceLabel + accuracy + ')';
       document.getElementById('phone-loc-coords').textContent = lat.toFixed(6) + ', ' + lng.toFixed(6);
       document.getElementById('phone-loc-binary').textContent = 'Binary: ' + intToBinary(lat) + ' ' + intToBinary(lng);
       updateDistance();
