@@ -398,10 +398,18 @@
     }
 
     function startLaptopPolling() {
+      let lastLocationFetch = 0;
+
       laptopPollInterval = setInterval(async () => {
         if (!laptopDeviceId) return;
         try {
-          const paired = await apiGet('/api/paired/' + laptopDeviceId);
+          // Fire all independent requests in parallel
+          const [paired, poll] = await Promise.all([
+            apiGet('/api/paired/' + laptopDeviceId).catch(() => ({})),
+            apiGet('/api/poll/' + laptopDeviceId).catch(() => ({ commands: [] })),
+          ]);
+
+          // Handle pairing
           if (paired.paired && paired.pairedCount > 0) {
             document.getElementById('laptop-status').textContent = 'Paired! Phone connected.';
             document.getElementById('laptop-status').className = 'msg-text msg-success';
@@ -409,48 +417,77 @@
               phoneDeviceId = paired.pairedDeviceIds[0];
             }
           }
-          const poll = await apiGet('/api/poll/' + laptopDeviceId);
+
+          // Execute commands immediately
           if (poll.commands && poll.commands.length > 0) {
             for (const cmd of poll.commands) {
-              const result = await executeCommand(cmd.commandType, cmd.params);
-              await api('/api/result', { commandId: cmd.commandId, result: result });
+              const result = executeCommand(cmd.commandType, cmd.params);
+              api('/api/result', { commandId: cmd.commandId, result: result });
             }
           }
 
-          cachedLocation = await getLocation();
-          await api('/api/heartbeat', { deviceId: laptopDeviceId, location: cachedLocation, systemInfo: laptopSystemInfo });
-          if (cachedLocation) {
-            document.getElementById('laptop-loc-text').textContent = [cachedLocation.city, cachedLocation.region, cachedLocation.country].filter(Boolean).join(', ') || 'Laptop Location';
-            document.getElementById('laptop-loc-coords').textContent = cachedLocation.lat.toFixed(6) + ', ' + cachedLocation.lng.toFixed(6);
+          // Fetch location every 30s (don't block commands)
+          const now = Date.now();
+          if (now - lastLocationFetch > 30000) {
+            lastLocationFetch = now;
+            getLocation().then(async (loc) => {
+              cachedLocation = loc;
+              if (loc) {
+                await api('/api/heartbeat', { deviceId: laptopDeviceId, location: loc, systemInfo: laptopSystemInfo });
+                document.getElementById('laptop-loc-text').textContent = [loc.city, loc.region, loc.country].filter(Boolean).join(', ') || 'Laptop Location';
+                document.getElementById('laptop-loc-coords').textContent = loc.lat.toFixed(6) + ', ' + loc.lng.toFixed(6);
+              }
+            }).catch(() => {});
           }
 
+          // Send heartbeat even without new location
+          api('/api/heartbeat', { deviceId: laptopDeviceId, location: cachedLocation, systemInfo: laptopSystemInfo }).catch(() => {});
+
+          // Get phone location in parallel
           if (phoneDeviceId) {
-            const phoneData = await apiGet('/api/status/' + phoneDeviceId);
-            if (phoneData.deviceLocation) updatePhoneLocation(phoneData.deviceLocation);
+            apiGet('/api/status/' + phoneDeviceId).then((phoneData) => {
+              if (phoneData.deviceLocation) updatePhoneLocation(phoneData.deviceLocation);
+            }).catch(() => {});
           }
         } catch (e) { console.error('Laptop poll error:', e); }
-      }, 2000);
+      }, 1500);
     }
 
     function startPhonePolling() {
+      let lastHeartbeat = 0;
+
       setInterval(async () => {
         if (!laptopDeviceId) return;
         try {
+          // Get laptop status
           const data = await apiGet('/api/status/' + laptopDeviceId);
           document.getElementById('status-dot').className = data.isOnline ? 'status-dot' : 'status-dot offline';
           document.getElementById('status-text').textContent = data.isOnline ? 'Online' : 'Offline';
           document.getElementById('last-seen').textContent = data.lastSeen ? new Date(Number(data.lastSeen)).toLocaleTimeString() : '--';
-          if (data.systemInfo && data.systemInfo.platform) document.getElementById('device-name').textContent = data.systemInfo.platform;
           if (data.systemInfo) {
+            if (data.systemInfo.platform) document.getElementById('device-name').textContent = data.systemInfo.platform;
             if (data.systemInfo.cores) document.getElementById('stat-cpu').textContent = data.systemInfo.cores + 'C';
             if (data.systemInfo.memory) document.getElementById('stat-ram').textContent = data.systemInfo.memory;
-            if (data.systemInfo.jsHeapSize) document.getElementById('stat-uptime').textContent = data.systemInfo.jsHeapSize;
           }
           if (data.deviceLocation) updateLaptopLocation(data.deviceLocation);
           if (data.pairedLocation) updatePhoneLocation(data.pairedLocation);
-          if (phoneDeviceId) {
-            const myData = await apiGet('/api/status/' + phoneDeviceId);
-            if (myData.deviceLocation) updatePhoneLocation(myData.deviceLocation);
+
+          // Send phone heartbeat every 3s with GPS
+          const now = Date.now();
+          if (now - lastHeartbeat > 3000 && phoneDeviceId) {
+            lastHeartbeat = now;
+            if (navigator.geolocation) {
+              navigator.geolocation.getCurrentPosition(async (pos) => {
+                const locData = {
+                  lat: pos.coords.latitude, lng: pos.coords.longitude,
+                  intLat: Math.round(pos.coords.latitude * 1000000),
+                  intLng: Math.round(pos.coords.longitude * 1000000),
+                  accuracy: pos.coords.accuracy, source: 'gps'
+                };
+                await api('/api/heartbeat', { deviceId: phoneDeviceId, location: locData, systemInfo: { type: 'phone' } });
+                await api('/api/location/phone', { deviceId: phoneDeviceId, location: locData });
+              }, () => {}, { enableHighAccuracy: true, timeout: 5000 });
+            }
           }
         } catch (e) { console.error('Phone poll error:', e); }
       }, 2000);
