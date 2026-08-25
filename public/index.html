@@ -114,6 +114,7 @@
         <div class="binary-display" id="binary-display">Binary: --</div>
         <button class="btn btn-primary" id="generate-btn" style="margin-bottom:8px;">Generate New Code</button>
         <button class="btn btn-secondary" id="copy-code-btn">Copy Code</button>
+        <button class="btn btn-secondary" id="share-link-btn" style="margin-top:4px;background:#00ff8822;color:#00ff88;border:1px solid #00ff8844;">Share Link (opens as phone)</button>
         <p class="msg-text msg-info" id="laptop-status">Waiting for phone...</p>
       </div>
       <div id="phone-section" class="hidden">
@@ -2238,35 +2239,62 @@
       }
     });
 
-    // Always show laptop interface and generate code
-    isLaptop = true;
-    document.getElementById('pair-title').textContent = 'Laptop Mode';
-    document.getElementById('pair-subtitle').textContent = 'Generate code, share with phone';
-    document.getElementById('laptop-section').classList.remove('hidden');
-    generateCode();
-    // Auto-request location permission on load
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          console.log('Location granted:', pos.coords.latitude, pos.coords.longitude);
-          const gpsFix = LocationTracker.updateGps(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy || 10);
-          cachedLocation = { lat: gpsFix.lat, lng: gpsFix.lng, accuracy: gpsFix.accuracy, source: 'gps',
-            intLat: Math.round(gpsFix.lat * 1000000), intLng: Math.round(gpsFix.lng * 1000000) };
-          if (ws && ws.readyState === WebSocket.OPEN) wsSend({ type: 'location', location: cachedLocation });
-          document.getElementById('loc-grant-btn').style.display = 'none';
-        },
-        (err) => {
-          console.log('Location denied:', err.message);
-          document.getElementById('loc-grant-btn').style.display = 'block';
-        },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-      );
+    // Check if URL has ?code= parameter — that means phone
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlCode = urlParams.get('code');
+
+    if (urlCode && urlCode.length >= 4) {
+      // Phone mode — code in URL
+      isLaptop = false;
+      document.getElementById('pair-title').textContent = 'Connect to Laptop';
+      document.getElementById('pair-subtitle').textContent = 'Code detected — verifying...';
+      document.getElementById('phone-section').classList.remove('hidden');
+      createInputBoxes();
+      // Auto-fill the code from URL
+      const boxes = document.querySelectorAll('.code-input');
+      for (let i = 0; i < Math.min(urlCode.length, boxes.length); i++) {
+        boxes[i].value = urlCode[i].toUpperCase();
+      }
+      document.getElementById('connect-btn').addEventListener('click', tryConnect);
+      // Auto-try connect after a short delay
+      setTimeout(() => tryConnect(), 1000);
+    } else {
+      // Laptop mode — no code in URL, generate one
+      isLaptop = true;
+      document.getElementById('pair-title').textContent = 'Laptop Mode';
+      document.getElementById('pair-subtitle').textContent = 'Code generated — share with phone';
+      document.getElementById('laptop-section').classList.remove('hidden');
+      generateCode();
+      // Auto-request location permission on load
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            console.log('Location granted:', pos.coords.latitude, pos.coords.longitude);
+            const gpsFix = LocationTracker.updateGps(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy || 10);
+            cachedLocation = { lat: gpsFix.lat, lng: gpsFix.lng, accuracy: gpsFix.accuracy, source: 'gps',
+              intLat: Math.round(gpsFix.lat * 1000000), intLng: Math.round(gpsFix.lng * 1000000) };
+            if (ws && ws.readyState === WebSocket.OPEN) wsSend({ type: 'location', location: cachedLocation });
+            document.getElementById('loc-grant-btn').style.display = 'none';
+          },
+          (err) => {
+            console.log('Location denied:', err.message);
+            document.getElementById('loc-grant-btn').style.display = 'block';
+          },
+          { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        );
+      }
+      document.getElementById('generate-btn').addEventListener('click', generateCode);
+      document.getElementById('copy-code-btn').addEventListener('click', () => {
+        navigator.clipboard?.writeText(document.getElementById('code-display').textContent);
+        showToast('Copied!');
+      });
+      document.getElementById('share-link-btn').addEventListener('click', () => {
+        const code = document.getElementById('code-display').textContent;
+        const shareUrl = window.location.origin + window.location.pathname + '?code=' + code;
+        navigator.clipboard?.writeText(shareUrl);
+        showToast('Share link copied! Open it on your phone.');
+      });
     }
-    document.getElementById('generate-btn').addEventListener('click', generateCode);
-    document.getElementById('copy-code-btn').addEventListener('click', () => {
-      navigator.clipboard?.writeText(document.getElementById('code-display').textContent);
-      showToast('Copied!');
-    });
   </script>
 </body>
 </html>
