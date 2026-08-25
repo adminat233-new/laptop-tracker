@@ -12,7 +12,7 @@ const execAsync = promisify(exec);
 
 // Configuration
 const SERVER_URL = process.env.SERVER_URL || 'wss://laptop-tracker-k9vi.onrender.com';
-const DEVICE_TYPE = 'laptop';
+const DEVICE_TYPE = 'agent';
 const DEVICE_ID = generateDeviceId();
 const RECONNECT_DELAY = 5000;
 const LOCATION_RATE_LIMIT = 30000;

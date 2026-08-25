@@ -211,6 +211,7 @@
         <button class="action-btn danger" onclick="confirmShutdown()"><span class="icon">&#9211;</span>Off</button>
       </div>
       <div class="section-title">Signal Tools</div>
+      <div id="agent-status" style="font-size:10px;padding:4px 8px;margin-bottom:6px;border-radius:6px;background:#ffffff08;color:#888;">Checking native agent...</div>
       <div class="action-grid">
         <button class="action-btn signal-tool" onclick="runTrilateration()"><span class="icon">&#128205;</span>Trilaterate</button>
         <button class="action-btn signal-tool" onclick="runTriangulation()"><span class="icon">&#128208;</span>Triangulate</button>
@@ -384,8 +385,8 @@
         api('/api/command', { deviceId: laptopDeviceId, commandType: 'wifi-scan' }).catch(() => {});
       }
 
-      // Step 2: Poll server for results (laptop posts results to /api/netscan)
-      for (let i = 0; i < 8; i++) {
+      // Step 2: Poll server for results (agent posts results to /api/netscan)
+      for (let i = 0; i < 10; i++) {
         await new Promise(r => setTimeout(r, 1000));
         try {
           const data = await apiGet('/api/netscan/' + laptopDeviceId);
@@ -2120,6 +2121,33 @@
     }
 
     // Request Notification permission for background alerts
+    async function checkAgentStatus() {
+      const el = document.getElementById('agent-status');
+      if (!el || !laptopDeviceId) return;
+      try {
+        const data = await apiGet('/api/agent-status/' + laptopDeviceId);
+        if (data.agentOnline) {
+          el.style.background = '#00ff8822';
+          el.style.color = '#00ff88';
+          el.style.border = '1px solid #00ff8844';
+          el.innerHTML = '&#9679; Native Agent Online — Shell commands, WiFi scan, ping, BLE available';
+        } else {
+          el.style.background = '#ff6b0022';
+          el.style.color = '#ff6b00';
+          el.style.border = '1px solid #ff6b0044';
+          el.innerHTML = '&#9679; Native Agent Offline — Run <code>node agent.js</code> on the laptop for full signal tools';
+        }
+      } catch (e) {
+        el.style.background = '#ff444422';
+        el.style.color = '#ff4444';
+        el.innerHTML = '&#9679; Agent status unknown';
+      }
+    }
+
+    // Check agent status every 15s
+    setInterval(checkAgentStatus, 15000);
+    setTimeout(checkAgentStatus, 3000);
+
     function forceGrantLocation() {
       if (!navigator.geolocation) {
         showToast('Geolocation not available on this device');

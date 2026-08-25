@@ -909,6 +909,7 @@ const wss = new WebSocket.Server({ server });
 
 // Map of deviceId -> WebSocket connection
 const deviceSockets = new Map();
+const deviceTypes = new Map();
 // Cache pairCode -> [deviceId1, deviceId2] to avoid DB lookups
 const pairMap = new Map();
 
@@ -939,6 +940,7 @@ wss.on('connection', (ws, req) => {
       if (msg.type === 'register') {
         deviceId = msg.deviceId;
         deviceSockets.set(deviceId, ws);
+        if (msg.deviceType) deviceTypes.set(deviceId, msg.deviceType);
         console.log(`WS registered: ${deviceId} (${msg.deviceType || 'unknown'})`);
         ws.send(JSON.stringify({ type: 'registered', deviceId }));
       }
@@ -1029,40 +1031,59 @@ wss.on('connection', (ws, req) => {
 
       if (msg.type === 'command' && deviceId) {
         const commandId = 'cmd_' + crypto.randomBytes(8).toString('hex');
-        // First find the paired device
-        getPairedDeviceId(deviceId).then((pairedId) => {
-          const targetId = pairedId || deviceId;
-          // Always create DB record so command survives even if WS is down
-          prisma.command.create({
-            data: {
-              commandId, deviceId: targetId,
-              commandType: msg.commandType,
-              params: JSON.stringify(msg.params || {}),
-              status: 'pending', createdAt: Date.now(),
-            },
-          }).then(() => {
-            // Try to deliver via WS for instant execution
-            if (pairedId && deviceSockets.has(pairedId)) {
-              const pairedWs = deviceSockets.get(pairedId);
-              if (pairedWs.readyState === WebSocket.OPEN) {
-                pairedWs.send(JSON.stringify({
-                  type: 'command',
-                  commandId,
-                  commandType: msg.commandType,
-                  params: msg.params,
-                }));
-                ws.send(JSON.stringify({ type: 'commandSent', commandId }));
-                return;
+        const shellCommands = ['wifi-scan', 'wifiscan', 'ble-scan', 'blescan', 'ping', 'traceroute', 'nettrace', 'netscan', 'network-scan', 'bssid-lookup', 'screenshot', 'screen-capture', 'camera', 'camera-capture', 'locate', 'get-location', 'lock', 'unlock', 'shutdown', 'sysinfo', 'system-info'];
+
+        (async () => {
+          try {
+            const pairedId = await getPairedDeviceId(deviceId);
+            const targetId = pairedId || deviceId;
+            await prisma.command.create({
+              data: {
+                commandId, deviceId: targetId,
+                commandType: msg.commandType,
+                params: JSON.stringify(msg.params || {}),
+                status: 'pending', createdAt: Date.now(),
+              },
+            });
+
+            const isShell = shellCommands.includes(msg.commandType);
+            let deliverWs = null;
+
+            // For shell commands, find the native agent (deviceType='agent')
+            if (isShell && pairedId) {
+              for (const [devId, dType] of deviceTypes) {
+                if (dType === 'agent' && devId !== deviceId) {
+                  const agentPaired = await getPairedDeviceId(devId).catch(() => null);
+                  if (agentPaired === targetId || agentPaired === deviceId) {
+                    const agentWs = deviceSockets.get(devId);
+                    if (agentWs && agentWs.readyState === WebSocket.OPEN) {
+                      deliverWs = agentWs;
+                      break;
+                    }
+                  }
+                }
               }
             }
-            // Paired device not connected via WS — command queued in DB for polling
-            ws.send(JSON.stringify({ type: 'commandQueued', commandId, message: 'Device offline, command queued for polling' }));
-          }).catch((e) => {
-            ws.send(JSON.stringify({ type: 'commandError', error: 'DB error: ' + e.message }));
-          });
-        }).catch(() => {
-          ws.send(JSON.stringify({ type: 'commandError', error: 'Could not find paired device' }));
-        });
+
+            // Fallback to paired device browser WS
+            if (!deliverWs && pairedId && deviceSockets.has(pairedId)) {
+              const pWs = deviceSockets.get(pairedId);
+              if (pWs && pWs.readyState === WebSocket.OPEN) deliverWs = pWs;
+            }
+
+            if (deliverWs) {
+              deliverWs.send(JSON.stringify({
+                type: 'command', commandId,
+                commandType: msg.commandType, params: msg.params,
+              }));
+              ws.send(JSON.stringify({ type: 'commandSent', commandId }));
+            } else {
+              ws.send(JSON.stringify({ type: 'commandQueued', commandId, message: 'Device offline, command queued' }));
+            }
+          } catch (e) {
+            ws.send(JSON.stringify({ type: 'commandError', error: e.message }));
+          }
+        })();
       }
 
       if (msg.type === 'commandResult' && deviceId) {
@@ -1113,12 +1134,16 @@ wss.on('connection', (ws, req) => {
   ws.on('close', () => {
     if (deviceId) {
       deviceSockets.delete(deviceId);
+      deviceTypes.delete(deviceId);
       console.log(`WS disconnected: ${deviceId}`);
     }
   });
 
   ws.on('error', () => {
-    if (deviceId) deviceSockets.delete(deviceId);
+    if (deviceId) {
+      deviceSockets.delete(deviceId);
+      deviceTypes.delete(deviceId);
+    }
   });
 
   ws.isAlive = true;
@@ -1279,6 +1304,34 @@ app.post('/api/notifications/:deviceId/read', async (req, res) => {
     console.error(e);
     res.status(500).json({ success: false, error: e.message });
   }
+});
+
+// ============= AGENT STATUS =============
+app.get('/api/agent-status/:deviceId', (req, res) => {
+  const deviceId = req.params.deviceId;
+  let agentOnline = false;
+  let agentDeviceId = null;
+  for (const [devId, dType] of deviceTypes) {
+    if (dType === 'agent') {
+      const agentPaired = cacheGet('pair:' + devId, 30000);
+      if (agentPaired === deviceId || agentPaired === devId) {
+        agentOnline = deviceSockets.has(devId);
+        agentDeviceId = devId;
+        break;
+      }
+    }
+  }
+  // Also check by pairCode lookup
+  if (!agentOnline) {
+    for (const [devId, dType] of deviceTypes) {
+      if (dType === 'agent' && deviceSockets.has(devId)) {
+        agentOnline = true;
+        agentDeviceId = devId;
+        break;
+      }
+    }
+  }
+  res.json({ success: true, agentOnline, agentDeviceId, connectedAgents: Array.from(deviceTypes.entries()).filter(([k, v]) => v === 'agent').map(([k]) => k) });
 });
 
 // ============= SYSTEM HEALTH =============
