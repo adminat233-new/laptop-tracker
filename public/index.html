@@ -108,8 +108,27 @@
     <div class="pair-card">
       <div class="pair-icon">&#128279;</div>
       <h1 id="pair-title">Laptop Tracker</h1>
-      <p class="subtitle" id="pair-subtitle">Generate code on laptop, enter on phone</p>
+      <p class="subtitle" id="pair-subtitle">Choose your role</p>
+
+      <div id="role-section">
+        <div style="display:flex;gap:10px;margin:16px 0;">
+          <button class="btn btn-primary" id="role-laptop-btn" style="flex:1;padding:16px;font-size:14px;">
+            <div style="font-size:24px;margin-bottom:4px;">&#128187;</div>
+            I'm the Laptop
+          </button>
+          <button class="btn btn-secondary" id="role-phone-btn" style="flex:1;padding:16px;font-size:14px;">
+            <div style="font-size:24px;margin-bottom:4px;">&#128241;</div>
+            I'm the Phone
+          </button>
+        </div>
+        <p style="color:#888;font-size:10px;text-align:center;">Laptop generates code. Phone enters code.</p>
+      </div>
+
       <div id="laptop-section" class="hidden">
+        <div id="timer-display" style="font-size:28px;font-weight:700;color:#00d4ff;margin:8px 0;display:none;">
+          <span id="timer-text">0:30</span>
+          <div style="font-size:10px;color:#888;font-weight:400;">Pair within this time</div>
+        </div>
         <div class="code-display" id="code-display"></div>
         <div class="binary-display" id="binary-display">Binary: --</div>
         <button class="btn btn-primary" id="generate-btn" style="margin-bottom:8px;">Generate New Code</button>
@@ -117,11 +136,18 @@
         <button class="btn btn-secondary" id="share-link-btn" style="margin-top:4px;background:#00ff8822;color:#00ff88;border:1px solid #00ff8844;">Share Link (opens as phone)</button>
         <p class="msg-text msg-info" id="laptop-status">Waiting for phone...</p>
       </div>
+
       <div id="phone-section" class="hidden">
+        <div id="phone-timer" style="font-size:28px;font-weight:700;color:#00d4ff;margin:8px 0;display:none;">
+          <span id="phone-timer-text">0:30</span>
+          <div style="font-size:10px;color:#888;font-weight:400;">Connecting...</div>
+        </div>
         <div class="code-inputs" id="code-inputs"></div>
         <div class="binary-display" id="phone-binary">Binary: --</div>
         <button class="btn btn-primary" id="connect-btn" disabled>Verify & Connect</button>
+        <p class="msg-text msg-info" id="phone-status">Enter code from laptop</p>
       </div>
+
       <p class="msg-text msg-error" id="pair-error"></p>
     </div>
   </div>
@@ -2239,51 +2265,70 @@
       }
     });
 
-    // Check if URL has ?code= parameter — that means phone
-    const urlParams = new URLSearchParams(window.location.search);
-    const urlCode = urlParams.get('code');
+    // ─── ROLE SELECTION + TIMER ──────────────────────────────────────────
+    let pairTimer = null;
+    const PAIR_TIMEOUT = 30; // seconds
 
-    if (urlCode && urlCode.length >= 4) {
-      // Phone mode — code in URL
-      isLaptop = false;
-      document.getElementById('pair-title').textContent = 'Connect to Laptop';
-      document.getElementById('pair-subtitle').textContent = 'Code detected — verifying...';
-      document.getElementById('phone-section').classList.remove('hidden');
-      createInputBoxes();
-      // Auto-fill the code from URL
-      const boxes = document.querySelectorAll('.code-input');
-      for (let i = 0; i < Math.min(urlCode.length, boxes.length); i++) {
-        boxes[i].value = urlCode[i].toUpperCase();
-      }
-      document.getElementById('connect-btn').addEventListener('click', tryConnect);
-      // Auto-try connect after a short delay
-      setTimeout(() => tryConnect(), 1000);
-    } else {
-      // Laptop mode — no code in URL, generate one
+    function startPairTimer(onTick) {
+      let remaining = PAIR_TIMEOUT;
+      const timerEl = document.getElementById('timer-display');
+      const phoneTimerEl = document.getElementById('phone-timer');
+      if (timerEl) timerEl.style.display = 'block';
+      if (phoneTimerEl) phoneTimerEl.style.display = 'block';
+
+      pairTimer = setInterval(() => {
+        remaining--;
+        const min = Math.floor(remaining / 60);
+        const sec = remaining % 60;
+        const display = min + ':' + (sec < 10 ? '0' : '') + sec;
+        const timerText = document.getElementById('timer-text');
+        const phoneTimerText = document.getElementById('phone-timer-text');
+        if (timerText) timerText.textContent = display;
+        if (phoneTimerText) phoneTimerText.textContent = display;
+        if (remaining <= 10) {
+          if (timerText) timerText.style.color = '#ff4444';
+          if (phoneTimerText) phoneTimerText.style.color = '#ff4444';
+        }
+        if (remaining <= 0) {
+          clearInterval(pairTimer);
+          if (onTick) onTick();
+        }
+      }, 1000);
+    }
+
+    function becomeLaptop() {
       isLaptop = true;
+      document.getElementById('role-section').classList.add('hidden');
+      document.getElementById('laptop-section').classList.remove('hidden');
       document.getElementById('pair-title').textContent = 'Laptop Mode';
       document.getElementById('pair-subtitle').textContent = 'Code generated — share with phone';
-      document.getElementById('laptop-section').classList.remove('hidden');
       generateCode();
-      // Auto-request location permission on load
+      startPairTimer(() => {
+        document.getElementById('laptop-status').textContent = 'Timer expired — click Generate to refresh';
+        document.getElementById('laptop-status').className = 'msg-text msg-error';
+      });
+      // Location
       if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
           (pos) => {
-            console.log('Location granted:', pos.coords.latitude, pos.coords.longitude);
             const gpsFix = LocationTracker.updateGps(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy || 10);
             cachedLocation = { lat: gpsFix.lat, lng: gpsFix.lng, accuracy: gpsFix.accuracy, source: 'gps',
               intLat: Math.round(gpsFix.lat * 1000000), intLng: Math.round(gpsFix.lng * 1000000) };
             if (ws && ws.readyState === WebSocket.OPEN) wsSend({ type: 'location', location: cachedLocation });
             document.getElementById('loc-grant-btn').style.display = 'none';
           },
-          (err) => {
-            console.log('Location denied:', err.message);
-            document.getElementById('loc-grant-btn').style.display = 'block';
-          },
+          () => { document.getElementById('loc-grant-btn').style.display = 'block'; },
           { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
         );
       }
-      document.getElementById('generate-btn').addEventListener('click', generateCode);
+      document.getElementById('generate-btn').addEventListener('click', () => {
+        if (pairTimer) clearInterval(pairTimer);
+        generateCode();
+        startPairTimer(() => {
+          document.getElementById('laptop-status').textContent = 'Timer expired';
+          document.getElementById('laptop-status').className = 'msg-text msg-error';
+        });
+      });
       document.getElementById('copy-code-btn').addEventListener('click', () => {
         navigator.clipboard?.writeText(document.getElementById('code-display').textContent);
         showToast('Copied!');
@@ -2294,6 +2339,39 @@
         navigator.clipboard?.writeText(shareUrl);
         showToast('Share link copied! Open it on your phone.');
       });
+    }
+
+    function becomePhone() {
+      isLaptop = false;
+      document.getElementById('role-section').classList.add('hidden');
+      document.getElementById('phone-section').classList.remove('hidden');
+      document.getElementById('pair-title').textContent = 'Phone Mode';
+      document.getElementById('pair-subtitle').textContent = 'Enter code from laptop';
+      createInputBoxes();
+      startPairTimer(() => {
+        document.getElementById('phone-status').textContent = 'Timer expired — go back and try again';
+        document.getElementById('phone-status').className = 'msg-text msg-error';
+      });
+      document.getElementById('connect-btn').addEventListener('click', tryConnect);
+    }
+
+    // Role selection buttons
+    document.getElementById('role-laptop-btn').addEventListener('click', becomeLaptop);
+    document.getElementById('role-phone-btn').addEventListener('click', becomePhone);
+
+    // Auto-detect from URL ?code= param
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlCode = urlParams.get('code');
+    if (urlCode && urlCode.length >= 4) {
+      // Auto-select phone mode and fill code
+      becomePhone();
+      setTimeout(() => {
+        const boxes = document.querySelectorAll('.code-input');
+        for (let i = 0; i < Math.min(urlCode.length, boxes.length); i++) {
+          boxes[i].value = urlCode[i].toUpperCase();
+        }
+        setTimeout(() => tryConnect(), 500);
+      }, 300);
     }
   </script>
 </body>
