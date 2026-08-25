@@ -382,7 +382,7 @@
         document.getElementById('verify-binary').textContent = 'Matched: ' + codeToBinary(code);
         phoneDeviceId = data.phoneDeviceId;
         laptopDeviceId = data.laptopDeviceId;
-        if (data.laptopLocation) updateLaptopLocation(data.laptopLocation);
+        // Don't show laptop location from verify — wait for live polling
         setTimeout(() => {
           showScreen('dashboard');
           setTimeout(() => { if (!map) initMap(); else map.invalidateSize(); }, 200);
