@@ -454,6 +454,18 @@
             showToast('Command result: ' + msg.result);
           }
 
+          if (msg.type === 'commandSent') {
+            showToast('Command delivered to device!');
+          }
+
+          if (msg.type === 'commandQueued') {
+            showToast('Device offline — command queued for polling');
+          }
+
+          if (msg.type === 'commandError') {
+            showToast('Command failed: ' + (msg.error || 'unknown'));
+          }
+
           if (msg.type === 'locationRequest') {
             // Paired device is asking for our location
             sendMyLocation();
@@ -520,10 +532,6 @@
             wsSend({ type: 'location', location: cachedLocation });
           }
         }
-      });
-    }
-      }).catch(() => {
-        if (cachedLocation) wsSend({ type: 'location', location: cachedLocation });
       });
     }
 
