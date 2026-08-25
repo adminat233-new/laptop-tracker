@@ -982,29 +982,41 @@ wss.on('connection', (ws, req) => {
       }
 
       if (msg.type === 'command' && deviceId) {
+        const commandId = 'cmd_' + crypto.randomBytes(8).toString('hex');
+        // First find the paired device
         getPairedDeviceId(deviceId).then((pairedId) => {
-          if (pairedId && deviceSockets.has(pairedId)) {
-            const pairedWs = deviceSockets.get(pairedId);
-            if (pairedWs.readyState === WebSocket.OPEN) {
-              const commandId = 'cmd_' + crypto.randomBytes(8).toString('hex');
-              prisma.command.create({
-                data: {
-                  commandId, deviceId: pairedId,
+          const targetId = pairedId || deviceId;
+          // Always create DB record so command survives even if WS is down
+          prisma.command.create({
+            data: {
+              commandId, deviceId: targetId,
+              commandType: msg.commandType,
+              params: JSON.stringify(msg.params || {}),
+              status: 'pending', createdAt: Date.now(),
+            },
+          }).then(() => {
+            // Try to deliver via WS for instant execution
+            if (pairedId && deviceSockets.has(pairedId)) {
+              const pairedWs = deviceSockets.get(pairedId);
+              if (pairedWs.readyState === WebSocket.OPEN) {
+                pairedWs.send(JSON.stringify({
+                  type: 'command',
+                  commandId,
                   commandType: msg.commandType,
-                  params: JSON.stringify(msg.params || {}),
-                  status: 'pending', createdAt: Date.now(),
-                },
-              }).catch(() => {});
-              pairedWs.send(JSON.stringify({
-                type: 'command',
-                commandId,
-                commandType: msg.commandType,
-                params: msg.params,
-              }));
-              ws.send(JSON.stringify({ type: 'commandSent', commandId }));
+                  params: msg.params,
+                }));
+                ws.send(JSON.stringify({ type: 'commandSent', commandId }));
+                return;
+              }
             }
-          }
-        }).catch(() => {});
+            // Paired device not connected via WS — command queued in DB for polling
+            ws.send(JSON.stringify({ type: 'commandQueued', commandId, message: 'Device offline, command queued for polling' }));
+          }).catch((e) => {
+            ws.send(JSON.stringify({ type: 'commandError', error: 'DB error: ' + e.message }));
+          });
+        }).catch(() => {
+          ws.send(JSON.stringify({ type: 'commandError', error: 'Could not find paired device' }));
+        });
       }
 
       if (msg.type === 'commandResult' && deviceId) {

@@ -363,21 +363,33 @@
         });
       } catch (e) { console.log('GPS failed:', e.message); }
 
-      // Source 2: IP Geolocation (get first as fallback origin)
-      let ipLocation = null;
-      try {
-        const res = await fetch('https://ipapi.co/json/', { signal: AbortSignal.timeout(3000) });
-        const data = await res.json();
-        if (data.latitude) {
-          ipLocation = { lat: data.latitude, lon: data.longitude };
-          sources.push({
-            lat: data.latitude, lon: data.longitude,
-            accuracy: 10000, weight: 0.4, source: 'ip'
-          });
-        }
-      } catch (e) { console.log('IP geo failed:', e.message); }
+      // Source 2: IP Geolocation (try multiple services)
+      const ipServices = [
+        { url: 'https://ipapi.co/json/', latKey: 'latitude', lonKey: 'longitude' },
+        { url: 'https://ip-api.com/json/', latKey: 'lat', lonKey: 'lon' },
+        { url: 'https://freeipapi.com/api/json', latKey: 'latitude', lonKey: 'longitude' },
+      ];
+      for (const svc of ipServices) {
+        try {
+          const res = await fetch(svc.url, { signal: AbortSignal.timeout(4000) });
+          const data = await res.json();
+          if (data[svc.latKey] && data[svc.lonKey]) {
+            sources.push({
+              lat: data[svc.latKey], lon: data[svc.lonKey],
+              accuracy: 10000, weight: 0.4, source: 'ip'
+            });
+            break;
+          }
+        } catch (e) { console.log('IP geo failed (' + svc.url + '):', e.message); }
+      }
 
-      if (sources.length === 0) return null;
+      if (sources.length === 0) {
+        // Last resort: use cached location or default
+        if (cachedLocation && cachedLocation.lat) {
+          return { lat: cachedLocation.lat, lon: cachedLocation.lng, accuracy: 50000, sources: [{ source: 'cached', accuracy: 50000, weight: 1 }], wifiCount: 0, bleCount: 0 };
+        }
+        return null;
+      }
 
       let totalWeight = sources.reduce((s, src) => s + src.weight, 0);
       let fusedLat = 0, fusedLon = 0;
@@ -478,25 +490,38 @@
     }
 
     function sendMyLocation() {
-      if (!ws || ws.readyState !== WebSocket.OPEN) return;
-      // Use signal engine for precise location
+      // Always try to send location, even without WS (use HTTP fallback)
       computePreciseLocation().then((precise) => {
-        if (precise) {
-          wsSend({
-            type: 'location',
-            location: {
-              lat: precise.lat, lng: precise.lon,
-              accuracy: precise.accuracy,
-              source: precise.sources.map(s => s.source).join('+'),
-              intLat: Math.round(precise.lat * 1000000),
-              intLng: Math.round(precise.lon * 1000000),
-              wifiCount: precise.wifiCount,
-              bleCount: precise.bleCount,
-            },
-          });
-        } else if (cachedLocation) {
-          wsSend({ type: 'location', location: cachedLocation });
+        const loc = precise ? {
+          lat: precise.lat, lng: precise.lon,
+          accuracy: precise.accuracy,
+          source: precise.sources.map(s => s.source).join('+'),
+          intLat: Math.round(precise.lat * 1000000),
+          intLng: Math.round(precise.lon * 1000000),
+          wifiCount: precise.wifiCount,
+          bleCount: precise.bleCount,
+        } : cachedLocation;
+        if (loc) {
+          cachedLocation = loc;
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            wsSend({ type: 'location', location: loc });
+          } else {
+            // HTTP fallback when WS is down
+            fetch('/api/heartbeat', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ deviceId: laptopDeviceId, location: loc, systemInfo: laptopSystemInfo }),
+            }).catch(() => {});
+          }
         }
+      }).catch((e) => {
+        console.log('sendMyLocation error:', e);
+        if (cachedLocation) {
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            wsSend({ type: 'location', location: cachedLocation });
+          }
+        }
+      });
+    }
       }).catch(() => {
         if (cachedLocation) wsSend({ type: 'location', location: cachedLocation });
       });
@@ -670,7 +695,8 @@
         startLaptopPolling();
         startBgLocationTracking(laptopDeviceId, 'laptop');
         connectWebSocket(laptopDeviceId, 'laptop');
-        // Send my location via WS every 5s
+        // Send location immediately, then every 5s
+        setTimeout(() => sendMyLocation(), 2000);
         setInterval(() => {
           if (ws && ws.readyState === WebSocket.OPEN) sendMyLocation();
         }, 5000);
@@ -1266,15 +1292,24 @@
     }
 
     function sendCommand(type) {
-      if (!laptopDeviceId) { showToast('Not connected'); return; }
-      showToast(type + ' sending...');
-      // Try WebSocket first (instant), fall back to HTTP polling
+      // Determine which device we are and which device to target
+      const myDeviceId = isLaptop ? laptopDeviceId : phoneDeviceId;
+      const targetDeviceId = isLaptop ? phoneDeviceId : laptopDeviceId;
+      if (!myDeviceId) { showToast('Not connected'); return; }
+      if (!targetDeviceId) { showToast('No paired device found'); return; }
+      showToast(type + ' sending to ' + (isLaptop ? 'phone' : 'laptop') + '...');
+
+      // Try WebSocket first (instant)
       if (ws && ws.readyState === WebSocket.OPEN) {
         wsSend({ type: 'command', commandType: type });
         showToast(type + ' sent via WS!');
       } else {
-        api('/api/command', { deviceId: laptopDeviceId, commandType: type }).then(data => {
+        // HTTP fallback: queue command in DB for paired device to poll
+        api('/api/command', { deviceId: targetDeviceId, commandType: type }).then(data => {
           if (data.success) showToast(type + ' queued!');
+          else showToast(type + ' failed: ' + (data.error || 'unknown'));
+        }).catch(e => {
+          showToast(type + ' failed to send');
         });
       }
     }
@@ -1313,47 +1348,11 @@
     let bgLocationWatchId = null;
 
     function startBgLocationTracking(deviceId, deviceType) {
-      if (!navigator.geolocation) return;
       if (bgLocationWatchId !== null) return;
 
-      bgLocationWatchId = navigator.geolocation.watchPosition(
-        (pos) => {
-          const { latitude, longitude, accuracy } = pos.coords;
-          const locData = {
-            lat: latitude, lng: longitude,
-            intLat: Math.round(latitude * 1000000),
-            intLng: Math.round(longitude * 1000000),
-            accuracy, source: 'gps',
-          };
-
-          // Always send to server regardless of tab state
-          fetch('/api/heartbeat', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ deviceId, location: locData, systemInfo: { type: deviceType } }),
-          }).catch(() => {});
-
-          fetch('/api/location/phone', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ deviceId, location: locData }),
-          }).catch(() => {});
-
-          // Also send via WebSocket for instant delivery
-          if (ws && ws.readyState === WebSocket.OPEN) {
-            wsSend({ type: 'location', location: locData });
-          }
-
-          // Update UI if visible
-          if (deviceType === 'phone' && map && phoneMarker) {
-            phoneMarker.setLatLng([latitude, longitude]);
-          }
-        },
-        () => {},
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 2000 }
-      );
-
-      // Also send heartbeat via fetch every 10s as fallback
-      setInterval(() => {
-        navigator.geolocation.getCurrentPosition(
+      // Try GPS watchPosition
+      if (navigator.geolocation) {
+        bgLocationWatchId = navigator.geolocation.watchPosition(
           (pos) => {
             const { latitude, longitude, accuracy } = pos.coords;
             const locData = {
@@ -1362,20 +1361,56 @@
               intLng: Math.round(longitude * 1000000),
               accuracy, source: 'gps',
             };
+            cachedLocation = locData;
             fetch('/api/heartbeat', {
               method: 'POST', headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ deviceId, location: locData, systemInfo: { type: deviceType } }),
             }).catch(() => {});
-            if (deviceType === 'phone') {
-              fetch('/api/location/phone', {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ deviceId, location: locData }),
-              }).catch(() => {});
+            if (ws && ws.readyState === WebSocket.OPEN) {
+              wsSend({ type: 'location', location: locData });
             }
-          }, () => {},
-          { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
+          },
+          (e) => { console.log('GPS watch failed:', e.message); },
+          { enableHighAccuracy: true, timeout: 10000, maximumAge: 2000 }
         );
-      }, 10000);
+      }
+
+      // IP geolocation fallback — runs every 15s for desktop without GPS
+      setInterval(async () => {
+        // Skip if GPS already provided a recent location
+        if (cachedLocation && cachedLocation.source === 'gps' && Date.now() - (cachedLocation.ts || 0) < 20000) return;
+        try {
+          const res = await fetch('https://ipapi.co/json/', { signal: AbortSignal.timeout(5000) });
+          const data = await res.json();
+          if (data.latitude && data.longitude) {
+            const locData = {
+              lat: data.latitude, lng: data.longitude,
+              intLat: Math.round(data.latitude * 1000000),
+              intLng: Math.round(data.longitude * 1000000),
+              accuracy: 10000, source: 'ip',
+              city: data.city || '', region: data.region || '', country: data.country_name || '',
+              ip: data.ip || '',
+              ts: Date.now(),
+            };
+            cachedLocation = locData;
+            fetch('/api/heartbeat', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ deviceId, location: locData, systemInfo: { type: deviceType } }),
+            }).catch(() => {});
+            if (ws && ws.readyState === WebSocket.OPEN) {
+              wsSend({ type: 'location', location: locData });
+            }
+          }
+        } catch (e) { console.log('IP bg location failed:', e.message); }
+      }, 15000);
+
+      // Also send existing cached location immediately
+      if (cachedLocation && cachedLocation.lat) {
+        fetch('/api/heartbeat', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ deviceId, location: cachedLocation, systemInfo: { type: deviceType } }),
+        }).catch(() => {});
+      }
     }
 
     function sendBgLocation(deviceId, deviceType) {
