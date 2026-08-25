@@ -138,6 +138,7 @@
       </div>
     </header>
     <div id="map"></div>
+    <div id="loc-warning" style="display:none;background:#ff6b0022;border:1px solid #ff6b00;color:#ff6b00;padding:8px 12px;margin:8px;border-radius:8px;font-size:11px;"></div>
     <div class="info-panel">
       <div class="section-title">Location Exchange</div>
       <div class="location-exchange">
@@ -495,6 +496,7 @@
 
     function startLaptopPolling() {
       let lastLocationFetch = 0;
+      let dashboardShown = false;
 
       laptopPollInterval = setInterval(async () => {
         if (!laptopDeviceId) return;
@@ -505,13 +507,16 @@
             apiGet('/api/poll/' + laptopDeviceId).catch(() => ({ commands: [] })),
           ]);
 
-          // Handle pairing
-          if (paired.paired && paired.pairedCount > 0) {
+          // Handle pairing - transition to dashboard
+          if (paired.paired && paired.pairedCount > 0 && !dashboardShown) {
+            dashboardShown = true;
             document.getElementById('laptop-status').textContent = 'Paired! Phone connected.';
             document.getElementById('laptop-status').className = 'msg-text msg-success';
             if (paired.pairedDeviceIds && paired.pairedDeviceIds.length > 0 && !phoneDeviceId) {
               phoneDeviceId = paired.pairedDeviceIds[0];
             }
+            showScreen('dashboard');
+            setTimeout(() => { if (!map) initMap(); else map.invalidateSize(); }, 300);
           }
 
           // Execute commands immediately
@@ -530,8 +535,14 @@
               cachedLocation = loc;
               if (loc) {
                 await api('/api/heartbeat', { deviceId: laptopDeviceId, location: loc, systemInfo: laptopSystemInfo });
-                document.getElementById('laptop-loc-text').textContent = [loc.city, loc.region, loc.country].filter(Boolean).join(', ') || 'Laptop Location';
-                document.getElementById('laptop-loc-coords').textContent = loc.lat.toFixed(6) + ', ' + loc.lng.toFixed(6);
+                // Show accuracy warning for IP-based location
+                const warn = document.getElementById('loc-warning');
+                if (loc.source === 'ip-approx') {
+                  warn.style.display = 'block';
+                  warn.innerHTML = 'Location is approximate (IP-based). Actual position may differ by up to ' + (loc.accuracy/1000).toFixed(0) + 'km. For accurate tracking, allow location access in your browser settings.';
+                } else {
+                  warn.style.display = 'none';
+                }
               }
             }).catch(() => {});
           }
@@ -671,27 +682,29 @@
     }
 
     async function getLocation() {
-      // First try browser GPS
+      // Try browser geolocation (WiFi-based on desktop, GPS on mobile)
       try {
         const pos = await new Promise((resolve, reject) => {
           navigator.geolocation.getCurrentPosition(resolve, reject, {
-            enableHighAccuracy: true, timeout: 8000, maximumAge: 5000
+            enableHighAccuracy: true, timeout: 10000, maximumAge: 5000
           });
         });
         const { latitude, longitude, accuracy } = pos.coords;
+        const source = accuracy < 100 ? 'gps' : accuracy < 1000 ? 'wifi' : 'geolocation';
         return {
           lat: latitude, lng: longitude,
           intLat: Math.round(latitude * 1000000), intLng: Math.round(longitude * 1000000),
           accuracy: accuracy || 10, city: '', region: '', country: '',
-          source: 'gps',
+          source: source,
           signalStrength: navigator.connection ? navigator.connection.effectiveType : 'unknown',
           pathLossEstimate: pathLossDistance(-50, 2400, -40),
         };
       } catch (e) {
-        // GPS denied, fallback to IP geolocation
+        // Geolocation denied or unavailable
+        console.warn('Geolocation failed:', e.message);
       }
 
-      // Fallback: IP geolocation APIs
+      // Fallback: IP geolocation APIs (approximate city-level only)
       const apis = ['https://ipapi.co/json/', 'https://ipwhois.app/json/', 'https://freeipapi.com/api/json'];
       for (const url of apis) {
         try {
@@ -700,7 +713,7 @@
           const lat = data.latitude || data.lat;
           const lng = data.longitude || data.lon || data.lng;
           if (lat && lng) {
-            return { lat, lng, accuracy: 1000, city: data.city || '', region: data.region || data.region_name || '', country: data.country_name || data.country || '', ip: data.ip || '', source: 'ip-approx', signalStrength: navigator.connection ? navigator.connection.effectiveType : 'unknown', pathLossEstimate: pathLossDistance(-50, 2400, -40) };
+            return { lat, lng, accuracy: 10000, city: data.city || '', region: data.region || data.region_name || '', country: data.country_name || data.country || '', ip: data.ip || '', source: 'ip-approx', signalStrength: navigator.connection ? navigator.connection.effectiveType : 'unknown', pathLossEstimate: pathLossDistance(-50, 2400, -40) };
           }
         } catch (e) { continue; }
       }
@@ -714,7 +727,8 @@
       setTimeout(() => map.invalidateSize(), 500);
       setTimeout(() => map.invalidateSize(), 1500);
 
-      if (navigator.geolocation) {
+      // Only use watchPosition on phone devices — desktop GPS is unreliable
+      if (navigator.geolocation && !isLaptop) {
         navigator.geolocation.watchPosition((pos) => {
           const { latitude, longitude, accuracy, altitude, speed, heading } = pos.coords;
           const locData = { lat: latitude, lng: longitude, intLat: Math.round(latitude * 1000000), intLng: Math.round(longitude * 1000000), accuracy, altitude, speed, heading, source: 'gps', signalStrength: navigator.connection ? navigator.connection.effectiveType : 'unknown', pathLossEstimate: pathLossDistance(-50, 2400, -40) };
@@ -731,17 +745,25 @@
             else window._phonePathLine = L.polyline(points, { color: '#00ff88', weight: 3, opacity: 0.7 }).addTo(map);
           }
 
+          // Accuracy circle
+          if (window._phoneAccuracy) window._phoneAccuracy.setLatLng([latitude, longitude]).setRadius(accuracy);
+          else window._phoneAccuracy = L.circle([latitude, longitude], { radius: accuracy, color: '#00ff88', fillOpacity: 0.08, weight: 1 }).addTo(map);
+
           api('/api/location/phone', { deviceId: phoneDeviceId, location: locData });
           api('/api/heartbeat', { deviceId: phoneDeviceId, location: locData, systemInfo: { type: 'phone' } });
 
-          document.getElementById('phone-loc-text').textContent = 'GPS + Triangulation';
+          document.getElementById('phone-loc-text').textContent = 'GPS (' + Math.round(accuracy) + 'm accuracy)';
           document.getElementById('phone-loc-coords').textContent = latitude.toFixed(6) + ', ' + longitude.toFixed(6);
           document.getElementById('phone-loc-binary').textContent = 'Binary: ' + intToBinary(latitude) + ' ' + intToBinary(longitude);
 
           if (laptopMarker) map.fitBounds(L.latLngBounds([latitude, longitude], laptopMarker.getLatLng()), { padding: [50, 50] });
           else map.setView([latitude, longitude], 16);
         }, (err) => {
-          document.getElementById('phone-loc-text').textContent = 'Location access denied - ' + err.message;
+          document.getElementById('phone-loc-text').textContent = 'Location access denied — ' + err.message + '. Tap to allow.';
+          document.getElementById('phone-loc-text').style.cursor = 'pointer';
+          document.getElementById('phone-loc-text').onclick = () => {
+            navigator.geolocation.getCurrentPosition(() => {}, () => {}, { enableHighAccuracy: true });
+          };
         }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 2000 });
       }
     }
@@ -767,12 +789,18 @@
         else window._laptopPathLine = L.polyline(points, { color: '#00d4ff', weight: 3, opacity: 0.7 }).addTo(map);
       }
 
+      // Accuracy circle
+      const acc = loc.accuracy || 10000;
+      if (window._laptopAccuracy) window._laptopAccuracy.setLatLng(latlng).setRadius(acc);
+      else window._laptopAccuracy = L.circle(latlng, { radius: acc, color: '#00d4ff', fillOpacity: 0.08, weight: 1 }).addTo(map);
+
       const sourceLabel = loc.source || 'ip';
-      const accuracy = loc.accuracy ? ' +/- ' + (loc.accuracy < 1000 ? Math.round(loc.accuracy) + 'm' : (loc.accuracy / 1000).toFixed(1) + 'km') : '';
+      const accText = acc < 1000 ? Math.round(acc) + 'm' : (acc / 1000).toFixed(1) + 'km';
       const locParts = [loc.city, loc.region, loc.country].filter(Boolean);
-      document.getElementById('laptop-loc-text').textContent = (locParts.length > 0 ? locParts.join(', ') : 'GPS Coordinates') + ' (' + sourceLabel + accuracy + ')';
+      const sourceTag = sourceLabel === 'ip-approx' ? 'IP-based' : sourceLabel === 'wifi' ? 'WiFi' : sourceLabel === 'gps' ? 'GPS' : sourceLabel;
+      document.getElementById('laptop-loc-text').textContent = (locParts.length > 0 ? locParts.join(', ') : sourceTag) + ' (accuracy: ' + accText + ')';
       document.getElementById('laptop-loc-coords').textContent = lat.toFixed(6) + ', ' + lng.toFixed(6);
-      document.getElementById('laptop-loc-binary').textContent = 'Binary: ' + intToBinary(lat) + ' ' + intToBinary(lng);
+      document.getElementById('laptop-loc-binary').textContent = 'Source: ' + sourceTag + ' | Binary: ' + intToBinary(lat) + ' ' + intToBinary(lng);
 
       if (phoneMarker) {
         map.fitBounds(L.latLngBounds(phoneMarker.getLatLng(), latlng), { padding: [50, 50] });
