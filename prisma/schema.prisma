@@ -1,0 +1,64 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Code {
+  id         Int     @id @default(autoincrement())
+  pairCode   String  @unique @map("pair_code") @db.VarChar(10)
+  binaryCode String  @map("binary_code") @db.Text
+  deviceId   String  @map("device_id") @db.VarChar(50)
+  deviceInfo String? @map("device_info") @db.Text
+  isPaired   Boolean @default(false) @map("is_paired")
+  createdAt  BigInt  @map("created_at")
+  pairedAt   BigInt? @map("paired_at")
+
+  @@map("codes")
+}
+
+model Device {
+  id         Int     @id @default(autoincrement())
+  deviceId   String  @unique @map("device_id") @db.VarChar(50)
+  pairCode   String  @map("pair_code") @db.VarChar(10)
+  deviceType String? @map("device_type") @db.VarChar(10)
+  systemInfo String? @map("system_info") @db.Text
+  lastSeen   BigInt? @map("last_seen")
+  createdAt  BigInt  @map("created_at")
+
+  @@map("devices")
+}
+
+model Location {
+  id        Int     @id @default(autoincrement())
+  deviceId  String  @unique @map("device_id") @db.VarChar(50)
+  lat       Float?
+  lng       Float?
+  intLat    BigInt? @map("int_lat")
+  intLng    BigInt? @map("int_lng")
+  city      String? @db.VarChar(100)
+  region    String? @db.VarChar(100)
+  country   String? @db.VarChar(100)
+  ip        String? @db.VarChar(50)
+  updatedAt BigInt  @map("updated_at")
+
+  @@map("locations")
+}
+
+model Command {
+  id          Int     @id @default(autoincrement())
+  commandId   String  @unique @map("command_id") @db.VarChar(50)
+  deviceId    String  @map("device_id") @db.VarChar(50)
+  commandType String  @map("command_type") @db.VarChar(20)
+  params      String? @db.Text
+  result      String? @db.Text
+  error       String? @db.Text
+  status      String? @default("pending") @db.VarChar(20)
+  createdAt   BigInt  @map("created_at")
+  completedAt BigInt? @map("completed_at")
+
+  @@map("commands")
+}

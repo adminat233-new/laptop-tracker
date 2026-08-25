@@ -6,13 +6,19 @@
     "start": "node cloud-server.js",
     "server": "node cloud-server.js",
     "agent": "node agent.js",
-    "local": "node server.js"
+    "local": "node server.js",
+    "db:push": "npx prisma db push",
+    "db:migrate": "npx prisma migrate dev",
+    "db:studio": "npx prisma studio",
+    "db:generate": "npx prisma generate"
   },
   "engines": {
-    "node": "18.x"
+    "node": ">=18.x"
   },
   "dependencies": {
+    "@prisma/client": "^7.9.1",
+    "dotenv": "^17.4.2",
     "express": "^4.18.2",
-    "pg": "^8.23.0"
+    "prisma": "^7.9.1"
   }
 }
