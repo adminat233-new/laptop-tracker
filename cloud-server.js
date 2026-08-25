@@ -8,7 +8,16 @@ const signal = require('./signal-engine');
 const app = express();
 const PORT = process.env.PORT || 9999;
 
-app.use(express.static(path.join(__dirname, 'public')));
+// Force no-cache on all static files
+app.use((req, res, next) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+  res.set('X-Content-Type-Options', 'nosniff');
+  next();
+});
+
+app.use(express.static(path.join(__dirname, 'public'), { etag: false, lastModified: false }));
 app.use(express.json());
 
 // ============= BIGINT HELPERS =============
