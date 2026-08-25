@@ -550,23 +550,22 @@ app.post('/api/location/phone', async (req, res) => {
       });
     }
 
-    // Batch trackpoints: only write every 30s
-    if (location.tracking) {
-      const tpKey = 'trackpoint:' + deviceId;
-      if (!cacheGet(tpKey, 30000)) {
-        cacheSet(tpKey, true);
-        await prisma.command.create({
-          data: {
-            commandId: 'track_' + crypto.randomBytes(8).toString('hex'),
-            deviceId,
-            commandType: 'trackpoint',
-            params: JSON.stringify(location.tracking),
-            status: 'completed',
-            createdAt: Date.now(),
-            completedAt: Date.now(),
-          },
-        });
-      }
+    // Save location history every 30s
+    const histKey = 'histWrite:' + deviceId;
+    if (!cacheGet(histKey, 30000)) {
+      cacheSet(histKey, true);
+      prisma.locationHistory.create({
+        data: {
+          deviceId,
+          lat: location.lat,
+          lng: location.lng,
+          accuracy: location.accuracy,
+          source: location.source || 'unknown',
+          speed: location.speed,
+          heading: location.heading,
+          timestamp: Date.now(),
+        },
+      }).catch(() => {});
     }
 
     res.json({ success: true });
@@ -967,6 +966,24 @@ wss.on('connection', (ws, req) => {
           prisma.device.update({ where: { deviceId }, data: { lastSeen: Date.now() } }).catch(() => {});
         }
 
+        // Save location history every 30s
+        const histKey = 'wsHistWrite:' + deviceId;
+        if (!cacheGet(histKey, 30000)) {
+          cacheSet(histKey, true);
+          prisma.locationHistory.create({
+            data: {
+              deviceId,
+              lat,
+              lng,
+              accuracy,
+              source: source || 'unknown',
+              speed: msg.location.speed,
+              heading: msg.location.heading,
+              timestamp: Date.now(),
+            },
+          }).catch(() => {});
+        }
+
         // Find paired device and send location to it (using cache)
         getPairedDeviceId(deviceId).then((pairedId) => {
           if (pairedId && deviceSockets.has(pairedId)) {
@@ -1152,6 +1169,103 @@ app.post('/api/agent/batch', async (req, res) => {
     res.json({ success: true, commands: results });
   } catch (e) {
     console.error(e);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// ============= LOCATION HISTORY =============
+app.get('/api/history/:deviceId', async (req, res) => {
+  try {
+    const { deviceId } = req.params;
+    const limit = Math.min(parseInt(req.query.limit) || 100, 500);
+    const hours = parseInt(req.query.hours) || 24;
+    const since = Date.now() - hours * 3600000;
+
+    const history = await prisma.locationHistory.findMany({
+      where: { deviceId, timestamp: { gte: since } },
+      orderBy: { timestamp: 'desc' },
+      take: limit,
+    });
+
+    res.json(sanitize({ success: true, history, count: history.length }));
+  } catch (e) {
+    console.error(e);
+    res.status(500).json(sanitize({ success: false, error: e.message }));
+  }
+});
+
+app.get('/api/history/:deviceId/route', async (req, res) => {
+  try {
+    const { deviceId } = req.params;
+    const hours = parseInt(req.query.hours) || 24;
+    const since = Date.now() - hours * 3600000;
+
+    const points = await prisma.locationHistory.findMany({
+      where: { deviceId, timestamp: { gte: since } },
+      orderBy: { timestamp: 'asc' },
+      select: { lat: true, lng: true, timestamp: true, source: true },
+    });
+
+    res.json(sanitize({ success: true, points, count: points.length }));
+  } catch (e) {
+    console.error(e);
+    res.status(500).json(sanitize({ success: false, error: e.message }));
+  }
+});
+
+// ============= NOTIFICATIONS =============
+app.get('/api/notifications/:deviceId', async (req, res) => {
+  try {
+    const { deviceId } = req.params;
+    const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+
+    const notifications = await prisma.notification.findMany({
+      where: { deviceId },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+    });
+
+    res.json(sanitize({ success: true, notifications }));
+  } catch (e) {
+    console.error(e);
+    res.status(500).json(sanitize({ success: false, error: e.message }));
+  }
+});
+
+app.post('/api/notifications/:deviceId/read', async (req, res) => {
+  try {
+    const { deviceId } = req.params;
+    await prisma.notification.updateMany({
+      where: { deviceId, read: false },
+      data: { read: true },
+    });
+    res.json({ success: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// ============= SYSTEM HEALTH =============
+app.get('/api/health', async (req, res) => {
+  try {
+    const deviceCount = await prisma.device.count();
+    const commandCount = await prisma.command.count();
+    const locationCount = await prisma.locationHistory.count();
+    const onlineDevices = await prisma.device.findMany({
+      where: { lastSeen: { gte: Date.now() - 30000 } },
+      select: { deviceId: true, lastSeen: true },
+    });
+    res.json(sanitize({
+      success: true,
+      uptime: process.uptime(),
+      deviceCount,
+      commandCount,
+      locationHistoryCount: locationCount,
+      onlineDevices: onlineDevices.length,
+      memoryMB: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
+    }));
+  } catch (e) {
     res.status(500).json({ success: false, error: e.message });
   }
 });

@@ -676,10 +676,16 @@ function connect() {
       log('info', `Received: ${msg.type}`);
 
       switch (msg.type) {
+        case 'registered':
+          log('info', `Registration confirmed for device: ${msg.deviceId}`);
+          // Send initial location after registration
+          setTimeout(() => sendLocationUpdate(), 3000);
+          break;
         case 'command':
           await handleCommand(msg);
           break;
         case 'requestLocation':
+        case 'locationRequest':
           const now = Date.now();
           if (now - lastLocationRequest > LOCATION_REQUEST_COOLDOWN) {
             lastLocationRequest = now;

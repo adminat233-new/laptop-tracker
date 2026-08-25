@@ -62,3 +62,31 @@ model Command {
 
   @@map("commands")
 }
+
+model LocationHistory {
+  id        Int     @id @default(autoincrement())
+  deviceId  String  @map("device_id") @db.VarChar(50)
+  lat       Float
+  lng       Float
+  accuracy  Float?
+  source    String? @db.VarChar(50)
+  speed     Float?
+  heading   Float?
+  timestamp BigInt  @map("timestamp")
+
+  @@index([deviceId, timestamp])
+  @@map("location_history")
+}
+
+model Notification {
+  id        Int     @id @default(autoincrement())
+  deviceId  String  @map("device_id") @db.VarChar(50)
+  title     String  @db.VarChar(200)
+  body      String  @db.Text
+  type      String  @db.VarChar(50)
+  read      Boolean @default(false)
+  createdAt BigInt  @map("created_at")
+
+  @@index([deviceId, read])
+  @@map("notifications")
+}
