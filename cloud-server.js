@@ -675,11 +675,193 @@ setInterval(async () => {
   } catch (e) {}
 }, 600000);
 
+// ============= WEBSOCKET REAL-TIME TRACKING =============
+const http = require('http');
+const WebSocket = require('ws');
+
+const server = http.createServer(app);
+const wss = new WebSocket.Server({ server });
+
+// Map of deviceId -> WebSocket connection
+const deviceSockets = new Map();
+
+wss.on('connection', (ws, req) => {
+  let deviceId = null;
+
+  ws.on('message', (data) => {
+    try {
+      const msg = JSON.parse(data);
+
+      if (msg.type === 'register') {
+        deviceId = msg.deviceId;
+        deviceSockets.set(deviceId, ws);
+        console.log(`WS registered: ${deviceId}`);
+        ws.send(JSON.stringify({ type: 'registered', deviceId }));
+      }
+
+      if (msg.type === 'location' && deviceId) {
+        const { lat, lng, accuracy, source } = msg.location;
+        // Store in DB and broadcast to paired device
+        prisma.location.upsert({
+          where: { deviceId },
+          create: {
+            deviceId, lat, lng,
+            intLat: Math.round(lat * 1000000),
+            intLng: Math.round(lng * 1000000),
+            city: msg.location.city || '',
+            region: msg.location.region || '',
+            country: msg.location.country || '',
+            ip: msg.location.ip || '',
+            updatedAt: Date.now(),
+          },
+          update: {
+            lat, lng,
+            intLat: Math.round(lat * 1000000),
+            intLng: Math.round(lng * 1000000),
+            city: msg.location.city || '',
+            region: msg.location.region || '',
+            country: msg.location.country || '',
+            ip: msg.location.ip || '',
+            updatedAt: Date.now(),
+          },
+        }).catch(() => {});
+
+        prisma.device.update({
+          where: { deviceId },
+          data: { lastSeen: Date.now() },
+        }).catch(() => {});
+
+        // Find paired device and send location to it
+        prisma.device.findUnique({ where: { deviceId } }).then((device) => {
+          if (!device) return;
+          prisma.device.findFirst({
+            where: { pairCode: device.pairCode, deviceId: { not: deviceId } },
+          }).then((paired) => {
+            if (paired && deviceSockets.has(paired.deviceId)) {
+              const pairedWs = deviceSockets.get(paired.deviceId);
+              if (pairedWs.readyState === WebSocket.OPEN) {
+                pairedWs.send(JSON.stringify({
+                  type: 'location',
+                  fromDeviceId: deviceId,
+                  location: msg.location,
+                }));
+              }
+            }
+          }).catch(() => {});
+        }).catch(() => {});
+      }
+
+      if (msg.type === 'command' && deviceId) {
+        // Forward command to paired device
+        prisma.device.findUnique({ where: { deviceId } }).then((device) => {
+          if (!device) return;
+          prisma.device.findFirst({
+            where: { pairCode: device.pairCode, deviceId: { not: deviceId } },
+          }).then((paired) => {
+            if (paired && deviceSockets.has(paired.deviceId)) {
+              const pairedWs = deviceSockets.get(paired.deviceId);
+              if (pairedWs.readyState === WebSocket.OPEN) {
+                const commandId = 'cmd_' + crypto.randomBytes(8).toString('hex');
+                prisma.command.create({
+                  data: {
+                    commandId, deviceId: paired.deviceId,
+                    commandType: msg.commandType,
+                    params: JSON.stringify(msg.params || {}),
+                    status: 'pending', createdAt: Date.now(),
+                  },
+                }).catch(() => {});
+                pairedWs.send(JSON.stringify({
+                  type: 'command',
+                  commandId,
+                  commandType: msg.commandType,
+                  params: msg.params,
+                }));
+                ws.send(JSON.stringify({ type: 'commandSent', commandId }));
+              }
+            }
+          }).catch(() => {});
+        }).catch(() => {});
+      }
+
+      if (msg.type === 'commandResult' && deviceId) {
+        // Forward result to paired device
+        prisma.command.update({
+          where: { commandId: msg.commandId },
+          data: { result: msg.result, status: 'completed', completedAt: Date.now() },
+        }).catch(() => {});
+        prisma.device.findUnique({ where: { deviceId } }).then((device) => {
+          if (!device) return;
+          prisma.device.findFirst({
+            where: { pairCode: device.pairCode, deviceId: { not: deviceId } },
+          }).then((paired) => {
+            if (paired && deviceSockets.has(paired.deviceId)) {
+              const pairedWs = deviceSockets.get(paired.deviceId);
+              if (pairedWs.readyState === WebSocket.OPEN) {
+                pairedWs.send(JSON.stringify({
+                  type: 'commandResult',
+                  commandId: msg.commandId,
+                  result: msg.result,
+                }));
+              }
+            }
+          }).catch(() => {});
+        }).catch(() => {});
+      }
+
+      if (msg.type === 'requestLocation' && deviceId) {
+        // Ask paired device for its current location
+        prisma.device.findUnique({ where: { deviceId } }).then((device) => {
+          if (!device) return;
+          prisma.device.findFirst({
+            where: { pairCode: device.pairCode, deviceId: { not: deviceId } },
+          }).then((paired) => {
+            if (paired && deviceSockets.has(paired.deviceId)) {
+              const pairedWs = deviceSockets.get(paired.deviceId);
+              if (pairedWs.readyState === WebSocket.OPEN) {
+                pairedWs.send(JSON.stringify({ type: 'locationRequest' }));
+              }
+            }
+          }).catch(() => {});
+        }).catch(() => {});
+      }
+
+      if (msg.type === 'ping') {
+        ws.send(JSON.stringify({ type: 'pong' }));
+      }
+    } catch (e) {
+      console.error('WS message error:', e);
+    }
+  });
+
+  ws.on('close', () => {
+    if (deviceId) {
+      deviceSockets.delete(deviceId);
+      console.log(`WS disconnected: ${deviceId}`);
+    }
+  });
+
+  ws.on('error', () => {
+    if (deviceId) deviceSockets.delete(deviceId);
+  });
+
+  ws.isAlive = true;
+  ws.on('pong', () => { ws.isAlive = true; });
+});
+
+// Heartbeat to detect dead connections
+setInterval(() => {
+  wss.clients.forEach((ws) => {
+    if (!ws.isAlive) return ws.terminate();
+    ws.isAlive = false;
+    ws.ping();
+  });
+}, 30000);
+
 // ============= START =============
 initDB()
   .then(() => {
-    app.listen(PORT, '0.0.0.0', () => {
-      console.log(`Server running on port ${PORT}`);
+    server.listen(PORT, '0.0.0.0', () => {
+      console.log(`Server + WebSocket running on port ${PORT}`);
     });
   })
   .catch((e) => {

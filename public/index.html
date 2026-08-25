@@ -199,6 +199,93 @@
     let phonePath = [];
     let laptopPath = [];
 
+    // WebSocket for real-time bidirectional location
+    let ws = null;
+    let wsReconnectTimer = null;
+
+    function connectWebSocket(deviceId, deviceType) {
+      const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      ws = new WebSocket(protocol + '//' + location.host);
+
+      ws.onopen = () => {
+        console.log('WS connected');
+        ws.send(JSON.stringify({ type: 'register', deviceId, deviceType }));
+        if (wsReconnectTimer) { clearTimeout(wsReconnectTimer); wsReconnectTimer = null; }
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+
+          if (msg.type === 'location' && msg.fromDeviceId) {
+            const loc = msg.location;
+            if (deviceType === 'laptop') {
+              // Phone sent us its location
+              updatePhoneLocation(loc);
+            } else {
+              // Laptop sent us its location
+              updateLaptopLocation(loc);
+            }
+          }
+
+          if (msg.type === 'command') {
+            // Execute command on this device
+            executeCommand(msg.commandType, msg.params).then((result) => {
+              ws.send(JSON.stringify({ type: 'commandResult', commandId: msg.commandId, result }));
+            });
+          }
+
+          if (msg.type === 'commandResult') {
+            showToast('Command result: ' + msg.result);
+          }
+
+          if (msg.type === 'locationRequest') {
+            // Paired device is asking for our location
+            sendMyLocation();
+          }
+        } catch (e) {}
+      };
+
+      ws.onclose = () => {
+        console.log('WS disconnected, reconnecting...');
+        wsReconnectTimer = setTimeout(() => {
+          connectWebSocket(deviceId, deviceType);
+        }, 3000);
+      };
+
+      ws.onerror = () => {};
+    }
+
+    function wsSend(obj) {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(obj));
+      }
+    }
+
+    function sendMyLocation() {
+      if (!ws || ws.readyState !== WebSocket.OPEN) return;
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const { latitude, longitude, accuracy } = pos.coords;
+          wsSend({
+            type: 'location',
+            location: {
+              lat: latitude, lng: longitude,
+              accuracy, source: 'gps',
+              intLat: Math.round(latitude * 1000000),
+              intLng: Math.round(longitude * 1000000),
+            },
+          });
+        }, () => {
+          // Fallback to cached IP location
+          if (cachedLocation) {
+            wsSend({ type: 'location', location: cachedLocation });
+          }
+        },
+        { enableHighAccuracy: true, timeout: 5000 }
+      );
+    }
+
     function charToBinary(c) { return c.charCodeAt(0).toString(2).padStart(8, '0'); }
     function codeToBinary(code) { return code.split('').map(charToBinary).join(' '); }
     function intToBinary(n) { return Math.round(n * 1000000).toString(2).padStart(32, '0'); }
@@ -366,6 +453,9 @@
         if (laptopPollInterval) clearInterval(laptopPollInterval);
         startLaptopPolling();
         startBgLocationTracking(laptopDeviceId, 'laptop');
+        connectWebSocket(laptopDeviceId, 'laptop');
+        // Request paired device's location every 3s via WS
+        setInterval(() => { if (ws && ws.readyState === WebSocket.OPEN) wsSend({ type: 'requestLocation' }); }, 3000);
         return data.pairCode;
       }
     }
@@ -391,6 +481,9 @@
           startRealTimeTracking();
           startBgLocationTracking(phoneDeviceId, 'phone');
           requestNotifyPermission();
+          connectWebSocket(phoneDeviceId, 'phone');
+          // Send GPS via WS every 3s
+          setInterval(() => { if (ws && ws.readyState === WebSocket.OPEN) sendMyLocation(); }, 3000);
         }, 1500);
       } else {
         showScreen('pair-screen');
@@ -722,9 +815,15 @@
     function sendCommand(type) {
       if (!laptopDeviceId) { showToast('Not connected'); return; }
       showToast(type + ' sending...');
-      api('/api/command', { deviceId: laptopDeviceId, commandType: type }).then(data => {
-        if (data.success) showToast(type + ' queued!');
-      });
+      // Try WebSocket first (instant), fall back to HTTP polling
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        wsSend({ type: 'command', commandType: type });
+        showToast(type + ' sent via WS!');
+      } else {
+        api('/api/command', { deviceId: laptopDeviceId, commandType: type }).then(data => {
+          if (data.success) showToast(type + ' queued!');
+        });
+      }
     }
 
     function confirmShutdown() { if (confirm('Shutdown laptop?')) sendCommand('shutdown'); }
@@ -784,6 +883,11 @@
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ deviceId, location: locData }),
           }).catch(() => {});
+
+          // Also send via WebSocket for instant delivery
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            wsSend({ type: 'location', location: locData });
+          }
 
           // Update UI if visible
           if (deviceType === 'phone' && map && phoneMarker) {
