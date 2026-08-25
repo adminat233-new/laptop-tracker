@@ -11,7 +11,7 @@ app.use(express.json());
 
 // ============= DATABASE =============
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || 'postgresql://postgres:[YOUR-PASSWORD]@db.hkwqlymebxqaemqzjlcy.supabase.co:5432/postgres',
+  connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false }
 });
 
