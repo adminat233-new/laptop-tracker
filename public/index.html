@@ -1150,6 +1150,13 @@
         return ts + ' - LOCK: ' + JSON.stringify(result);
       }
 
+      if (cmd === 'unlock') {
+        const el = document.getElementById('lock-overlay');
+        if (el) el.remove();
+        result = { status: 'unlocked', message: 'Screen unlocked' };
+        return ts + ' - UNLOCK: ' + JSON.stringify(result);
+      }
+
       if (cmd === 'locate') {
         const loc = LocationTracker.getBest() || cachedLocation;
         if (loc) {

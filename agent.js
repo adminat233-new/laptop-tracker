@@ -136,10 +136,9 @@ async function getLocation() {
   }
   lastLocationUpdate = now;
 
-  let location = await getWifiLocation();
-  if (!location) {
-    location = await getIpLocation();
-  }
+  let location = await getWindowsLocation();
+  if (!location) location = await getWifiLocation();
+  if (!location) location = await getIpLocation();
   if (!location) {
     location = { lat: 0, lng: 0, accuracy: 0, source: 'unavailable' };
   }
@@ -160,53 +159,248 @@ async function getLocation() {
   };
 }
 
-// ─── WiFi Scanning ────────────────────────────────────────────────────────────
-
-async function scanWifi() {
+// ─── Windows Location Service (force enable + query) ───────────────────────
+async function getWindowsLocation() {
   try {
-    const result = await runCommand('netsh wlan show networks mode=bssid', 10000);
-    if (!result.success) return { error: 'WiFi scan failed', details: result.stderr };
+    // Step 1: Check if Windows Location Service is running, force start it
+    const svcCheck = await runPowerShell(`
+      $svc = Get-Service -Name "lfsvc" -ErrorAction SilentlyContinue
+      if ($svc) {
+        if ($svc.Status -ne "Running") {
+          Start-Service -Name "lfsvc" -Force -ErrorAction SilentlyContinue
+          Start-Sleep -Seconds 2
+        }
+        Write-Output "SERVICE_RUNNING"
+      } else {
+        Write-Output "SERVICE_NOT_FOUND"
+      }
+    `, 8000);
 
-    const networks = [];
-    const blocks = result.stdout.split(/(?=SSID \d)/i).filter(b => b.trim());
+    log('info', 'Location Service status:', svcCheck.stdout ? svcCheck.stdout.trim() : 'unknown');
 
-    for (const block of blocks) {
-      const ssidMatch = block.match(/SSID\s+\d+\s*:\s*(.*)/i);
-      const signalMatch = block.match(/Signal\s*:\s*(\d+)%/i);
-      const authMatch = block.match(/Authentication\s*:\s*(.*)/i);
-      const encryptionMatch = block.match(/Encryption\s*:\s*(.*)/i);
+    // Step 2: Try Windows.Devices.Geolocation (modern API via PowerShell UWP bridge)
+    const geoResult = await runPowerShell(`
+      Add-Type -AssemblyName System.Device
+      $watcher = New-Object System.Device.Location.GeoCoordinateWatcher
+      $watcher.Start()
+      Start-Sleep -Seconds 5
+      $loc = $watcher.Position.Location
+      if ($loc.IsUnknown -eq $false) {
+        $lat = $loc.Latitude
+        $lng = $loc.Longitude
+        $acc = $loc.HorizontalAccuracy
+        Write-Output "GEO|$lat|$lng|$acc"
+      } else {
+        # Try Windows Location Provider directly via registry
+        $regPath = "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore\\location"
+        $val = (Get-ItemProperty -Path $regPath -ErrorAction SilentlyContinue).Value
+        if ($val -eq "Allow") {
+          Write-Output "LOCATION_ALLOWED_BUT_NO_FIX"
+        } else {
+          # Force enable location access
+          Set-ItemProperty -Path $regPath -Name "Value" -Value "Allow" -Force -ErrorAction SilentlyContinue
+          Write-Output "LOCATION_WAS_DISABLED_NOW_ENABLED"
+        }
+      }
+    `, 12000);
 
-      const bssids = [];
-      const bssidBlocks = block.split(/BSSID\s+\d/i).slice(1);
-      for (const bssidBlock of bssidBlocks) {
-        const macMatch = bssidBlock.match(/(\w{2}[:-]\w{2}[:-]\w{2}[:-]\w{2}[:-]\w{2}[:-]\w{2})/i);
-        const channelMatch = bssidBlock.match(/Channel\s*:\s*(\d+)/i);
-        const rssiMatch = bssidBlock.match(/Signal\s*:\s*(\d+)%/i);
-        if (macMatch) {
-          bssids.push({
-            bssid: macMatch[1],
-            channel: channelMatch ? parseInt(channelMatch[1]) : null,
-            signalPercent: rssiMatch ? parseInt(rssiMatch[1]) : null,
-            rssi: rssiMatch ? Math.round((parseInt(rssiMatch[1]) / 2) - 100) : null
-          });
+    if (geoResult.success && geoResult.stdout) {
+      const output = geoResult.stdout.trim();
+      log('info', 'Location query result:', output);
+
+      if (output.startsWith('GEO|')) {
+        const parts = output.split('|');
+        const lat = parseFloat(parts[1]);
+        const lng = parseFloat(parts[2]);
+        const accuracy = parseFloat(parts[3]) || 50;
+        if (!isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0) {
+          log('info', `Windows Location: ${lat}, ${lng} (±${accuracy}m)`);
+          return { lat, lng, accuracy, source: 'windows-location-api' };
         }
       }
 
-      if (ssidMatch) {
-        networks.push({
-          ssid: ssidMatch[1].trim() || '<Hidden>',
-          signalPercent: signalMatch ? parseInt(signalMatch[1]) : null,
-          authentication: authMatch ? authMatch[1].trim() : null,
-          encryption: encryptionMatch ? encryptionMatch[1].trim() : null,
-          bssids
-        });
+      if (output.includes('LOCATION_WAS_DISABLED_NOW_ENABLED')) {
+        log('info', 'Location was disabled — now enabled. Retrying...');
+        // Retry after enabling
+        const retry = await runPowerShell(`
+          $watcher = New-Object System.Device.Location.GeoCoordinateWatcher
+          $watcher.Start()
+          Start-Sleep -Seconds 5
+          $loc = $watcher.Position.Location
+          if ($loc.IsUnknown -eq $false) {
+            Write-Output "GEO|$($loc.Latitude)|$($loc.Longitude)|$($loc.HorizontalAccuracy)"
+          } else {
+            Write-Output "STILL_NO_FIX"
+          }
+        `, 10000);
+        if (retry.success && retry.stdout.startsWith('GEO|')) {
+          const p = retry.stdout.split('|');
+          const lat = parseFloat(p[1]), lng = parseFloat(p[2]);
+          if (!isNaN(lat) && !isNaN(lng) && lat !== 0) {
+            return { lat, lng, accuracy: parseFloat(p[3]) || 50, source: 'windows-location-retry' };
+          }
+        }
       }
     }
-
-    return { networks, count: networks.length, timestamp: new Date().toISOString() };
   } catch (e) {
-    return { error: e.message };
+    log('warn', 'Windows Location API failed:', e.message);
   }
+  return null;
+}
+
+// ─── WiFi Scanning ────────────────────────────────────────────────────────────
+
+async function scanWifi() {
+  const networks = [];
+  let tool = 'netsh';
+
+  // Method 1: netsh (always available on Windows)
+  try {
+    const result = await runCommand('netsh wlan show networks mode=bssid', 10000);
+    if (result.success && result.stdout) {
+      const blocks = result.stdout.split(/(?=SSID \d)/i).filter(b => b.trim());
+      for (const block of blocks) {
+        const ssidMatch = block.match(/SSID\s+\d+\s*:\s*(.*)/i);
+        const signalMatch = block.match(/Signal\s*:\s*(\d+)%/i);
+        const authMatch = block.match(/Authentication\s*:\s*(.*)/i);
+        const encryptionMatch = block.match(/Encryption\s*:\s*(.*)/i);
+        const channelMatch = block.match(/Channel\s*:\s*(\d+)/i);
+
+        const bssids = [];
+        const bssidBlocks = block.split(/BSSID\s+\d/i).slice(1);
+        for (const bssidBlock of bssidBlocks) {
+          const macMatch = bssidBlock.match(/(\w{2}[:-]\w{2}[:-]\w{2}[:-]\w{2}[:-]\w{2}[:-]\w{2})/i);
+          const bssidChannelMatch = bssidBlock.match(/Channel\s*:\s*(\d+)/i);
+          const rssiMatch = bssidBlock.match(/Signal\s*:\s*(\d+)%/i);
+          if (macMatch) {
+            const pct = rssiMatch ? parseInt(rssiMatch[1]) : 0;
+            bssids.push({
+              bssid: macMatch[1],
+              channel: bssidChannelMatch ? parseInt(bssidChannelMatch[1]) : null,
+              signalPercent: pct,
+              rssi: pct > 0 ? Math.round((pct / 2) - 100) : null
+            });
+          }
+        }
+
+        if (ssidMatch) {
+          const pct = signalMatch ? parseInt(signalMatch[1]) : 0;
+          networks.push({
+            ssid: ssidMatch[1].trim() || '<Hidden>',
+            signalPercent: pct,
+            rssi: pct > 0 ? Math.round((pct / 2) - 100) : null,
+            authentication: authMatch ? authMatch[1].trim() : null,
+            encryption: encryptionMatch ? encryptionMatch[1].trim() : null,
+            channel: channelMatch ? parseInt(channelMatch[1]) : null,
+            bssids
+          });
+        }
+      }
+    }
+  } catch (e) { log('warn', 'netsh scan failed:', e.message); }
+
+  // Method 2: tshark (Wireshark CLI) — captures probe requests for hidden networks
+  if (networks.length === 0) {
+    try {
+      const tsharkCheck = await runCommand('where tshark', 3000);
+      if (tsharkCheck.success) {
+        tool = 'tshark';
+        const result = await runCommand(
+          'tshark -i 1 -a duration:5 -Y "wlan.fc.type_subtype == 0x04 || wlan.fc.type_subtype == 0x05" -T fields -e wlan.ssid -e wlan.sa -e radiotap.dbm.antsignal 2>nul',
+          15000
+        );
+        if (result.success && result.stdout) {
+          const seen = new Set();
+          for (const line of result.stdout.split('\n')) {
+            const parts = line.trim().split('\t');
+            if (parts.length >= 2 && parts[0] && !seen.has(parts[0])) {
+              seen.add(parts[0]);
+              networks.push({
+                ssid: parts[0] || '<Hidden>',
+                bssid: parts[1] || null,
+                rssi: parts[2] ? parseInt(parts[2]) : null,
+                source: 'tshark-probe'
+              });
+            }
+          }
+        }
+      }
+    } catch (e) { log('warn', 'tshark scan failed:', e.message); }
+  }
+
+  // Method 3: airodump-ng (aircrack-ng suite) — monitor mode scan
+  if (networks.length === 0) {
+    try {
+      const airCheck = await runCommand('where airodump-ng', 3000);
+      if (airCheck.success) {
+        tool = 'airodump-ng';
+        const result = await runCommand(
+          'airodump-ng --write-interval 3 --output-format csv -f 500 1 2>nul',
+          12000
+        );
+        if (result.success && result.stdout) {
+          const lines = result.stdout.split('\n');
+          for (const line of lines) {
+            const parts = line.split(',');
+            if (parts.length >= 14 && parts[0].match(/^[\w:]{17}$/)) {
+              networks.push({
+                bssid: parts[0].trim(),
+                signal: parts[8] ? parseInt(parts[8]) : null,
+                channel: parts[3] ? parseInt(parts[3]) : null,
+                ssid: parts[13] ? parts[13].trim() : '<Hidden>',
+                privacy: parts[5] ? parts[5].trim() : null,
+                source: 'airodump-ng'
+              });
+            }
+          }
+        }
+      }
+    } catch (e) { log('warn', 'airodump-ng scan failed:', e.message); }
+  }
+
+  // Add MAC vendor lookup
+  for (const net of networks) {
+    if (net.bssid) {
+      net.vendor = lookupMacVendor(net.bssid);
+    }
+    if (net.bssids) {
+      for (const b of net.bssids) {
+        if (b.bssid) b.vendor = lookupMacVendor(b.bssid);
+      }
+    }
+  }
+
+  // Post results to server so phone can read them
+  try {
+    const http = require('http');
+    const https = require('https');
+    const postData = JSON.stringify({ deviceId: DEVICE_ID, networks, tool, raw: '' });
+    const url = new URL(SERVER_URL.replace('wss:', 'https:').replace('ws:', 'http:') + '/api/netscan');
+    const client = url.protocol === 'https:' ? https : http;
+    const req = client.request(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(postData) } });
+    req.write(postData);
+    req.end();
+  } catch (e) {}
+
+  return { networks, count: networks.length, tool, timestamp: new Date().toISOString() };
+}
+
+function lookupMacVendor(mac) {
+  if (!mac) return null;
+  const prefix = mac.replace(/[:-]/g, '').substring(0, 6).toUpperCase();
+  const VENDORS = {
+    '00146C': 'Cisco', '001A2B': 'Alcatel', '0026AB': 'Apple', '3C22FB': 'Apple',
+    'A483E7': 'Apple', 'F01898': 'Apple', 'DC4F22': 'Apple', '787B8A': 'Apple',
+    '00904C': 'Epigram', '001B2F': 'Belkin', 'C056E3': 'Belkin', 'B4750E': 'Belkin',
+    '94103E': 'Belkin', 'EC1A59': 'Belkin', '083669': 'Belkin', 'B01123': 'Belkin',
+    'E063DA': 'Ubiquiti', '24A43C': 'Ubiquiti', 'F4E2C6': 'Ubiquiti',
+    '000C29': 'VMware', '005056': 'VMware', '000569': 'VMware',
+    '080027': 'Oracle', '525400': 'QEMU',
+    '00155D': 'Microsoft', '281878': 'Microsoft', '7C1E52': 'Microsoft',
+    '000D3A': 'Microsoft', 'B831B5': 'Microsoft', '281878': 'Microsoft',
+    '6045BD': 'Microsoft', '5882A8': 'Microsoft', '7C1E52': 'Microsoft',
+  };
+  return VENDORS[prefix] || null;
 }
 
 // ─── BLE Scanning ─────────────────────────────────────────────────────────────
@@ -310,7 +504,42 @@ async function playNoise() {
 // ─── System Commands ──────────────────────────────────────────────────────────
 
 async function lockScreen() {
-  return await runCommand('rundll32.exe user32.dll,LockWorkStation', 5000);
+  // 1. Lock the workstation
+  const lockResult = await runCommand('rundll32.exe user32.dll,LockWorkStation', 5000);
+
+  // 2. Disable shutdown button via registry (prevents force shutdown from lock screen)
+  try {
+    await runPowerShell(`
+      # Disable shutdown option on lock screen
+      New-ItemProperty -Path "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System" -Name "DisableLockWorkstation" -Value 0 -Force -ErrorAction SilentlyContinue
+      # Disable Ctrl+Alt+Del shutdown option
+      New-ItemProperty -Path "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System" -Name "ShutdownWithoutLogon" -Value 0 -Force -ErrorAction SilentlyContinue
+      # Hide shutdown button
+      New-ItemProperty -Path "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer" -Name "NoClose" -Value 1 -Type DWord -Force -ErrorAction SilentlyContinue
+    `, 5000);
+  } catch (e) { log('warn', 'Registry lock failed:', e.message); }
+
+  // 3. Play alarm sound to alert
+  try {
+    await runPowerShell(`
+      [Console]::Beep(800, 500)
+      [Console]::Beep(1000, 500)
+      [Console]::Beep(800, 500)
+    `, 5000);
+  } catch (e) {}
+
+  return { success: true, stdout: 'PC locked, shutdown disabled', lockResult: lockResult.stdout };
+}
+
+async function unlockScreen() {
+  // Re-enable shutdown and close button
+  try {
+    await runPowerShell(`
+      Remove-ItemProperty -Path "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer" -Name "NoClose" -Force -ErrorAction SilentlyContinue
+      New-ItemProperty -Path "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System" -Name "ShutdownWithoutLogon" -Value 1 -Force -ErrorAction SilentlyContinue
+    `, 5000);
+  } catch (e) {}
+  return { success: true, stdout: 'Shutdown re-enabled' };
 }
 
 async function shutdownSystem() {
@@ -525,6 +754,10 @@ async function handleCommand(msg) {
 
       case 'lock':
         result = await lockScreen();
+        break;
+
+      case 'unlock':
+        result = await unlockScreen();
         break;
 
       case 'shutdown':

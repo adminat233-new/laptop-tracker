@@ -394,74 +394,28 @@ app.post('/api/command', async (req, res) => {
 });
 
 // ============= LAPTOP: Network Scan =============
+// Cache for laptop-reported scan results
+const netscanCache = {};
+
+// POST endpoint: laptop posts its local scan results here
+app.post('/api/netscan', async (req, res) => {
+  const { deviceId, networks, raw, tool } = req.body;
+  if (!deviceId) return res.status(400).json({ success: false, error: 'deviceId required' });
+  netscanCache[deviceId] = { networks: networks || [], raw: raw || '', tool: tool || 'unknown', timestamp: Date.now() };
+  // Also update lastSeen
+  try { await prisma.device.update({ where: { deviceId }, data: { lastSeen: Date.now() } }); } catch(e) {}
+  res.json({ success: true });
+});
+
+// GET endpoint: phone polls this to get laptop's cached scan results
 app.get('/api/netscan/:deviceId', async (req, res) => {
-  try {
-    const platform = process.platform;
-    let cmd = '';
-
-    if (platform === 'win32') {
-      cmd = 'netsh wlan show networks mode=bssid';
-    } else if (platform === 'linux') {
-      cmd = 'iwlist wlan0 scan 2>/dev/null || nmcli device wifi list 2>/dev/null || iw dev wlan0 scan 2>/dev/null';
-    } else if (platform === 'darwin') {
-      cmd = '/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport -s';
-    }
-
-    if (!cmd) {
-      return res.json(sanitize({ success: true, networks: [], message: 'Platform not supported: ' + platform }));
-    }
-
-    exec(cmd, { timeout: 10000 }, async (error, stdout, stderr) => {
-      let networks = [];
-
-      if (platform === 'win32' && stdout) {
-        const lines = stdout.split('\n');
-        let current = {};
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (trimmed.startsWith('SSID')) {
-            if (current.ssid) networks.push(current);
-            current = { ssid: trimmed.split(':').slice(1).join(':').trim() };
-          } else if (trimmed.startsWith('Authentication')) {
-            current.auth = trimmed.split(':').slice(1).join(':').trim();
-          } else if (trimmed.startsWith('Encryption')) {
-            current.encryption = trimmed.split(':').slice(1).join(':').trim();
-          } else if (trimmed.startsWith('Signal')) {
-            current.signal = trimmed.split(':').slice(1).join(':').trim();
-          } else if (trimmed.startsWith('BSSID')) {
-            current.bssid = trimmed.split(':').slice(1).join(':').trim();
-          } else if (trimmed.startsWith('Channel')) {
-            current.channel = trimmed.split(':').slice(1).join(':').trim();
-          }
-        }
-        if (current.ssid) networks.push(current);
-      } else if (stdout) {
-        const lines = stdout.split('\n').filter(l => l.trim());
-        for (const line of lines) {
-          if (line.includes('ESSID') || line.includes('SSID')) {
-            const ssid = line.match(/"([^"]+)"/);
-            if (ssid) networks.push({ ssid: ssid[1] });
-          }
-        }
-      }
-
-      await prisma.device.update({
-        where: { deviceId: req.params.deviceId },
-        data: { lastSeen: Date.now() },
-      });
-
-      res.json(sanitize({
-        success: true,
-        platform,
-        networks,
-        raw: stdout || '',
-        error: stderr || null,
-      }));
-    });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ success: false, error: e.message });
+  const deviceId = req.params.deviceId;
+  const cached = netscanCache[deviceId];
+  if (cached && Date.now() - cached.timestamp < 30000) {
+    return res.json(sanitize({ success: true, ...cached }));
   }
+  // No cached scan — return empty, laptop should be triggered to scan
+  res.json(sanitize({ success: true, networks: [], raw: '', tool: 'none', message: 'No recent scan. Trigger laptop to scan.' }));
 });
 
 // ============= LAPTOP: Check if Paired =============
