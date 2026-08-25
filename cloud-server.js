@@ -284,6 +284,33 @@ app.post('/api/command', async (req, res) => {
   }
 });
 
+// ============= LAPTOP: Check if Paired =============
+app.get('/api/paired/:deviceId', async (req, res) => {
+  try {
+    const device = await prisma.device.findUnique({
+      where: { deviceId: req.params.deviceId },
+    });
+    if (!device) return res.json(sanitize({ success: true, paired: false }));
+
+    const code = await prisma.code.findUnique({
+      where: { pairCode: device.pairCode },
+    });
+
+    const pairedDevices = await prisma.device.findMany({
+      where: { pairCode: device.pairCode, deviceId: { not: req.params.deviceId } },
+    });
+
+    res.json(sanitize({
+      success: true,
+      paired: code ? code.isPaired : false,
+      pairedCount: pairedDevices.length,
+    }));
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 // ============= PHONE: Get Result =============
 app.get('/api/result/:commandId', async (req, res) => {
   try {
@@ -343,7 +370,8 @@ app.get('/api/status/:deviceId', async (req, res) => {
       return res.json({ success: true, isOnline: false });
     }
 
-    const isOnline = Date.now() - Number(deviceRecord.lastSeen) < 15000;
+    const lastSeenNum = Number(deviceRecord.lastSeen);
+    const isOnline = Date.now() - lastSeenNum < 15000;
 
     const locationRecord = await prisma.location.findUnique({
       where: { deviceId: req.params.deviceId },
@@ -366,7 +394,7 @@ app.get('/api/status/:deviceId', async (req, res) => {
     res.json(sanitize({
       success: true,
       isOnline,
-      lastSeen: deviceRecord.lastSeen,
+      lastSeen: lastSeenNum,
       systemInfo: JSON.parse(deviceRecord.systemInfo || '{}'),
       myLocation: locationRecord || null,
       pairedLocation,

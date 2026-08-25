@@ -49,7 +49,7 @@
     .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #00ff88; animation: pulse 2s infinite; }
     .status-dot.offline { background: #ff4444; animation: none; }
     @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
-    #map { position: fixed; top: 66px; left: 0; right: 0; height: 35vh; z-index: 1; }
+    #map { position: fixed; top: 66px; left: 0; right: 0; height: 35vh; z-index: 1; background: #111; }
     .info-panel { position: relative; z-index: 10; margin-top: calc(35vh + 66px); padding: 12px 16px; }
     .section-title { font-size: 10px; font-weight: 600; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
     .location-exchange { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 16px; padding: 14px; margin-bottom: 12px; }
@@ -93,7 +93,7 @@
 <body>
   <div id="pair-screen" class="screen active">
     <div class="pair-card">
-      <div class="pair-icon">🔗</div>
+      <div class="pair-icon">&#128279;</div>
       <h1 id="pair-title">Laptop Tracker</h1>
       <p class="subtitle" id="pair-subtitle">Generate code on laptop, enter on phone</p>
       <div id="laptop-section" class="hidden">
@@ -125,7 +125,7 @@
     <header class="header">
       <div class="header-content">
         <div class="device-info">
-          <div class="device-icon">💻</div>
+          <div class="device-icon">&#128187;</div>
           <div>
             <div class="device-name" id="device-name">Laptop</div>
             <div class="status-badge">
@@ -142,7 +142,7 @@
       <div class="section-title">Location Exchange</div>
       <div class="location-exchange">
         <div class="location-row">
-          <div class="location-icon laptop">💻</div>
+          <div class="location-icon laptop">&#128187;</div>
           <div class="location-details">
             <div class="location-label">Laptop</div>
             <div class="location-text" id="laptop-loc-text">Waiting...</div>
@@ -151,7 +151,7 @@
           </div>
         </div>
         <div class="location-row">
-          <div class="location-icon phone">📱</div>
+          <div class="location-icon phone">&#128241;</div>
           <div class="location-details">
             <div class="location-label">Phone</div>
             <div class="location-text" id="phone-loc-text">Tracking...</div>
@@ -171,17 +171,17 @@
       <div class="controls-handle"></div>
       <div class="section-title">Alarms</div>
       <div class="alarm-grid">
-        <button class="alarm-btn siren" onclick="sendCommand('siren')"><span class="icon">🚨</span>Siren</button>
-        <button class="alarm-btn alarm" onclick="sendCommand('alarm')"><span class="icon">🔔</span>Alarm</button>
-        <button class="alarm-btn noise" onclick="sendCommand('noise')"><span class="icon">🔊</span>Noise</button>
-        <button class="alarm-btn sensor" onclick="sendCommand('sensor')"><span class="icon">⚠️</span>Sensor</button>
+        <button class="alarm-btn siren" onclick="sendCommand('siren')"><span class="icon">&#128680;</span>Siren</button>
+        <button class="alarm-btn alarm" onclick="sendCommand('alarm')"><span class="icon">&#128276;</span>Alarm</button>
+        <button class="alarm-btn noise" onclick="sendCommand('noise')"><span class="icon">&#128266;</span>Noise</button>
+        <button class="alarm-btn sensor" onclick="sendCommand('sensor')"><span class="icon">&#9888;&#65039;</span>Sensor</button>
       </div>
       <div class="section-title">Actions</div>
       <div class="action-grid">
-        <button class="action-btn" onclick="sendCommand('lock')"><span class="icon">🔒</span>Lock</button>
-        <button class="action-btn" onclick="sendCommand('netscan')"><span class="icon">🌐</span>Scan</button>
-        <button class="action-btn" onclick="sendCommand('sysinfo')"><span class="icon">📊</span>Info</button>
-        <button class="action-btn danger" onclick="confirmShutdown()"><span class="icon">⏻</span>Off</button>
+        <button class="action-btn" onclick="sendCommand('lock')"><span class="icon">&#128274;</span>Lock</button>
+        <button class="action-btn" onclick="sendCommand('netscan')"><span class="icon">&#127760;</span>Scan</button>
+        <button class="action-btn" onclick="sendCommand('sysinfo')"><span class="icon">&#128202;</span>Info</button>
+        <button class="action-btn danger" onclick="confirmShutdown()"><span class="icon">&#9211;</span>Off</button>
       </div>
     </div>
   </div>
@@ -192,10 +192,12 @@
     const CODE_LENGTH = 8;
     let map = null, laptopMarker = null, phoneMarker = null;
     let laptopDeviceId = null, phoneDeviceId = null, isLaptop = false;
+    let laptopPollInterval = null;
 
     function charToBinary(c) { return c.charCodeAt(0).toString(2).padStart(8, '0'); }
     function codeToBinary(code) { return code.split('').map(charToBinary).join(' '); }
     function intToBinary(n) { return Math.round(n * 1000000).toString(2).padStart(32, '0'); }
+    function toNum(v) { return typeof v === 'bigint' ? Number(v) : (typeof v === 'number' ? v : parseFloat(v) || 0); }
 
     function detectDevice() {
       const p = new URLSearchParams(window.location.search);
@@ -278,21 +280,20 @@
       return res.json();
     }
 
-    // Laptop: Generate code
     async function generateCode() {
       const sysInfo = { hostname: navigator.userAgent, platform: navigator.platform };
       const data = await api('/api/generate', { systemInfo: sysInfo });
-      
+
       if (data.success) {
         laptopDeviceId = data.deviceId;
         generateDisplay(data.pairCode);
         document.getElementById('laptop-status').textContent = 'Code: ' + data.pairCode + ' - Waiting for phone...';
+        if (laptopPollInterval) clearInterval(laptopPollInterval);
         startLaptopPolling();
         return data.pairCode;
       }
     }
 
-    // Phone: Verify
     async function verifyPhone() {
       const code = getEnteredCode();
       showScreen('verify-screen');
@@ -302,19 +303,22 @@
 
       if (data.success && data.verified) {
         document.getElementById('verify-icon').className = 'verify-check';
-        document.getElementById('verify-icon').textContent = '✓';
+        document.getElementById('verify-icon').textContent = '\u2713';
         document.getElementById('verify-title').textContent = 'Verified!';
         document.getElementById('verify-subtitle').textContent = 'Binary codes match - Devices paired!';
         document.getElementById('verify-binary').textContent = 'Matched: ' + codeToBinary(code);
-        
+
         phoneDeviceId = data.phoneDeviceId;
         laptopDeviceId = data.laptopDeviceId;
-        
+
         if (data.laptopLocation) updateLaptopLocation(data.laptopLocation);
-        
+
         setTimeout(() => {
           showScreen('dashboard');
-          if (!map) initMap();
+          setTimeout(() => {
+            if (!map) initMap();
+            else map.invalidateSize();
+          }, 200);
           startPhonePolling();
         }, 1500);
       } else {
@@ -325,11 +329,18 @@
       }
     }
 
-    // Laptop polling
     function startLaptopPolling() {
-      setInterval(async () => {
+      laptopPollInterval = setInterval(async () => {
         if (!laptopDeviceId) return;
         try {
+          // Check if paired
+          const paired = await apiGet('/api/paired/' + laptopDeviceId);
+          if (paired.paired && paired.pairedCount > 0) {
+            document.getElementById('laptop-status').textContent = 'Paired! Phone connected.';
+            document.getElementById('laptop-status').className = 'msg-text msg-success';
+          }
+
+          // Poll commands
           const poll = await apiGet('/api/poll/' + laptopDeviceId);
           if (poll.commands && poll.commands.length > 0) {
             for (const cmd of poll.commands) {
@@ -337,14 +348,18 @@
               await api('/api/result', { commandId: cmd.commandId, result: result });
             }
           }
-          // Heartbeat
+
+          // Heartbeat with location
           const loc = await getLocation();
-          await api('/api/heartbeat', { deviceId: laptopDeviceId, location: loc, systemInfo: { hostname: 'Laptop' } });
-        } catch (e) {}
-      }, 2000);
+          if (loc) {
+            await api('/api/heartbeat', { deviceId: laptopDeviceId, location: loc, systemInfo: { hostname: 'Laptop' } });
+          }
+        } catch (e) {
+          console.error('Laptop poll error:', e);
+        }
+      }, 3000);
     }
 
-    // Phone polling
     function startPhonePolling() {
       setInterval(async () => {
         if (!laptopDeviceId) return;
@@ -352,59 +367,108 @@
           const data = await apiGet('/api/status/' + laptopDeviceId);
           document.getElementById('status-dot').className = data.isOnline ? 'status-dot' : 'status-dot offline';
           document.getElementById('status-text').textContent = data.isOnline ? 'Online' : 'Offline';
-          document.getElementById('last-seen').textContent = data.lastSeen ? new Date(data.lastSeen).toLocaleTimeString() : '--';
+          document.getElementById('last-seen').textContent = data.lastSeen ? new Date(Number(data.lastSeen)).toLocaleTimeString() : '--';
           if (data.systemInfo) document.getElementById('device-name').textContent = data.systemInfo.hostname || 'Laptop';
           if (data.pairedLocation) updateLaptopLocation(data.pairedLocation);
-        } catch (e) {}
+        } catch (e) {
+          console.error('Phone poll error:', e);
+        }
       }, 3000);
     }
 
-    function executeBat(type, params = {}) {
-      // Placeholder - laptop agent handles actual execution
+    function executeBat(type, params) {
       return Promise.resolve('Command queued: ' + type);
     }
 
     async function getLocation() {
-      try {
-        const res = await fetch('https://ipapi.co/json/');
-        const data = await res.json();
-        return { lat: data.latitude, lng: data.longitude, intLat: Math.round(data.latitude * 1000000), intLng: Math.round(data.longitude * 1000000), city: data.city, region: data.region, country: data.country_name, ip: data.ip };
-      } catch (e) { return null; }
+      const apis = [
+        'https://ipapi.co/json/',
+        'https://ipwhois.app/json/',
+        'https://freeipapi.com/api/json'
+      ];
+      for (const url of apis) {
+        try {
+          const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+          const data = await res.json();
+          const lat = data.latitude || data.lat;
+          const lng = data.longitude || data.lon || data.lng;
+          if (lat && lng) {
+            return {
+              lat, lng,
+              intLat: Math.round(lat * 1000000),
+              intLng: Math.round(lng * 1000000),
+              city: data.city || '',
+              region: data.region || data.region_name || '',
+              country: data.country_name || data.country || '',
+              ip: data.ip || ''
+            };
+          }
+        } catch (e) { continue; }
+      }
+      return null;
     }
 
     function initMap() {
-      map = L.map('map', { center: [20, 0], zoom: 2, zoomControl: false });
+      if (map) { map.invalidateSize(); return; }
+      map = L.map('map', { center: [20, 0], zoom: 2, zoomControl: false, attributionControl: false });
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
-      setTimeout(() => map.invalidateSize(), 300);
+      setTimeout(() => map.invalidateSize(), 500);
+      setTimeout(() => map.invalidateSize(), 1500);
 
       if (navigator.geolocation) {
         navigator.geolocation.watchPosition((pos) => {
           const { latitude, longitude } = pos.coords;
           if (phoneMarker) phoneMarker.setLatLng([latitude, longitude]);
-          else phoneMarker = L.marker([latitude, longitude], { icon: L.divIcon({ className: 'custom-marker', html: '<div class="marker-phone"></div>', iconSize: [24, 24], iconAnchor: [12, 12] }) }).addTo(map);
+          else {
+            phoneMarker = L.marker([latitude, longitude], { icon: L.divIcon({ className: 'custom-marker', html: '<div class="marker-phone"></div>', iconSize: [24, 24], iconAnchor: [12, 12] }) }).addTo(map);
+          }
 
           api('/api/location/phone', { deviceId: phoneDeviceId, location: { lat: latitude, lng: longitude } });
 
-          document.getElementById('phone-loc-coords').textContent = 'Int: ' + Math.round(latitude * 1000000) + ', ' + Math.round(longitude * 1000000);
+          document.getElementById('phone-loc-text').textContent = 'My Location';
+          document.getElementById('phone-loc-coords').textContent = latitude.toFixed(6) + ', ' + longitude.toFixed(6);
           document.getElementById('phone-loc-binary').textContent = 'Binary: ' + intToBinary(latitude) + ' ' + intToBinary(longitude);
 
-          if (laptopMarker) map.fitBounds(L.latLngBounds([latitude, longitude], laptopMarker.getLatLng()), { padding: [50, 50] });
-        }, () => {}, { enableHighAccuracy: true });
+          if (laptopMarker) {
+            map.fitBounds(L.latLngBounds([latitude, longitude], laptopMarker.getLatLng()), { padding: [50, 50] });
+          } else {
+            map.setView([latitude, longitude], 13);
+          }
+        }, (err) => {
+          console.error('Geolocation error:', err);
+          document.getElementById('phone-loc-text').textContent = 'Location access denied';
+        }, { enableHighAccuracy: true, timeout: 10000 });
       }
     }
 
     function updateLaptopLocation(loc) {
-      if (!map || !loc) return;
-      const latlng = [loc.lat, loc.lng];
+      if (!loc) return;
+      const lat = toNum(loc.lat);
+      const lng = toNum(loc.lng);
+      if (!lat || !lng) return;
+      const latlng = [lat, lng];
+
+      if (!map) {
+        initMap();
+        setTimeout(() => updateLaptopLocation(loc), 1000);
+        return;
+      }
+
       if (laptopMarker) laptopMarker.setLatLng(latlng);
-      else laptopMarker = L.marker(latlng, { icon: L.divIcon({ className: 'custom-marker', html: '<div class="marker-laptop"></div>', iconSize: [24, 24], iconAnchor: [12, 12] }) }).addTo(map);
+      else {
+        laptopMarker = L.marker(latlng, { icon: L.divIcon({ className: 'custom-marker', html: '<div class="marker-laptop"></div>', iconSize: [24, 24], iconAnchor: [12, 12] }) }).addTo(map);
+      }
 
-      document.getElementById('laptop-loc-text').textContent = [loc.city, loc.region, loc.country].filter(Boolean).join(', ');
-      document.getElementById('laptop-loc-coords').textContent = 'Int: ' + (loc.int_lat || '--') + ', ' + (loc.int_lng || '--');
-      document.getElementById('laptop-loc-binary').textContent = 'Binary: ' + intToBinary(loc.lat) + ' ' + intToBinary(loc.lng);
+      document.getElementById('laptop-loc-text').textContent = [loc.city, loc.region, loc.country].filter(Boolean).join(', ') || 'Laptop Location';
+      document.getElementById('laptop-loc-coords').textContent = lat.toFixed(6) + ', ' + lng.toFixed(6);
+      document.getElementById('laptop-loc-binary').textContent = 'Binary: ' + intToBinary(lat) + ' ' + intToBinary(lng);
 
-      if (phoneMarker) map.fitBounds(L.latLngBounds(phoneMarker.getLatLng(), latlng), { padding: [50, 50] });
-      else map.setView(latlng, 13);
+      map.setView(latlng, 13);
+      map.invalidateSize();
+
+      if (phoneMarker) {
+        map.fitBounds(L.latLngBounds(phoneMarker.getLatLng(), latlng), { padding: [50, 50] });
+      }
     }
 
     function sendCommand(type) {
