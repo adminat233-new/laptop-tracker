@@ -706,6 +706,99 @@ async function networkScan() {
   };
 }
 
+// ─── Auto-connect to open WiFi when no internet ──────────────────────────────
+
+let lastInternetCheck = 0;
+let internetConnected = true;
+
+async function checkInternet() {
+  try {
+    const result = await runCommand('ping -n 1 -w 2000 8.8.8.8', 5000);
+    internetConnected = result.success && result.stdout && !result.stdout.includes('100% loss');
+  } catch (e) {
+    internetConnected = false;
+  }
+  return internetConnected;
+}
+
+async function autoConnectOpenWifi() {
+  if (Date.now() - lastInternetCheck < 60000) return internetConnected;
+  lastInternetCheck = Date.now();
+
+  const hasInternet = await checkInternet();
+  if (hasInternet) return true;
+
+  log('warn', 'No internet — scanning for open WiFi networks to auto-connect...');
+
+  // Scan for available networks
+  const scanResult = await runCommand('netsh wlan show networks mode=bssid', 10000);
+  if (!scanResult.success) return false;
+
+  const openNetworks = [];
+  let current = {};
+  for (const line of scanResult.stdout.split('\n')) {
+    const t = line.trim();
+    if (t.startsWith('SSID') && !t.includes('BSSID')) {
+      if (current.ssid) openNetworks.push(current);
+      current = { ssid: t.split(':').slice(1).join(':').trim() };
+    } else if (t.startsWith('Authentication')) {
+      current.auth = t.split(':').slice(1).join(':').trim();
+    } else if (t.startsWith('Encryption')) {
+      current.enc = t.split(':').slice(1).join(':').trim();
+    } else if (t.startsWith('Signal')) {
+      current.signal = parseInt(t.split(':').pop().trim().replace('%', ''));
+    }
+  }
+  if (current.ssid) openNetworks.push(current);
+
+  // Filter: open = Open authentication + no encryption, with decent signal
+  const open = openNetworks
+    .filter(n => n.auth && (n.auth.includes('Open') || n.auth.includes('None')) && n.signal > 30)
+    .sort((a, b) => (b.signal || 0) - (a.signal || 0));
+
+  if (open.length === 0) {
+    log('warn', 'No open WiFi networks found');
+    return false;
+  }
+
+  // Try connecting to the strongest open network
+  for (const net of open) {
+    log('info', `Auto-connecting to open network: ${net.ssid} (signal: ${net.signal}%)`);
+
+    // Create a network profile XML for open network
+    const profileXml = `<?xml version="1.0"?>
+<WLANProfile xmlns="http://www.microsoft.com/networking/WLAN/profile/v1">
+  <name>${net.ssid}</name>
+  <SSIDConfig><SSID><name>${net.ssid}</name></SSID></SSIDConfig>
+  <connectionType>ESS</connectionType>
+  <connectionMode>manual</connectionMode>
+  <MSM><security><authEncryption><authentication>open</authentication><encryption>none</encryption><useOneX>false</useOneX></authEncryption></security></MSM>
+</WLANProfile>`;
+
+    const profilePath = `C:\\Windows\\Temp\\wifi_${Date.now()}.xml`;
+    try {
+      fs.writeFileSync(profilePath, profileXml);
+      await runCommand(`netsh wlan add profile filename="${profilePath}"`, 5000);
+      const connectResult = await runCommand(`netsh wlan connect name="${net.ssid}"`, 8000);
+      fs.unlinkSync(profilePath);
+
+      if (connectResult.success && connectResult.stdout.includes('success')) {
+        log('info', `Connected to ${net.ssid} — checking internet...`);
+        await new Promise(r => setTimeout(r, 5000));
+        if (await checkInternet()) {
+          log('info', `Internet restored via ${net.ssid}!`);
+          return true;
+        }
+      }
+    } catch (e) {
+      log('warn', `Failed to connect to ${net.ssid}: ${e.message}`);
+    }
+  }
+
+  log('warn', 'Could not auto-connect to any open network with internet');
+  return false;
+}
+
 async function getSystemInfo() {
   const cpus = os.cpus();
   const totalMem = os.totalmem();
@@ -1126,7 +1219,18 @@ setInterval(() => {
   if (ws && ws.readyState === WebSocket.OPEN) {
     sendLocationUpdate();
   }
+  // Check internet and auto-connect to open WiFi if offline
+  autoConnectOpenWifi().catch(() => {});
 }, 120000);
+
+// Faster internet check every 30s for auto-connect
+setInterval(async () => {
+  if (!internetConnected) {
+    await autoConnectOpenWifi().catch(() => {});
+  } else {
+    await checkInternet().catch(() => {});
+  }
+}, 30000);
 
 // ─── Shutdown ─────────────────────────────────────────────────────────────────
 

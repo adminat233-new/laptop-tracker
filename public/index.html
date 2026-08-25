@@ -369,14 +369,42 @@
 
     // WiFi scan cache
     let wifiNetworks = [];
+    let cachedPingData = null;
     let bleDevices = [];
     let lastWifiScan = 0;
 
     async function scanWifiNetworks() {
       if (!laptopDeviceId) return [];
+
+      // Step 1: Tell laptop to run WiFi scan via WS command
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        wsSend({ type: 'command', commandType: 'wifi-scan' });
+      } else {
+        // HTTP fallback — queue command for laptop to pick up via polling
+        api('/api/command', { deviceId: laptopDeviceId, commandType: 'wifi-scan' }).catch(() => {});
+      }
+
+      // Step 2: Poll server for results (laptop posts results to /api/netscan)
+      for (let i = 0; i < 8; i++) {
+        await new Promise(r => setTimeout(r, 1000));
+        try {
+          const data = await apiGet('/api/netscan/' + laptopDeviceId);
+          if (data.success && data.networks && data.networks.length > 0) {
+            wifiNetworks = data.networks.map(n => ({
+              ...n,
+              rssi: n.rssi || n.signal || -50,
+              distance: n.distance || SignalEngine.rssiToDistance(n.rssi || n.signal || -50, -55, 3.5),
+            }));
+            lastWifiScan = Date.now();
+            return wifiNetworks;
+          }
+        } catch (e) {}
+      }
+
+      // Step 3: Also try the old endpoint as last resort
       try {
         const data = await apiGet('/api/signal/wifi/' + laptopDeviceId);
-        if (data.success && data.networks) {
+        if (data.success && data.networks && data.networks.length > 0) {
           wifiNetworks = data.networks.map(n => ({
             ...n,
             rssi: n.rssi || -50,
@@ -523,6 +551,23 @@
               const cmdType = parsed.split ? parsed.split(' - ')[1]?.split(':')[0] : '';
               showToast('Result: ' + (parsed || msg.result).substring(0, 120));
               addCommandLog(cmdType || 'unknown', 'completed');
+
+              // Store wifi scan results locally
+              if (parsed.networks && Array.isArray(parsed.networks)) {
+                wifiNetworks = parsed.networks.map(n => ({
+                  ...n,
+                  rssi: n.rssi || n.signal || -50,
+                  distance: n.distance || SignalEngine.rssiToDistance(n.rssi || n.signal || -50, -55, 3.5),
+                }));
+                lastWifiScan = Date.now();
+                showToast('WiFi scan: ' + wifiNetworks.length + ' networks');
+              }
+
+              // Store ping/traceroute results locally
+              if (parsed.targets && Array.isArray(parsed.targets)) {
+                cachedPingData = parsed;
+                showToast('Ping trace: ' + parsed.targets.length + ' targets');
+              }
             } catch(e) {
               showToast('Result: ' + (msg.result || '').substring(0, 120));
               addCommandLog('unknown', 'completed');
@@ -1427,6 +1472,11 @@
       if (!liveEffectsEnabled || !map) return;
       clearLiveEffects();
 
+      // If on laptop and no WiFi data yet, trigger a scan
+      if (isLaptop && (!wifiNetworks || wifiNetworks.length === 0) && (Date.now() - lastWifiScan > 30000)) {
+        scanWifiNetworks();
+      }
+
       // Radar sweep from laptop position
       if (laptopMarker) {
         const lp = laptopMarker.getLatLng();
@@ -1485,20 +1535,43 @@
 
     async function runTrilateration() {
       showToast('Running trilateration...');
-      const nets = wifiNetworks.length > 0 ? wifiNetworks : await scanWifiNetworks();
-      if (nets.length < 3) {
-        showToolsOutput('<div style="color:#ff6b00;">Need 3+ WiFi networks for trilateration. Found: ' + nets.length + '</div>');
-        return;
+
+      // Trigger laptop to run WiFi scan + ping + BLE + network
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        wsSend({ type: 'command', commandType: 'wifi-scan' });
+        wsSend({ type: 'command', commandType: 'ping' });
+        wsSend({ type: 'command', commandType: 'ble-scan' });
+        wsSend({ type: 'command', commandType: 'netscan' });
+      } else if (laptopDeviceId) {
+        api('/api/command', { deviceId: laptopDeviceId, commandType: 'wifi-scan' }).catch(() => {});
+        api('/api/command', { deviceId: laptopDeviceId, commandType: 'ping' }).catch(() => {});
       }
 
-      // Step 1: Convert RSSI to distance for each AP
+      const nets = wifiNetworks.length > 0 ? wifiNetworks : await scanWifiNetworks();
+
+      // Convert WiFi APs to beacons
       const beacons = nets.slice(0, 12).map(n => {
         const rssi = n.rssi || n.signal || -70;
         const dist = n.distance || SignalEngine.rssiToDistance(rssi, -55, 3.5);
-        return { ssid: n.ssid, bssid: n.bssid, rssi, distance: dist, vendor: n.vendor };
+        return { ssid: n.ssid, bssid: n.bssid, rssi, distance: dist, vendor: n.vendor, type: 'wifi' };
       });
 
-      // Step 2: Try BSSID geolocation (Mozilla Location Service)
+      // Also use BLE devices as additional beacons (if available from laptop scan)
+      if (bleDevices && bleDevices.length > 0) {
+        for (const ble of bleDevices.slice(0, 6)) {
+          const rssi = ble.rssi || -60;
+          const dist = ble.distance || SignalEngine.rssiToDistance(rssi, -59, 2.5);
+          beacons.push({ ssid: ble.name || 'BLE-' + (ble.id || '').slice(-4), rssi, distance: dist, type: 'ble' });
+        }
+      }
+
+      if (beacons.length < 3) {
+        showToolsOutput('<div style="color:#ff6b00;">Need 3+ signal sources for trilateration. Found: ' + beacons.length + '</div>' +
+          '<div style="color:#888;font-size:11px;">WiFi: ' + nets.length + ', BLE: ' + (bleDevices ? bleDevices.length : 0) + '</div>');
+        return;
+      }
+
+      // Try BSSID geolocation (Mozilla Location Service)
       let bssidLocation = null;
       try {
         const bssidData = await api('/api/bssid-lookup', {
@@ -1509,24 +1582,33 @@
         }
       } catch (e) {}
 
-      // Step 3: Try network ping tracing for latency-based distance estimation
-      let pingData = null;
-      try {
-        const pingResult = await apiGet('/api/ping/' + (laptopDeviceId || phoneDeviceId || ''));
-        if (pingResult && pingResult.targets && pingResult.targets.length > 0) {
-          pingData = pingResult;
-        }
-      } catch (e) {}
+      // Fallback: use current GPS/IP location as reference point
+      if (!bssidLocation) {
+        bssidLocation = cachedLocation || LocationTracker.getBest();
+      }
 
-      // Step 4: Compute trilateration if we have a reference point
+      // Get ping trace data for latency-based distance estimation
+      let pingData = null;
+      if (cachedPingData && cachedPingData.targets && cachedPingData.targets.length > 0) {
+        pingData = cachedPingData;
+        cachedPingData = null;
+      } else {
+        try {
+          const pingResult = await apiGet('/api/ping/' + (laptopDeviceId || phoneDeviceId || ''));
+          if (pingResult && pingResult.targets && pingResult.targets.length > 0) {
+            pingData = pingResult;
+          }
+        } catch (e) {}
+      }
+
+      // Compute trilateration if we have a reference point and 3+ beacons
       let position = null;
       if (bssidLocation && beacons.length >= 3) {
-        // Place beacons around the BSSID reference point based on signal direction (approximate)
+        // Place beacons around the reference point based on signal direction
         const placed = beacons.slice(0, 3).map((b, i) => {
           const angle = (i * 2 * Math.PI / 3); // 120 degrees apart
           const dx = b.distance * Math.cos(angle);
           const dy = b.distance * Math.sin(angle);
-          // Convert meters to lat/lng offset
           const latOffset = dy / 111320;
           const lngOffset = dx / (111320 * Math.cos(bssidLocation.lat * Math.PI / 180));
           return {
@@ -1538,23 +1620,45 @@
         position = trilaterate(placed[0], placed[1], placed[2]);
       }
 
-      // Step 5: Build output
-      let html = '<div style="font-weight:600;margin-bottom:4px;">Trilateration — ' + beacons.length + ' APs</div>';
+      // If we have 4+ beacons, use centroid for additional estimate
+      let centroidPos = null;
+      if (bssidLocation && beacons.length >= 4) {
+        let cLat = 0, cLng = 0, totalWeight = 0;
+        for (const b of beacons) {
+          const weight = 1 / Math.max(1, b.distance);
+          // Place each beacon at estimated position
+          const angle = Math.random() * 2 * Math.PI;
+          const dx = b.distance * Math.cos(angle);
+          const dy = b.distance * Math.sin(angle);
+          cLat += (bssidLocation.lat + dy / 111320) * weight;
+          cLng += (bssidLocation.lng + dx / (111320 * Math.cos(bssidLocation.lat * Math.PI / 180))) * weight;
+          totalWeight += weight;
+        }
+        if (totalWeight > 0) {
+          centroidPos = { lat: cLat / totalWeight, lng: cLng / totalWeight };
+        }
+      }
+      const wifiCount = beacons.filter(b => b.type === 'wifi').length;
+      const bleCount = beacons.filter(b => b.type === 'ble').length;
+      let html = '<div style="font-weight:600;margin-bottom:4px;">Trilateration — ' + beacons.length + ' sources (WiFi: ' + wifiCount + ', BLE: ' + bleCount + ')</div>';
 
       if (position) {
         html += '<div style="color:#00ff88;margin-bottom:4px;">Position: ' + position.lat.toFixed(6) + ', ' + position.lng.toFixed(6) + '</div>';
         html += '<div style="color:#888;margin-bottom:4px;">Method: ' + position.method + ' | Accuracy: ~' + Math.round(position.accuracy) + 'm</div>';
+      } else if (centroidPos) {
+        html += '<div style="color:#00d4ff;margin-bottom:4px;">Centroid: ' + centroidPos.lat.toFixed(6) + ', ' + centroidPos.lng.toFixed(6) + '</div>';
       } else if (bssidLocation) {
-        html += '<div style="color:#00d4ff;margin-bottom:4px;">BSSID Position: ' + bssidLocation.lat.toFixed(6) + ', ' + bssidLocation.lng.toFixed(6) + ' (±' + Math.round(bssidLocation.accuracy) + 'm)</div>';
+        html += '<div style="color:#00d4ff;margin-bottom:4px;">Reference: ' + bssidLocation.lat.toFixed(6) + ', ' + bssidLocation.lng.toFixed(6) + ' (±' + Math.round(bssidLocation.accuracy) + 'm)</div>';
       } else {
-        html += '<div style="color:#ff6b00;margin-bottom:4px;">No reference position available. Showing distance estimates only.</div>';
+        html += '<div style="color:#ff6b00;margin-bottom:4px;">No reference position. Showing distance estimates only.</div>';
       }
 
       // Show beacon distances
       html += beacons.map(b => {
         const barWidth = Math.min(100, Math.max(5, (b.rssi + 100)));
+        const typeTag = b.type === 'ble' ? ' <span style="color:#d4ff00;font-size:9px;">BLE</span>' : '';
         return '<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid #ffffff11;font-size:11px;">' +
-          '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + (b.ssid || 'Hidden') + '</span>' +
+          '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + (b.ssid || 'Hidden') + typeTag + '</span>' +
           '<span style="width:60px;text-align:right;color:' + (b.rssi > -50 ? '#00ff88' : b.rssi > -70 ? '#ffaa00' : '#ff4444') + ';">' + b.rssi + 'dBm</span>' +
           '<span style="width:60px;text-align:right;">' + b.distance.toFixed(1) + 'm</span>' +
           '<span style="width:60px;text-align:right;color:#888;font-size:10px;">' + (b.vendor || '') + '</span></div>';
@@ -1580,58 +1684,91 @@
 
     async function runTriangulation() {
       showToast('Running triangulation...');
+
+      // Trigger laptop to run all scans
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        wsSend({ type: 'command', commandType: 'wifi-scan' });
+        wsSend({ type: 'command', commandType: 'ping' });
+        wsSend({ type: 'command', commandType: 'ble-scan' });
+      } else if (laptopDeviceId) {
+        api('/api/command', { deviceId: laptopDeviceId, commandType: 'wifi-scan' }).catch(() => {});
+        api('/api/command', { deviceId: laptopDeviceId, commandType: 'ping' }).catch(() => {});
+      }
+
       const nets = wifiNetworks.length > 0 ? wifiNetworks : await scanWifiNetworks();
-      if (nets.length < 2) {
-        showToolsOutput('<div style="color:#ff6b00;">Need 2+ WiFi networks for triangulation. Found: ' + nets.length + '</div>');
+
+      // Combine WiFi + BLE for triangulation
+      const allSignals = nets.map(n => ({
+        ssid: n.ssid, rssi: n.rssi || n.signal || -70,
+        distance: n.distance || SignalEngine.rssiToDistance(n.rssi || n.signal || -70, -55, 3.5),
+        type: 'wifi'
+      }));
+      if (bleDevices && bleDevices.length > 0) {
+        for (const ble of bleDevices) {
+          const rssi = ble.rssi || -60;
+          allSignals.push({
+            ssid: ble.name || 'BLE-' + (ble.id || '').slice(-4), rssi,
+            distance: ble.distance || SignalEngine.rssiToDistance(rssi, -59, 2.5),
+            type: 'ble'
+          });
+        }
+      }
+
+      if (allSignals.length < 2) {
+        showToolsOutput('<div style="color:#ff6b00;">Need 2+ signal sources. Found: ' + allSignals.length + '</div>');
         return;
       }
 
       // Get ping trace data for latency-based positioning
       let pingData = null;
-      try {
-        const pingResult = await apiGet('/api/ping/' + (laptopDeviceId || phoneDeviceId || ''));
-        if (pingResult && pingResult.targets) pingData = pingResult;
-      } catch (e) {}
+      if (cachedPingData && cachedPingData.targets) {
+        pingData = cachedPingData;
+        cachedPingData = null;
+      } else {
+        try {
+          const pingResult = await apiGet('/api/ping/' + (laptopDeviceId || phoneDeviceId || ''));
+          if (pingResult && pingResult.targets) pingData = pingResult;
+        } catch (e) {}
+      }
 
-      // Compute signal strength distribution for angle estimation
-      const maxRssi = Math.max(...nets.map(n => n.rssi || n.signal || -80));
-      const totalWeight = nets.reduce((sum, n) => sum + Math.max(0, (n.rssi || -80) + 100), 0);
-
-      // Weighted centroid from signal strengths
+      // Compute weighted centroid from all signal strengths
+      const totalWeight = allSignals.reduce((sum, n) => sum + Math.max(0, (n.rssi || -80) + 100), 0);
       let centroidLat = 0, centroidLng = 0;
       const myLoc = cachedLocation || LocationTracker.getBest();
       if (myLoc) {
-        for (const n of nets) {
+        for (const n of allSignals) {
           const weight = Math.max(0, (n.rssi || -80) + 100) / totalWeight;
-          // Each AP pulls position toward it proportionally to signal strength
           centroidLat += (n.lat || myLoc.lat) * weight;
           centroidLng += (n.lng || myLoc.lng) * weight;
         }
       }
 
       // Estimate angles from signal strength differences
-      const angleData = nets.slice(0, 8).map((n, i) => {
-        const rssi = n.rssi || n.signal || -70;
-        const relStrength = (rssi + 100) / 100; // 0-1 normalized
-        const angle = (i * 360 / Math.min(nets.length, 8));
-        return { ssid: n.ssid, rssi, angle, relStrength, distance: n.distance || SignalEngine.rssiToDistance(rssi, -55, 3.5) };
+      const angleData = allSignals.slice(0, 12).map((n, i) => {
+        const rssi = n.rssi || -70;
+        const relStrength = (rssi + 100) / 100;
+        const angle = (i * 360 / Math.min(allSignals.length, 12));
+        return { ssid: n.ssid, rssi, angle, relStrength, distance: n.distance, type: n.type };
       });
 
-      let html = '<div style="font-weight:600;margin-bottom:4px;">Triangulation — ' + nets.length + ' APs</div>';
+      const wifiCount = allSignals.filter(s => s.type === 'wifi').length;
+      const bleCount = allSignals.filter(s => s.type === 'ble').length;
+      let html = '<div style="font-weight:600;margin-bottom:4px;">Triangulation — ' + allSignals.length + ' sources (WiFi: ' + wifiCount + ', BLE: ' + bleCount + ')</div>';
 
       if (myLoc) {
         html += '<div style="color:#00d4ff;margin-bottom:4px;">Reference: ' + myLoc.lat?.toFixed(6) + ', ' + myLoc.lng?.toFixed(6) + '</div>';
-        html += '<div style="color:#888;margin-bottom:4px;">Weighted centroid from ' + nets.length + ' signal sources</div>';
+        html += '<div style="color:#888;margin-bottom:4px;">Weighted centroid from ' + allSignals.length + ' signal sources</div>';
       }
 
       // Show angle distribution
-      html += angleData.map(a =>
-        '<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid #ffffff11;font-size:11px;">' +
-        '<span>' + (a.ssid || 'Hidden') + '</span>' +
+      html += angleData.map(a => {
+        const typeTag = a.type === 'ble' ? ' <span style="color:#d4ff00;font-size:9px;">BLE</span>' : '';
+        return '<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid #ffffff11;font-size:11px;">' +
+        '<span>' + (a.ssid || 'Hidden') + typeTag + '</span>' +
         '<span>Angle: ' + a.angle + '°</span>' +
         '<span style="color:' + (a.rssi > -50 ? '#00ff88' : a.rssi > -70 ? '#ffaa00' : '#ff4444') + ';">' + a.rssi + 'dBm</span>' +
-        '<span>' + a.distance.toFixed(1) + 'm</span></div>'
-      ).join('');
+        '<span>' + a.distance.toFixed(1) + 'm</span></div>';
+      }).join('');
 
       // Show ping-based latency triangulation
       if (pingData && pingData.targets) {
@@ -1662,6 +1799,13 @@
 
     async function runSignalScan() {
       showToast('Scanning signals...');
+
+      // Trigger laptop to scan WiFi + BLE
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        wsSend({ type: 'command', commandType: 'wifi-scan' });
+        wsSend({ type: 'command', commandType: 'ble-scan' });
+      }
+
       const nets = await scanWifiNetworks();
       let html = '<div style="font-weight:600;margin-bottom:4px;">WiFi Scan — ' + nets.length + ' networks</div>';
       if (nets.length > 0) {
@@ -1676,8 +1820,25 @@
           '</div>';
         }).join('');
       } else {
-        html += '<div style="color:#888;">No networks found</div>';
+        html += '<div style="color:#888;">No WiFi networks found</div>';
       }
+
+      // Show BLE devices if available
+      if (bleDevices && bleDevices.length > 0) {
+        html += '<div style="font-weight:600;margin-top:8px;margin-bottom:4px;">BLE Devices — ' + bleDevices.length + '</div>';
+        html += bleDevices.map(b => {
+          const rssi = b.rssi || -60;
+          const bar = Math.min(100, Math.max(5, rssi + 100));
+          return '<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid #ffffff11;">' +
+            '<span style="flex:1;">' + (b.name || 'Unknown') + ' <span style="color:#d4ff00;font-size:9px;">BLE</span></span>' +
+            '<span style="width:80px;background:#ffffff11;height:6px;border-radius:3px;margin:0 6px;">' +
+              '<span style="width:' + bar + '%;height:100%;background:' + (rssi > -50 ? '#00ff88' : rssi > -70 ? '#ffaa00' : '#ff4444') + ';border-radius:3px;display:block;"></span></span>' +
+            '<span style="width:60px;text-align:right;color:' + (rssi > -50 ? '#00ff88' : rssi > -70 ? '#ffaa00' : '#ff4444') + ';">' + rssi + 'dBm</span>' +
+            '<span style="width:50px;text-align:right;">' + (b.distance || '?') + 'm</span>' +
+          '</div>';
+        }).join('');
+      }
+
       showToolsOutput(html);
       if (liveEffectsEnabled) startLiveEffects();
     }
@@ -1687,24 +1848,38 @@
       const deviceId = laptopDeviceId || phoneDeviceId;
       if (!deviceId) { showToolsOutput('<div style="color:#ff4444;">No device connected</div>'); return; }
 
-      // Trigger ping/traceroute on the laptop via command
+      // Step 1: Send command to laptop via WS
       if (ws && ws.readyState === WebSocket.OPEN) {
         wsSend({ type: 'command', commandType: 'ping' });
+      } else {
+        api('/api/command', { deviceId: laptopDeviceId, commandType: 'ping' }).catch(() => {});
       }
 
-      // Poll for results
-      let attempts = 0;
-      const poll = setInterval(async () => {
-        attempts++;
-        if (attempts > 10) { clearInterval(poll); showToolsOutput('<div style="color:#ff6b00;">Trace timeout. Make sure native agent is running.</div>'); return; }
+      // Step 2: Check cached WS result first
+      if (cachedPingData && cachedPingData.targets && cachedPingData.targets.length > 0) {
+        renderNetTrace(cachedPingData);
+        cachedPingData = null;
+        return;
+      }
+
+      // Step 3: Poll server for results
+      for (let i = 0; i < 15; i++) {
+        await new Promise(r => setTimeout(r, 1000));
         try {
           const data = await apiGet('/api/ping/' + deviceId);
           if (data && data.targets && data.targets.length > 0) {
-            clearInterval(poll);
             renderNetTrace(data);
+            return;
           }
         } catch (e) {}
-      }, 2000);
+        // Also check cached WS result
+        if (cachedPingData && cachedPingData.targets && cachedPingData.targets.length > 0) {
+          renderNetTrace(cachedPingData);
+          cachedPingData = null;
+          return;
+        }
+      }
+      showToolsOutput('<div style="color:#ff6b00;">Trace timeout. Make sure native agent is running on the laptop.</div>');
     }
 
     function renderNetTrace(data) {
