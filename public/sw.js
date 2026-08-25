@@ -1,4 +1,4 @@
-const CACHE_NAME = 'laptop-tracker-v18-triangulation-ping';
+const CACHE_NAME = 'laptop-tracker-v19-no-zero-zero';
 const LOCATION_INTERVAL = 10000;
 let locationTimer = null;
 let trackedDeviceId = null;

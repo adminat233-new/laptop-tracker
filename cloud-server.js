@@ -330,8 +330,8 @@ app.post('/api/heartbeat', async (req, res) => {
       });
     }
 
-    if (location) {
-      // Always update location (phones need live data)
+    if (location && location.lat && location.lng && !(Math.abs(location.lat) < 0.001 && Math.abs(location.lng) < 0.001)) {
+      // Reject null island (0,0) — not a real location
       await prisma.location.upsert({
         where: { deviceId },
         create: {
@@ -527,6 +527,11 @@ app.get('/api/result/:commandId', async (req, res) => {
 // ============= PHONE: Send Location =============
 app.post('/api/location/phone', async (req, res) => {
   const { deviceId, location } = req.body;
+
+  // Reject null island
+  if (!location || !location.lat || !location.lng || (Math.abs(location.lat) < 0.001 && Math.abs(location.lng) < 0.001)) {
+    return res.json({ success: true, skipped: 'invalid coordinates' });
+  }
 
   try {
     // Cache location in memory for fast reads, write to DB every 5s
@@ -940,6 +945,15 @@ wss.on('connection', (ws, req) => {
 
       if (msg.type === 'location' && deviceId) {
         const { lat, lng, accuracy, source } = msg.location;
+        // Reject null island (0,0) — not a real location
+        if (!lat || !lng || (Math.abs(lat) < 0.001 && Math.abs(lng) < 0.001)) {
+          // Still update lastSeen but don't store 0,0
+          const lastSeenKey = 'wsLastSeen:' + deviceId;
+          if (!cacheGet(lastSeenKey, 10000)) {
+            cacheSet(lastSeenKey, true);
+            prisma.device.update({ where: { deviceId }, data: { lastSeen: Date.now() } }).catch(() => {});
+          }
+        } else {
         // Cache in memory first
         cacheSet('loc:' + deviceId, { lat, lng, ...msg.location });
 
@@ -1010,6 +1024,7 @@ wss.on('connection', (ws, req) => {
             }
           }
         }).catch(() => {});
+        } // end else (valid coordinates)
       }
 
       if (msg.type === 'command' && deviceId) {

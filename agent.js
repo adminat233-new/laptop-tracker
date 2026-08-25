@@ -137,11 +137,13 @@ async function getLocation() {
   lastLocationUpdate = now;
 
   let location = await getWindowsLocation();
-  if (!location) location = await getWifiLocation();
-  if (!location) location = await getIpLocation();
-  if (!location) {
-    location = { lat: 0, lng: 0, accuracy: 0, source: 'unavailable' };
+  if (!location || location.lat === 0) location = await getWifiLocation();
+  if (!location || location.lat === 0) location = await getIpLocation();
+  if (!location || location.lat === 0) {
+    location = null; // Never return 0,0 as valid
   }
+
+  if (!location) return null;
 
   return {
     type: 'location',
