@@ -1064,6 +1064,13 @@ wss.on('connection', (ws, req) => {
               pairedWs.send(JSON.stringify({ type: 'locationRequest' }));
             }
           }
+          // Also send cached location of paired device back to requester
+          if (pairedId) {
+            const cached = cacheGet('loc:' + pairedId, 30000);
+            if (cached) {
+              ws.send(JSON.stringify({ type: 'location', fromDeviceId: pairedId, location: cached }));
+            }
+          }
         }).catch(() => {});
       }
 

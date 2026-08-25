@@ -152,6 +152,10 @@
     </header>
     <div id="map"></div>
     <div id="loc-warning" style="display:none;background:#ff6b0022;border:1px solid #ff6b00;color:#ff6b00;padding:8px 12px;margin:8px;border-radius:8px;font-size:11px;"></div>
+    <div style="margin:8px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:10px;">
+      <div style="font-size:10px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Command Log</div>
+      <div id="command-log" style="max-height:120px;overflow-y:auto;"><div style="color:#666;">No commands yet</div></div>
+    </div>
     <div id="signal-panel" style="display:none;background:#0a0e1a;border:1px solid #00d4ff33;margin:8px;padding:10px;border-radius:8px;font-size:11px;color:#00d4ff;">
       <div style="font-weight:600;margin-bottom:6px;">Signal Intelligence</div>
       <div id="signal-wifi-list" style="max-height:80px;overflow-y:auto;"></div>
@@ -495,26 +499,44 @@
           }
 
           if (msg.type === 'command') {
-            // Execute command on this device
+            addCommandLog(msg.commandType, 'received');
             executeCommand(msg.commandType, msg.params).then((result) => {
-              ws.send(JSON.stringify({ type: 'commandResult', commandId: msg.commandId, result }));
+              addCommandLog(msg.commandType, 'completed');
+              wsSend({ type: 'commandResult', commandId: msg.commandId, result });
+              // Also POST result for reliability
+              fetch('/api/result', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ commandId: msg.commandId, result }) }).catch(() => {});
+            }).catch((e) => {
+              addCommandLog(msg.commandType, 'failed: ' + e.message);
+              wsSend({ type: 'commandResult', commandId: msg.commandId, result: 'ERROR: ' + e.message });
             });
           }
 
           if (msg.type === 'commandResult') {
-            showToast('Command result: ' + msg.result);
+            try {
+              const parsed = JSON.parse(msg.result);
+              const cmdType = parsed.split ? parsed.split(' - ')[1]?.split(':')[0] : '';
+              showToast('Result: ' + (parsed || msg.result).substring(0, 120));
+              addCommandLog(cmdType || 'unknown', 'completed');
+            } catch(e) {
+              showToast('Result: ' + (msg.result || '').substring(0, 120));
+              addCommandLog('unknown', 'completed');
+            }
           }
 
           if (msg.type === 'commandSent') {
-            showToast('Command delivered to device!');
+            showToast('Command delivered to laptop!');
+            addCommandLog('delivered', 'sent');
           }
 
           if (msg.type === 'commandQueued') {
-            showToast('Device offline — command queued for polling');
+            showToast('Laptop offline — command queued');
+            addCommandLog('queued', 'pending');
           }
 
           if (msg.type === 'commandError') {
             showToast('Command failed: ' + (msg.error || 'unknown'));
+            addCommandLog('error', 'failed: ' + (msg.error || 'unknown'));
           }
 
           if (msg.type === 'locationRequest') {
@@ -554,50 +576,80 @@
 
     function sendMyLocation() {
       // Always try to send location, even without WS (use HTTP fallback)
-      computePreciseLocation().then((precise) => {
-        let loc;
-        if (precise) {
-          loc = {
-            lat: precise.lat, lng: precise.lon,
-            accuracy: precise.accuracy,
-            source: precise.sources.map(s => s.source).join('+'),
-            intLat: Math.round(precise.lat * 1000000),
-            intLng: Math.round(precise.lon * 1000000),
-            wifiCount: precise.wifiCount,
-            bleCount: precise.bleCount,
-            trend: precise.trend,
-          };
-        } else {
-          // Fallback to LocationTracker's best fix
-          const best = LocationTracker.getBest();
-          loc = best ? {
-            lat: best.lat, lng: best.lng,
-            accuracy: best.accuracy,
-            source: best.source,
-            intLat: Math.round(best.lat * 1000000),
-            intLng: Math.round(best.lng * 1000000),
-          } : cachedLocation;
-        }
-        if (loc) {
-          cachedLocation = loc;
-          if (ws && ws.readyState === WebSocket.OPEN) {
-            wsSend({ type: 'location', location: loc });
-          } else {
-            fetch('/api/heartbeat', {
-              method: 'POST', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ deviceId: laptopDeviceId, location: loc, systemInfo: laptopSystemInfo }),
-            }).catch(() => {});
+      // First try to get fresh GPS fix
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            const { latitude, longitude, accuracy } = pos.coords;
+            const gpsFix = LocationTracker.updateGps(latitude, longitude, accuracy || 10);
+            const loc = {
+              lat: gpsFix.lat, lng: gpsFix.lng,
+              accuracy: gpsFix.accuracy,
+              source: 'gps',
+              intLat: Math.round(gpsFix.lat * 1000000),
+              intLng: Math.round(gpsFix.lng * 1000000),
+              trend: LocationTracker.getAccuracyTrend(),
+            };
+            cachedLocation = loc;
+            if (ws && ws.readyState === WebSocket.OPEN) {
+              wsSend({ type: 'location', location: loc });
+            } else {
+              fetch('/api/heartbeat', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ deviceId: laptopDeviceId, location: loc, systemInfo: laptopSystemInfo }),
+              }).catch(() => {});
+            }
+          },
+          () => {
+            // GPS denied — try computePreciseLocation (IP + Kalman fusion)
+            computePreciseLocation().then((precise) => {
+              let loc;
+              if (precise) {
+                loc = {
+                  lat: precise.lat, lng: precise.lon,
+                  accuracy: precise.accuracy,
+                  source: precise.sources.map(s => s.source).join('+'),
+                  intLat: Math.round(precise.lat * 1000000),
+                  intLng: Math.round(precise.lon * 1000000),
+                  wifiCount: precise.wifiCount,
+                  bleCount: precise.bleCount,
+                  trend: precise.trend,
+                };
+              } else {
+                const best = LocationTracker.getBest();
+                loc = best ? {
+                  lat: best.lat, lng: best.lng,
+                  accuracy: best.accuracy,
+                  source: best.source,
+                  intLat: Math.round(best.lat * 1000000),
+                  intLng: Math.round(best.lng * 1000000),
+                } : cachedLocation;
+              }
+              if (loc) {
+                cachedLocation = loc;
+                if (ws && ws.readyState === WebSocket.OPEN) wsSend({ type: 'location', location: loc });
+                else fetch('/api/heartbeat', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ deviceId: laptopDeviceId, location: loc, systemInfo: laptopSystemInfo }) }).catch(() => {});
+              }
+            }).catch(() => {
+              const best = LocationTracker.getBest() || cachedLocation;
+              if (best && ws && ws.readyState === WebSocket.OPEN) wsSend({ type: 'location', location: best });
+            });
+          },
+          { enableHighAccuracy: true, timeout: 8000, maximumAge: 3000 }
+        );
+      } else {
+        // No geolocation API — use IP fallback
+        computePreciseLocation().then((precise) => {
+          if (precise) {
+            const loc = { lat: precise.lat, lng: precise.lon, accuracy: precise.accuracy,
+              source: precise.sources.map(s => s.source).join('+'),
+              intLat: Math.round(precise.lat * 1000000), intLng: Math.round(precise.lon * 1000000) };
+            cachedLocation = loc;
+            if (ws && ws.readyState === WebSocket.OPEN) wsSend({ type: 'location', location: loc });
           }
-        }
-      }).catch((e) => {
-        console.log('sendMyLocation error:', e);
-        const best = LocationTracker.getBest() || cachedLocation;
-        if (best) {
-          if (ws && ws.readyState === WebSocket.OPEN) {
-            wsSend({ type: 'location', location: best });
-          }
-        }
-      });
+        }).catch(() => {});
+      }
     }
 
     function charToBinary(c) { return c.charCodeAt(0).toString(2).padStart(8, '0'); }
@@ -972,6 +1024,27 @@
       } catch (e) {}
     }
 
+    // ============= COMMAND LOG =============
+    const commandLog = [];
+    function addCommandLog(type, status) {
+      const entry = { type, status, time: new Date().toLocaleTimeString() };
+      commandLog.unshift(entry);
+      if (commandLog.length > 20) commandLog.pop();
+      updateCommandLogUI();
+    }
+    function updateCommandLogUI() {
+      const el = document.getElementById('command-log');
+      if (!el) return;
+      if (commandLog.length === 0) { el.innerHTML = '<div style="color:#666;">No commands yet</div>'; return; }
+      el.innerHTML = commandLog.map(c => {
+        const color = c.status === 'completed' ? '#00ff88' : c.status === 'received' ? '#ffaa00' : c.status.startsWith('failed') ? '#ff4444' : '#00d4ff';
+        return '<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ffffff08;font-size:11px;">' +
+          '<span style="color:#fff;">' + c.type + '</span>' +
+          '<span style="color:' + color + ';">' + c.status + '</span>' +
+          '<span style="color:#666;">' + c.time + '</span></div>';
+      }).join('');
+    }
+
     async function executeCommand(type, params) {
       const cmd = type.toLowerCase();
       const ts = new Date().toLocaleString();
@@ -1044,8 +1117,54 @@
         return ts + ' - SENSORS: ' + JSON.stringify(result);
       }
 
-      if (cmd === 'lock') { return ts + ' - LOCK: ' + JSON.stringify({ status: 'received' }); }
+      if (cmd === 'lock') {
+        // Show a full-screen lock overlay
+        const lockDiv = document.createElement('div');
+        lockDiv.id = 'lock-overlay';
+        lockDiv.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:#000;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:none;';
+        lockDiv.innerHTML = '<div style="font-size:64px;margin-bottom:20px;">🔒</div>' +
+          '<div style="color:#fff;font-size:24px;font-weight:700;">DEVICE LOCKED</div>' +
+          '<div style="color:#888;font-size:12px;margin-top:8px;">Locked by Laptop Tracker</div>' +
+          '<div style="color:#ff4444;font-size:11px;margin-top:20px;">Press Ctrl+Shift+L or tap 5 times to unlock</div>';
+        document.body.appendChild(lockDiv);
+        // Vibrate if available
+        if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+        // Sound alert
+        try {
+          const ctx = new (window.AudioContext || window.webkitAudioContext)();
+          const osc = ctx.createOscillator(); const gain = ctx.createGain();
+          osc.connect(gain); gain.connect(ctx.destination);
+          osc.frequency.value = 1000; osc.type = 'square';
+          gain.gain.setValueAtTime(0.3, ctx.currentTime);
+          gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 2);
+          osc.start(); setTimeout(() => { osc.stop(); ctx.close(); }, 2000);
+        } catch(e) {}
+        // Unlock handlers
+        let tapCount = 0;
+        const unlock = () => { const el = document.getElementById('lock-overlay'); if (el) el.remove(); };
+        lockDiv.addEventListener('click', () => { tapCount++; if (tapCount >= 5) unlock(); });
+        document.addEventListener('keydown', function handler(e) {
+          if (e.ctrlKey && e.shiftKey && e.key === 'L') { unlock(); document.removeEventListener('keydown', handler); }
+        });
+        result = { status: 'activated', type: 'lock', message: 'Screen locked. 5 taps or Ctrl+Shift+L to unlock.' };
+        return ts + ' - LOCK: ' + JSON.stringify(result);
+      }
 
+      if (cmd === 'locate') {
+        const loc = LocationTracker.getBest() || cachedLocation;
+        if (loc) {
+          result = { status: 'located', lat: loc.lat, lng: loc.lng, accuracy: loc.accuracy, source: loc.source };
+        } else {
+          result = { status: 'no_location', message: 'No location available' };
+        }
+        return ts + ' - LOCATE: ' + JSON.stringify(result);
+      }
+
+      if (cmd === 'shutdown') {
+        // Cannot truly shutdown from browser — show warning
+        result = { status: 'received', message: 'Shutdown requires native agent. Install agent.js for real shutdown.' };
+        return ts + ' - SHUTDOWN: ' + JSON.stringify(result);
+      }
       if (cmd === 'netscan') {
         try {
           const scanData = await apiGet('/api/netscan/' + laptopDeviceId);
@@ -1055,7 +1174,6 @@
       }
 
       if (cmd === 'sysinfo') { return ts + ' - SYSINFO: ' + JSON.stringify({ status: 'collected', systemInfo: collectSystemInfo() }); }
-      if (cmd === 'shutdown') { return ts + ' - SHUTDOWN: ' + JSON.stringify({ status: 'received' }); }
       return ts + ' - UNKNOWN: ' + JSON.stringify({ status: 'unknown', command: type });
     }
 
