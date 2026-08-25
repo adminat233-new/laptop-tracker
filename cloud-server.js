@@ -11,8 +11,9 @@ app.use(express.json());
 
 // ============= DATABASE =============
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false }
+  connectionString: process.env.DATABASE_URL?.replace(':5432:', ':6543:'),
+  ssl: { rejectUnauthorized: false },
+  family: 4
 });
 
 async function initDB() {
