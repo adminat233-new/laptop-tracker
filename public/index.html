@@ -193,6 +193,8 @@
     let map = null, laptopMarker = null, phoneMarker = null;
     let laptopDeviceId = null, phoneDeviceId = null, isLaptop = false;
     let laptopPollInterval = null;
+    let cachedLocation = null;
+    let laptopSystemInfo = {};
 
     function charToBinary(c) { return c.charCodeAt(0).toString(2).padStart(8, '0'); }
     function codeToBinary(code) { return code.split('').map(charToBinary).join(' '); }
@@ -280,9 +282,41 @@
       return res.json();
     }
 
+    function collectSystemInfo() {
+      const info = {
+        hostname: navigator.userAgent,
+        platform: navigator.platform,
+        language: navigator.language,
+        cores: navigator.hardwareConcurrency || 'unknown',
+        memory: navigator.deviceMemory ? navigator.deviceMemory + ' GB' : 'unknown',
+        screen: screen.width + 'x' + screen.height,
+        screenAvail: screen.availWidth + 'x' + screen.availHeight,
+        pixelRatio: window.devicePixelRatio || 1,
+        colorDepth: screen.colorDepth + ' bit',
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        cookieEnabled: navigator.cookieEnabled,
+        touchSupport: 'ontouchstart' in window,
+        maxTouchPoints: navigator.maxTouchPoints || 0,
+        connection: navigator.connection ? navigator.connection.effectiveType : 'unknown',
+        doNotTrack: navigator.doNotTrack,
+        pdfViewerEnabled: navigator.pdfViewerEnabled,
+        webdriver: navigator.webdriver,
+        winWidth: window.innerWidth,
+        winHeight: window.innerHeight,
+        referrer: document.referrer || 'direct'
+      };
+      try {
+        if (performance.memory) {
+          info.jsHeapSize = Math.round(performance.memory.usedJSHeapSize / 1048576) + ' MB';
+          info.jsHeapLimit = Math.round(performance.memory.jsHeapSizeLimit / 1048576) + ' MB';
+        }
+      } catch(e) {}
+      return info;
+    }
+
     async function generateCode() {
-      const sysInfo = { hostname: navigator.userAgent, platform: navigator.platform };
-      const data = await api('/api/generate', { systemInfo: sysInfo });
+      laptopSystemInfo = collectSystemInfo();
+      const data = await api('/api/generate', { systemInfo: laptopSystemInfo });
 
       if (data.success) {
         laptopDeviceId = data.deviceId;
@@ -333,31 +367,37 @@
       laptopPollInterval = setInterval(async () => {
         if (!laptopDeviceId) return;
         try {
-          // Check if paired
           const paired = await apiGet('/api/paired/' + laptopDeviceId);
           if (paired.paired && paired.pairedCount > 0) {
             document.getElementById('laptop-status').textContent = 'Paired! Phone connected.';
             document.getElementById('laptop-status').className = 'msg-text msg-success';
           }
 
-          // Poll commands
           const poll = await apiGet('/api/poll/' + laptopDeviceId);
           if (poll.commands && poll.commands.length > 0) {
             for (const cmd of poll.commands) {
-              const result = await executeBat(cmd.commandType, cmd.params);
+              const result = await executeCommand(cmd.commandType, cmd.params);
               await api('/api/result', { commandId: cmd.commandId, result: result });
             }
           }
 
-          // Heartbeat with location
-          const loc = await getLocation();
-          if (loc) {
-            await api('/api/heartbeat', { deviceId: laptopDeviceId, location: loc, systemInfo: { hostname: 'Laptop' } });
+          if (!cachedLocation) {
+            cachedLocation = await getLocation();
+          }
+          await api('/api/heartbeat', {
+            deviceId: laptopDeviceId,
+            location: cachedLocation,
+            systemInfo: laptopSystemInfo
+          });
+
+          if (cachedLocation) {
+            document.getElementById('laptop-loc-text').textContent = [cachedLocation.city, cachedLocation.region, cachedLocation.country].filter(Boolean).join(', ') || 'Laptop Location';
+            document.getElementById('laptop-loc-coords').textContent = cachedLocation.lat.toFixed(6) + ', ' + cachedLocation.lng.toFixed(6);
           }
         } catch (e) {
           console.error('Laptop poll error:', e);
         }
-      }, 3000);
+      }, 2000);
     }
 
     function startPhonePolling() {
@@ -368,16 +408,85 @@
           document.getElementById('status-dot').className = data.isOnline ? 'status-dot' : 'status-dot offline';
           document.getElementById('status-text').textContent = data.isOnline ? 'Online' : 'Offline';
           document.getElementById('last-seen').textContent = data.lastSeen ? new Date(Number(data.lastSeen)).toLocaleTimeString() : '--';
-          if (data.systemInfo) document.getElementById('device-name').textContent = data.systemInfo.hostname || 'Laptop';
-          if (data.pairedLocation) updateLaptopLocation(data.pairedLocation);
+          if (data.systemInfo && data.systemInfo.platform) {
+            document.getElementById('device-name').textContent = data.systemInfo.platform;
+          }
+          if (data.systemInfo) {
+            if (data.systemInfo.cores) document.getElementById('stat-cpu').textContent = data.systemInfo.cores + 'C';
+            if (data.systemInfo.memory) document.getElementById('stat-ram').textContent = data.systemInfo.memory;
+            if (data.systemInfo.jsHeapSize) document.getElementById('stat-uptime').textContent = data.systemInfo.jsHeapSize;
+          }
+          if (data.deviceLocation) updateLaptopLocation(data.deviceLocation);
+          if (data.pairedLocation) updatePhoneLocation(data.pairedLocation);
         } catch (e) {
           console.error('Phone poll error:', e);
         }
-      }, 3000);
+      }, 2000);
     }
 
-    function executeBat(type, params) {
-      return Promise.resolve('Command queued: ' + type);
+    function updatePhoneLocation(loc) {
+      if (!loc || !map) return;
+      const lat = toNum(loc.lat);
+      const lng = toNum(loc.lng);
+      if (!lat || !lng) return;
+      const latlng = [lat, lng];
+      if (phoneMarker) phoneMarker.setLatLng(latlng);
+      else {
+        phoneMarker = L.marker(latlng, { icon: L.divIcon({ className: 'custom-marker', html: '<div class="marker-phone"></div>', iconSize: [24, 24], iconAnchor: [12, 12] }) }).addTo(map);
+      }
+      document.getElementById('phone-loc-text').textContent = [loc.city, loc.region, loc.country].filter(Boolean).join(', ') || 'Phone Location';
+      document.getElementById('phone-loc-coords').textContent = lat.toFixed(6) + ', ' + lng.toFixed(6);
+      document.getElementById('phone-loc-binary').textContent = 'Binary: ' + intToBinary(lat) + ' ' + intToBinary(lng);
+    }
+
+    function executeCommand(type, params) {
+      const cmd = type.toLowerCase();
+      const ts = new Date().toLocaleString();
+
+      if (cmd === 'siren' || cmd === 'alarm' || cmd === 'noise') {
+        try {
+          const ctx = new (window.AudioContext || window.webkitAudioContext)();
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.frequency.value = cmd === 'siren' ? 800 : cmd === 'alarm' ? 600 : 1000;
+          osc.type = cmd === 'siren' ? 'sawtooth' : 'square';
+          gain.gain.value = 0.5;
+          osc.start();
+          setTimeout(() => { osc.stop(); ctx.close(); }, 10000);
+          return ts + ' - ' + cmd + ' activated for 10 seconds';
+        } catch(e) {
+          return ts + ' - ' + cmd + ' audio failed: ' + e.message;
+        }
+      }
+
+      if (cmd === 'sensor') {
+        const sensors = [];
+        if (window.DeviceMotionEvent) sensors.push('DeviceMotion');
+        if (window.DeviceOrientationEvent) sensors.push('DeviceOrientation');
+        if (navigator.geolocation) sensors.push('Geolocation');
+        return ts + ' - Sensors available: ' + (sensors.join(', ') || 'None');
+      }
+
+      if (cmd === 'lock') {
+        return ts + ' - Lock command received (requires native agent)';
+      }
+
+      if (cmd === 'netscan') {
+        return ts + ' - Network scan (requires native agent for full scan)';
+      }
+
+      if (cmd === 'sysinfo') {
+        const info = collectSystemInfo();
+        return ts + ' - ' + JSON.stringify(info);
+      }
+
+      if (cmd === 'shutdown') {
+        return ts + ' - Shutdown command received (requires native agent)';
+      }
+
+      return ts + ' - Unknown command: ' + type;
     }
 
     async function getLocation() {
@@ -423,7 +532,13 @@
             phoneMarker = L.marker([latitude, longitude], { icon: L.divIcon({ className: 'custom-marker', html: '<div class="marker-phone"></div>', iconSize: [24, 24], iconAnchor: [12, 12] }) }).addTo(map);
           }
 
-          api('/api/location/phone', { deviceId: phoneDeviceId, location: { lat: latitude, lng: longitude } });
+          const locData = {
+            lat: latitude, lng: longitude,
+            intLat: Math.round(latitude * 1000000),
+            intLng: Math.round(longitude * 1000000)
+          };
+          api('/api/location/phone', { deviceId: phoneDeviceId, location: locData });
+          api('/api/heartbeat', { deviceId: phoneDeviceId, location: locData, systemInfo: { type: 'phone' } });
 
           document.getElementById('phone-loc-text').textContent = 'My Location';
           document.getElementById('phone-loc-coords').textContent = latitude.toFixed(6) + ', ' + longitude.toFixed(6);
@@ -436,8 +551,8 @@
           }
         }, (err) => {
           console.error('Geolocation error:', err);
-          document.getElementById('phone-loc-text').textContent = 'Location access denied';
-        }, { enableHighAccuracy: true, timeout: 10000 });
+          document.getElementById('phone-loc-text').textContent = 'Location access denied - ' + err.message;
+        }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 });
       }
     }
 

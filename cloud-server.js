@@ -219,7 +219,10 @@ app.post('/api/heartbeat', async (req, res) => {
   try {
     await prisma.device.update({
       where: { deviceId },
-      data: { lastSeen: Date.now() },
+      data: {
+        lastSeen: Date.now(),
+        ...(systemInfo ? { systemInfo: JSON.stringify(systemInfo) } : {}),
+      },
     });
 
     if (location) {
@@ -373,7 +376,7 @@ app.get('/api/status/:deviceId', async (req, res) => {
     const lastSeenNum = Number(deviceRecord.lastSeen);
     const isOnline = Date.now() - lastSeenNum < 15000;
 
-    const locationRecord = await prisma.location.findUnique({
+    const deviceLocation = await prisma.location.findUnique({
       where: { deviceId: req.params.deviceId },
     });
 
@@ -396,7 +399,7 @@ app.get('/api/status/:deviceId', async (req, res) => {
       isOnline,
       lastSeen: lastSeenNum,
       systemInfo: JSON.parse(deviceRecord.systemInfo || '{}'),
-      myLocation: locationRecord || null,
+      deviceLocation,
       pairedLocation,
     }));
   } catch (e) {
