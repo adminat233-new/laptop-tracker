@@ -786,7 +786,7 @@
             }).catch(() => {});
           }
         } catch (e) { console.error('Laptop poll error:', e); }
-      }, 1500);
+      }, 3000);
     }
 
     function startPhonePolling() {
@@ -806,7 +806,7 @@
           // Do NOT overwrite phone's own GPS marker with server data
           // Phone GPS is always more accurate than what's stored in the server
         } catch (e) { console.error('Phone poll error:', e); }
-      }, 2000);
+      }, 4000);
     }
 
     function startRealTimeTracking() {
@@ -820,7 +820,7 @@
             else window._laptopPathLine = L.polyline(points, { color: '#00d4ff', weight: 3, opacity: 0.7 }).addTo(map);
           }
         } catch (e) {}
-      }, 3000);
+      }, 10000);
     }
 
     async function executeCommand(type, params) {

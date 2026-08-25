@@ -92,10 +92,32 @@ function pathLossDistance(signalStrength, frequency, txPower) {
 const prisma = new PrismaClient({
   datasources: {
     db: {
-      url: process.env.DATABASE_URL,
+      url: process.env.DATABASE_URL + (process.env.DATABASE_URL.includes('?') ? '&' : '?') + 'connection_limit=5&pool_timeout=30',
     },
   },
 });
+
+// ============= IN-MEMORY CACHE (reduces DB load) =============
+const cache = new Map();
+function cacheGet(key, ttlMs = 5000) {
+  const entry = cache.get(key);
+  if (entry && Date.now() - entry.ts < ttlMs) return entry.data;
+  return null;
+}
+function cacheSet(key, data) {
+  cache.set(key, { data, ts: Date.now() });
+  if (cache.size > 200) {
+    const oldest = cache.keys().next().value;
+    cache.delete(oldest);
+  }
+}
+// Cleanup stale entries every 30s
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of cache) {
+    if (now - v.ts > 60000) cache.delete(k);
+  }
+}, 30000);
 
 async function initDB() {
   console.log('Connecting to database...');
@@ -223,18 +245,20 @@ app.get('/api/poll/:deviceId', async (req, res) => {
   const { deviceId } = req.params;
 
   try {
-    await prisma.device.update({
-      where: { deviceId },
-      data: { lastSeen: Date.now() },
-    });
+    // Use cached lastSeen to avoid write every 1.5s
+    const lastSeenKey = 'lastSeen:' + deviceId;
+    if (!cacheGet(lastSeenKey, 8000)) {
+      prisma.device.update({ where: { deviceId }, data: { lastSeen: Date.now() } }).catch(() => {});
+      cacheSet(lastSeenKey, true);
+    }
 
     const pendingCommands = await prisma.command.findMany({
       where: { deviceId, status: 'pending' },
     });
 
-    for (const cmd of pendingCommands) {
-      await prisma.command.update({
-        where: { commandId: cmd.commandId },
+    if (pendingCommands.length > 0) {
+      await prisma.command.updateMany({
+        where: { commandId: { in: pendingCommands.map(c => c.commandId) } },
         data: { status: 'sent' },
       });
     }
@@ -279,15 +303,23 @@ app.post('/api/heartbeat', async (req, res) => {
   const { deviceId, location, systemInfo } = req.body;
 
   try {
-    await prisma.device.update({
-      where: { deviceId },
-      data: {
-        lastSeen: Date.now(),
-        ...(systemInfo ? { systemInfo: JSON.stringify(systemInfo) } : {}),
-      },
-    });
+    // Batch: only write to DB every 10s to reduce connections
+    const hbKey = 'heartbeat:' + deviceId;
+    const isNew = !cacheGet(hbKey, 10000);
+    cacheSet(hbKey, true);
+
+    if (isNew) {
+      await prisma.device.update({
+        where: { deviceId },
+        data: {
+          lastSeen: Date.now(),
+          ...(systemInfo ? { systemInfo: JSON.stringify(systemInfo) } : {}),
+        },
+      });
+    }
 
     if (location) {
+      // Always update location (phones need live data)
       await prisma.location.upsert({
         where: { deviceId },
         create: {
@@ -423,27 +455,26 @@ app.get('/api/netscan/:deviceId', async (req, res) => {
 // ============= LAPTOP: Check if Paired =============
 app.get('/api/paired/:deviceId', async (req, res) => {
   try {
-    const device = await prisma.device.findUnique({
-      where: { deviceId: req.params.deviceId },
-    });
+    const deviceId = req.params.deviceId;
+    const cached = cacheGet('paired:' + deviceId, 5000);
+    if (cached) return res.json(sanitize(cached));
+
+    const device = await prisma.device.findUnique({ where: { deviceId } });
     if (!device) return res.json(sanitize({ success: true, paired: false }));
 
-    const code = await prisma.code.findUnique({
-      where: { pairCode: device.pairCode },
-    });
+    const [code, pairedDevices] = await Promise.all([
+      prisma.code.findUnique({ where: { pairCode: device.pairCode } }),
+      prisma.device.findMany({ where: { pairCode: device.pairCode, deviceId: { not: deviceId } } }),
+    ]);
 
-    const pairedDevices = await prisma.device.findMany({
-      where: { pairCode: device.pairCode, deviceId: { not: req.params.deviceId } },
-    });
-
-    const pairedDeviceIds = pairedDevices.map(d => d.deviceId);
-
-    res.json(sanitize({
+    const result = {
       success: true,
       paired: code ? code.isPaired : false,
       pairedCount: pairedDevices.length,
-      pairedDeviceIds,
-    }));
+      pairedDeviceIds: pairedDevices.map(d => d.deviceId),
+    };
+    cacheSet('paired:' + deviceId, result);
+    res.json(sanitize(result));
   } catch (e) {
     console.error(e);
     res.status(500).json({ success: false, error: e.message });
@@ -473,45 +504,57 @@ app.post('/api/location/phone', async (req, res) => {
   const { deviceId, location } = req.body;
 
   try {
-    await prisma.location.upsert({
-      where: { deviceId },
-      create: {
-        deviceId,
-        lat: location.lat,
-        lng: location.lng,
-        intLat: location.intLat || Math.round(location.lat * 1000000),
-        intLng: location.intLng || Math.round(location.lng * 1000000),
-        city: location.city || '',
-        region: location.region || '',
-        country: location.country || '',
-        ip: location.ip || '',
-        updatedAt: Date.now(),
-      },
-      update: {
-        lat: location.lat,
-        lng: location.lng,
-        intLat: location.intLat || Math.round(location.lat * 1000000),
-        intLng: location.intLng || Math.round(location.lng * 1000000),
-        city: location.city || '',
-        region: location.region || '',
-        country: location.country || '',
-        ip: location.ip || '',
-        updatedAt: Date.now(),
-      },
-    });
+    // Cache location in memory for fast reads, write to DB every 5s
+    cacheSet('loc:' + deviceId, { lat: location.lat, lng: location.lng, ...location });
 
-    if (location.tracking) {
-      await prisma.command.create({
-        data: {
-          commandId: 'track_' + crypto.randomBytes(8).toString('hex'),
+    const locKey = 'locWrite:' + deviceId;
+    if (!cacheGet(locKey, 5000)) {
+      cacheSet(locKey, true);
+      await prisma.location.upsert({
+        where: { deviceId },
+        create: {
           deviceId,
-          commandType: 'trackpoint',
-          params: JSON.stringify(location.tracking),
-          status: 'completed',
-          createdAt: Date.now(),
-          completedAt: Date.now(),
+          lat: location.lat,
+          lng: location.lng,
+          intLat: location.intLat || Math.round(location.lat * 1000000),
+          intLng: location.intLng || Math.round(location.lng * 1000000),
+          city: location.city || '',
+          region: location.region || '',
+          country: location.country || '',
+          ip: location.ip || '',
+          updatedAt: Date.now(),
+        },
+        update: {
+          lat: location.lat,
+          lng: location.lng,
+          intLat: location.intLat || Math.round(location.lat * 1000000),
+          intLng: location.intLng || Math.round(location.lng * 1000000),
+          city: location.city || '',
+          region: location.region || '',
+          country: location.country || '',
+          ip: location.ip || '',
+          updatedAt: Date.now(),
         },
       });
+    }
+
+    // Batch trackpoints: only write every 30s
+    if (location.tracking) {
+      const tpKey = 'trackpoint:' + deviceId;
+      if (!cacheGet(tpKey, 30000)) {
+        cacheSet(tpKey, true);
+        await prisma.command.create({
+          data: {
+            commandId: 'track_' + crypto.randomBytes(8).toString('hex'),
+            deviceId,
+            commandType: 'trackpoint',
+            params: JSON.stringify(location.tracking),
+            status: 'completed',
+            createdAt: Date.now(),
+            completedAt: Date.now(),
+          },
+        });
+      }
     }
 
     res.json({ success: true });
@@ -629,43 +672,40 @@ app.get('/api/tracking/live/:deviceId', async (req, res) => {
 // ============= PHONE: Get Status =============
 app.get('/api/status/:deviceId', async (req, res) => {
   try {
+    const deviceId = req.params.deviceId;
+    // Check cache first (3s TTL for status)
+    const cached = cacheGet('status:' + deviceId, 3000);
+    if (cached) return res.json(sanitize(cached));
+
     const deviceRecord = await prisma.device.findUnique({
-      where: { deviceId: req.params.deviceId },
+      where: { deviceId },
     });
 
     if (!deviceRecord) {
-      return res.json({ success: true, isOnline: false });
+      return res.json(sanitize({ success: true, isOnline: false }));
     }
 
     const lastSeenNum = Number(deviceRecord.lastSeen);
     const isOnline = Date.now() - lastSeenNum < 15000;
 
-    const deviceLocation = await prisma.location.findUnique({
-      where: { deviceId: req.params.deviceId },
-    });
-
-    const pairedDevice = await prisma.device.findFirst({
-      where: {
-        pairCode: deviceRecord.pairCode,
-        deviceId: { not: req.params.deviceId },
-      },
-    });
+    // Get both locations in one query to reduce connections
+    const [deviceLocation, pairedDevice] = await Promise.all([
+      prisma.location.findUnique({ where: { deviceId } }),
+      prisma.device.findFirst({ where: { pairCode: deviceRecord.pairCode, deviceId: { not: deviceId } } }),
+    ]);
 
     let pairedLocation = null;
     if (pairedDevice) {
-      pairedLocation = await prisma.location.findUnique({
-        where: { deviceId: pairedDevice.deviceId },
-      });
+      pairedLocation = await prisma.location.findUnique({ where: { deviceId: pairedDevice.deviceId } });
     }
 
-    res.json(sanitize({
-      success: true,
-      isOnline,
-      lastSeen: lastSeenNum,
+    const result = {
+      success: true, isOnline, lastSeen: lastSeenNum,
       systemInfo: JSON.parse(deviceRecord.systemInfo || '{}'),
-      deviceLocation,
-      pairedLocation,
-    }));
+      deviceLocation, pairedLocation,
+    };
+    cacheSet('status:' + deviceId, result);
+    res.json(sanitize(result));
   } catch (e) {
     console.error(e);
     res.status(500).json({ success: false, error: e.message });
@@ -861,6 +901,25 @@ const wss = new WebSocket.Server({ server });
 
 // Map of deviceId -> WebSocket connection
 const deviceSockets = new Map();
+// Cache pairCode -> [deviceId1, deviceId2] to avoid DB lookups
+const pairMap = new Map();
+
+async function getPairedDeviceId(deviceId) {
+  const cacheKey = 'pair:' + deviceId;
+  const cached = cacheGet(cacheKey, 30000);
+  if (cached) return cached;
+
+  const device = await prisma.device.findUnique({ where: { deviceId } });
+  if (!device) return null;
+  const paired = await prisma.device.findFirst({
+    where: { pairCode: device.pairCode, deviceId: { not: deviceId } },
+  });
+  if (paired) {
+    cacheSet(cacheKey, paired.deviceId);
+    return paired.deviceId;
+  }
+  return null;
+}
 
 wss.on('connection', (ws, req) => {
   let deviceId = null;
@@ -878,127 +937,113 @@ wss.on('connection', (ws, req) => {
 
       if (msg.type === 'location' && deviceId) {
         const { lat, lng, accuracy, source } = msg.location;
-        // Store in DB and broadcast to paired device
-        prisma.location.upsert({
-          where: { deviceId },
-          create: {
-            deviceId, lat, lng,
-            intLat: Math.round(lat * 1000000),
-            intLng: Math.round(lng * 1000000),
-            city: msg.location.city || '',
-            region: msg.location.region || '',
-            country: msg.location.country || '',
-            ip: msg.location.ip || '',
-            updatedAt: Date.now(),
-          },
-          update: {
-            lat, lng,
-            intLat: Math.round(lat * 1000000),
-            intLng: Math.round(lng * 1000000),
-            city: msg.location.city || '',
-            region: msg.location.region || '',
-            country: msg.location.country || '',
-            ip: msg.location.ip || '',
-            updatedAt: Date.now(),
-          },
-        }).catch(() => {});
+        // Cache in memory first
+        cacheSet('loc:' + deviceId, { lat, lng, ...msg.location });
 
-        prisma.device.update({
-          where: { deviceId },
-          data: { lastSeen: Date.now() },
-        }).catch(() => {});
-
-        // Find paired device and send location to it
-        prisma.device.findUnique({ where: { deviceId } }).then((device) => {
-          if (!device) return;
-          prisma.device.findFirst({
-            where: { pairCode: device.pairCode, deviceId: { not: deviceId } },
-          }).then((paired) => {
-            if (paired && deviceSockets.has(paired.deviceId)) {
-              const pairedWs = deviceSockets.get(paired.deviceId);
-              if (pairedWs.readyState === WebSocket.OPEN) {
-                pairedWs.send(JSON.stringify({
-                  type: 'location',
-                  fromDeviceId: deviceId,
-                  location: msg.location,
-                }));
-              }
-            }
+        // Write to DB every 5s only
+        const locKey = 'wsLocWrite:' + deviceId;
+        if (!cacheGet(locKey, 5000)) {
+          cacheSet(locKey, true);
+          prisma.location.upsert({
+            where: { deviceId },
+            create: {
+              deviceId, lat, lng,
+              intLat: Math.round(lat * 1000000),
+              intLng: Math.round(lng * 1000000),
+              city: msg.location.city || '',
+              region: msg.location.region || '',
+              country: msg.location.country || '',
+              ip: msg.location.ip || '',
+              updatedAt: Date.now(),
+            },
+            update: {
+              lat, lng,
+              intLat: Math.round(lat * 1000000),
+              intLng: Math.round(lng * 1000000),
+              city: msg.location.city || '',
+              region: msg.location.region || '',
+              country: msg.location.country || '',
+              ip: msg.location.ip || '',
+              updatedAt: Date.now(),
+            },
           }).catch(() => {});
+        }
+
+        // Update lastSeen every 10s only
+        const lastSeenKey = 'wsLastSeen:' + deviceId;
+        if (!cacheGet(lastSeenKey, 10000)) {
+          cacheSet(lastSeenKey, true);
+          prisma.device.update({ where: { deviceId }, data: { lastSeen: Date.now() } }).catch(() => {});
+        }
+
+        // Find paired device and send location to it (using cache)
+        getPairedDeviceId(deviceId).then((pairedId) => {
+          if (pairedId && deviceSockets.has(pairedId)) {
+            const pairedWs = deviceSockets.get(pairedId);
+            if (pairedWs.readyState === WebSocket.OPEN) {
+              pairedWs.send(JSON.stringify({
+                type: 'location',
+                fromDeviceId: deviceId,
+                location: msg.location,
+              }));
+            }
+          }
         }).catch(() => {});
       }
 
       if (msg.type === 'command' && deviceId) {
-        // Forward command to paired device
-        prisma.device.findUnique({ where: { deviceId } }).then((device) => {
-          if (!device) return;
-          prisma.device.findFirst({
-            where: { pairCode: device.pairCode, deviceId: { not: deviceId } },
-          }).then((paired) => {
-            if (paired && deviceSockets.has(paired.deviceId)) {
-              const pairedWs = deviceSockets.get(paired.deviceId);
-              if (pairedWs.readyState === WebSocket.OPEN) {
-                const commandId = 'cmd_' + crypto.randomBytes(8).toString('hex');
-                prisma.command.create({
-                  data: {
-                    commandId, deviceId: paired.deviceId,
-                    commandType: msg.commandType,
-                    params: JSON.stringify(msg.params || {}),
-                    status: 'pending', createdAt: Date.now(),
-                  },
-                }).catch(() => {});
-                pairedWs.send(JSON.stringify({
-                  type: 'command',
-                  commandId,
+        getPairedDeviceId(deviceId).then((pairedId) => {
+          if (pairedId && deviceSockets.has(pairedId)) {
+            const pairedWs = deviceSockets.get(pairedId);
+            if (pairedWs.readyState === WebSocket.OPEN) {
+              const commandId = 'cmd_' + crypto.randomBytes(8).toString('hex');
+              prisma.command.create({
+                data: {
+                  commandId, deviceId: pairedId,
                   commandType: msg.commandType,
-                  params: msg.params,
-                }));
-                ws.send(JSON.stringify({ type: 'commandSent', commandId }));
-              }
+                  params: JSON.stringify(msg.params || {}),
+                  status: 'pending', createdAt: Date.now(),
+                },
+              }).catch(() => {});
+              pairedWs.send(JSON.stringify({
+                type: 'command',
+                commandId,
+                commandType: msg.commandType,
+                params: msg.params,
+              }));
+              ws.send(JSON.stringify({ type: 'commandSent', commandId }));
             }
-          }).catch(() => {});
+          }
         }).catch(() => {});
       }
 
       if (msg.type === 'commandResult' && deviceId) {
-        // Forward result to paired device
         prisma.command.update({
           where: { commandId: msg.commandId },
           data: { result: msg.result, status: 'completed', completedAt: Date.now() },
         }).catch(() => {});
-        prisma.device.findUnique({ where: { deviceId } }).then((device) => {
-          if (!device) return;
-          prisma.device.findFirst({
-            where: { pairCode: device.pairCode, deviceId: { not: deviceId } },
-          }).then((paired) => {
-            if (paired && deviceSockets.has(paired.deviceId)) {
-              const pairedWs = deviceSockets.get(paired.deviceId);
-              if (pairedWs.readyState === WebSocket.OPEN) {
-                pairedWs.send(JSON.stringify({
-                  type: 'commandResult',
-                  commandId: msg.commandId,
-                  result: msg.result,
-                }));
-              }
+        getPairedDeviceId(deviceId).then((pairedId) => {
+          if (pairedId && deviceSockets.has(pairedId)) {
+            const pairedWs = deviceSockets.get(pairedId);
+            if (pairedWs.readyState === WebSocket.OPEN) {
+              pairedWs.send(JSON.stringify({
+                type: 'commandResult',
+                commandId: msg.commandId,
+                result: msg.result,
+              }));
             }
-          }).catch(() => {});
+          }
         }).catch(() => {});
       }
 
       if (msg.type === 'requestLocation' && deviceId) {
-        // Ask paired device for its current location
-        prisma.device.findUnique({ where: { deviceId } }).then((device) => {
-          if (!device) return;
-          prisma.device.findFirst({
-            where: { pairCode: device.pairCode, deviceId: { not: deviceId } },
-          }).then((paired) => {
-            if (paired && deviceSockets.has(paired.deviceId)) {
-              const pairedWs = deviceSockets.get(paired.deviceId);
-              if (pairedWs.readyState === WebSocket.OPEN) {
-                pairedWs.send(JSON.stringify({ type: 'locationRequest' }));
-              }
+        getPairedDeviceId(deviceId).then((pairedId) => {
+          if (pairedId && deviceSockets.has(pairedId)) {
+            const pairedWs = deviceSockets.get(pairedId);
+            if (pairedWs.readyState === WebSocket.OPEN) {
+              pairedWs.send(JSON.stringify({ type: 'locationRequest' }));
             }
-          }).catch(() => {});
+          }
         }).catch(() => {});
       }
 
