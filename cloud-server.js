@@ -1,6 +1,7 @@
 const express = require('express');
 const path = require('path');
 const crypto = require('crypto');
+const { exec } = require('child_process');
 const { PrismaClient } = require('@prisma/client');
 
 const app = express();
@@ -281,6 +282,77 @@ app.post('/api/command', async (req, res) => {
 
     console.log(`Command: ${commandType} for ${deviceId}`);
     res.json({ success: true, commandId });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// ============= LAPTOP: Network Scan =============
+app.get('/api/netscan/:deviceId', async (req, res) => {
+  try {
+    const platform = process.platform;
+    let cmd = '';
+
+    if (platform === 'win32') {
+      cmd = 'netsh wlan show networks mode=bssid';
+    } else if (platform === 'linux') {
+      cmd = 'iwlist wlan0 scan 2>/dev/null || nmcli device wifi list 2>/dev/null || iw dev wlan0 scan 2>/dev/null';
+    } else if (platform === 'darwin') {
+      cmd = '/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport -s';
+    }
+
+    if (!cmd) {
+      return res.json(sanitize({ success: true, networks: [], message: 'Platform not supported: ' + platform }));
+    }
+
+    exec(cmd, { timeout: 10000 }, async (error, stdout, stderr) => {
+      let networks = [];
+
+      if (platform === 'win32' && stdout) {
+        const lines = stdout.split('\n');
+        let current = {};
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (trimmed.startsWith('SSID')) {
+            if (current.ssid) networks.push(current);
+            current = { ssid: trimmed.split(':').slice(1).join(':').trim() };
+          } else if (trimmed.startsWith('Authentication')) {
+            current.auth = trimmed.split(':').slice(1).join(':').trim();
+          } else if (trimmed.startsWith('Encryption')) {
+            current.encryption = trimmed.split(':').slice(1).join(':').trim();
+          } else if (trimmed.startsWith('Signal')) {
+            current.signal = trimmed.split(':').slice(1).join(':').trim();
+          } else if (trimmed.startsWith('BSSID')) {
+            current.bssid = trimmed.split(':').slice(1).join(':').trim();
+          } else if (trimmed.startsWith('Channel')) {
+            current.channel = trimmed.split(':').slice(1).join(':').trim();
+          }
+        }
+        if (current.ssid) networks.push(current);
+      } else if (stdout) {
+        const lines = stdout.split('\n').filter(l => l.trim());
+        for (const line of lines) {
+          if (line.includes('ESSID') || line.includes('SSID')) {
+            const ssid = line.match(/"([^"]+)"/);
+            if (ssid) networks.push({ ssid: ssid[1] });
+          }
+        }
+      }
+
+      await prisma.device.update({
+        where: { deviceId: req.params.deviceId },
+        data: { lastSeen: Date.now() },
+      });
+
+      res.json(sanitize({
+        success: true,
+        platform,
+        networks,
+        raw: stdout || '',
+        error: stderr || null,
+      }));
+    });
   } catch (e) {
     console.error(e);
     res.status(500).json({ success: false, error: e.message });

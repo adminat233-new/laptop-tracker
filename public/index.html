@@ -439,54 +439,136 @@
       document.getElementById('phone-loc-binary').textContent = 'Binary: ' + intToBinary(lat) + ' ' + intToBinary(lng);
     }
 
-    function executeCommand(type, params) {
+    async function executeCommand(type, params) {
       const cmd = type.toLowerCase();
       const ts = new Date().toLocaleString();
+      let result = {};
 
-      if (cmd === 'siren' || cmd === 'alarm' || cmd === 'noise') {
+      if (cmd === 'siren') {
         try {
           const ctx = new (window.AudioContext || window.webkitAudioContext)();
           const osc = ctx.createOscillator();
           const gain = ctx.createGain();
           osc.connect(gain);
           gain.connect(ctx.destination);
-          osc.frequency.value = cmd === 'siren' ? 800 : cmd === 'alarm' ? 600 : 1000;
-          osc.type = cmd === 'siren' ? 'sawtooth' : 'square';
-          gain.gain.value = 0.5;
+          osc.frequency.setValueAtTime(400, ctx.currentTime);
+          osc.frequency.linearRampToValueAtTime(1200, ctx.currentTime + 0.5);
+          osc.frequency.linearRampToValueAtTime(400, ctx.currentTime + 1);
+          osc.type = 'sawtooth';
+          gain.gain.setValueAtTime(0.6, ctx.currentTime);
+          gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 15);
           osc.start();
-          setTimeout(() => { osc.stop(); ctx.close(); }, 10000);
-          return ts + ' - ' + cmd + ' activated for 10 seconds';
+          setTimeout(() => { osc.stop(); ctx.close(); }, 15000);
+          result = { status: 'activated', type: 'siren', duration: '15s', frequency: '400-1200Hz sweep' };
         } catch(e) {
-          return ts + ' - ' + cmd + ' audio failed: ' + e.message;
+          result = { status: 'failed', error: e.message };
         }
+        return ts + ' - SIREN: ' + JSON.stringify(result);
+      }
+
+      if (cmd === 'alarm') {
+        try {
+          const ctx = new (window.AudioContext || window.webkitAudioContext)();
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.frequency.value = 800;
+          osc.type = 'square';
+          gain.gain.setValueAtTime(0.5, ctx.currentTime);
+          gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 20);
+          const blink = setInterval(() => {
+            gain.gain.setValueAtTime(0.5, ctx.currentTime);
+            gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.3);
+          }, 500);
+          osc.start();
+          setTimeout(() => { clearInterval(blink); osc.stop(); ctx.close(); }, 20000);
+          result = { status: 'activated', type: 'alarm', duration: '20s', pattern: '800Hz pulsing' };
+        } catch(e) {
+          result = { status: 'failed', error: e.message };
+        }
+        return ts + ' - ALARM: ' + JSON.stringify(result);
+      }
+
+      if (cmd === 'noise') {
+        try {
+          const ctx = new (window.AudioContext || window.webkitAudioContext)();
+          const bufferSize = ctx.sampleRate * 10;
+          const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+          const data = buffer.getChannelData(0);
+          for (let i = 0; i < bufferSize; i++) data[i] = (Math.random() * 2 - 1) * 0.5;
+          const noise = ctx.createBufferSource();
+          noise.buffer = buffer;
+          const gain = ctx.createGain();
+          noise.connect(gain);
+          gain.connect(ctx.destination);
+          gain.gain.setValueAtTime(0.4, ctx.currentTime);
+          gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 10);
+          noise.start();
+          setTimeout(() => { noise.stop(); ctx.close(); }, 10000);
+          result = { status: 'activated', type: 'white_noise', duration: '10s' };
+        } catch(e) {
+          result = { status: 'failed', error: e.message };
+        }
+        return ts + ' - NOISE: ' + JSON.stringify(result);
       }
 
       if (cmd === 'sensor') {
-        const sensors = [];
-        if (window.DeviceMotionEvent) sensors.push('DeviceMotion');
-        if (window.DeviceOrientationEvent) sensors.push('DeviceOrientation');
-        if (navigator.geolocation) sensors.push('Geolocation');
-        return ts + ' - Sensors available: ' + (sensors.join(', ') || 'None');
+        const sensors = {};
+        if (window.DeviceMotionEvent) {
+          sensors.accelerometer = 'available';
+          sensors.gyroscope = 'available';
+        }
+        if (window.DeviceOrientationEvent) sensors.orientation = 'available';
+        if (navigator.geolocation) sensors.geolocation = 'available';
+        if (navigator.getBattery) sensors.battery = 'available';
+        if (navigator.connection) {
+          sensors.network = {
+            effectiveType: navigator.connection.effectiveType,
+            downlink: navigator.connection.downlink + 'Mbps',
+            rtt: navigator.connection.rtt + 'ms',
+            savedData: navigator.connection.saveData
+          };
+        }
+        if (navigator.onLine !== undefined) sensors.online = navigator.onLine;
+        result = { status: 'scanned', sensors };
+        return ts + ' - SENSORS: ' + JSON.stringify(result);
       }
 
       if (cmd === 'lock') {
-        return ts + ' - Lock command received (requires native agent)';
+        result = { status: 'received', message: 'Lock command queued - requires native agent for screen lock' };
+        return ts + ' - LOCK: ' + JSON.stringify(result);
       }
 
       if (cmd === 'netscan') {
-        return ts + ' - Network scan (requires native agent for full scan)';
+        try {
+          const scanData = await apiGet('/api/netscan/' + laptopDeviceId);
+          result = {
+            status: 'scanned',
+            platform: scanData.platform,
+            networksFound: scanData.networks ? scanData.networks.length : 0,
+            networks: scanData.networks || [],
+            raw: scanData.raw ? scanData.raw.substring(0, 500) : ''
+          };
+        } catch(e) {
+          result = { status: 'failed', error: e.message };
+        }
+        return ts + ' - NETSCAN: ' + JSON.stringify(result);
       }
 
       if (cmd === 'sysinfo') {
         const info = collectSystemInfo();
-        return ts + ' - ' + JSON.stringify(info);
+        result = { status: 'collected', systemInfo: info };
+        return ts + ' - SYSINFO: ' + JSON.stringify(result);
       }
 
       if (cmd === 'shutdown') {
-        return ts + ' - Shutdown command received (requires native agent)';
+        result = { status: 'received', message: 'Shutdown queued - requires native agent' };
+        return ts + ' - SHUTDOWN: ' + JSON.stringify(result);
       }
 
-      return ts + ' - Unknown command: ' + type;
+      result = { status: 'unknown', command: type };
+      return ts + ' - UNKNOWN: ' + JSON.stringify(result);
     }
 
     async function getLocation() {
