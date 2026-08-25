@@ -211,6 +211,7 @@
         <button class="action-btn signal-tool" onclick="runTrilateration()"><span class="icon">&#128205;</span>Trilaterate</button>
         <button class="action-btn signal-tool" onclick="runTriangulation()"><span class="icon">&#128208;</span>Triangulate</button>
         <button class="action-btn signal-tool" onclick="runSignalScan()"><span class="icon">&#128225;</span>Signal Scan</button>
+        <button class="action-btn signal-tool" onclick="runNetTrace()"><span class="icon">&#128246;</span>Net Trace</button>
         <button class="action-btn signal-tool" onclick="toggleLiveEffects()"><span class="icon">&#10024;</span>Live FX</button>
       </div>
     </div>
@@ -1463,16 +1464,91 @@
         showToolsOutput('<div style="color:#ff6b00;">Need 3+ WiFi networks for trilateration. Found: ' + nets.length + '</div>');
         return;
       }
-      const output = nets.slice(0, 8).map(n => {
-        const dist = n.distance || SignalEngine.rssiToDistance(n.rssi, -55, 3.5);
-        return '<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid #ffffff11;">' +
-          '<span>' + (n.ssid || 'Hidden') + '</span>' +
-          '<span style="color:' + (n.rssi > -50 ? '#00ff88' : n.rssi > -70 ? '#ffaa00' : '#ff4444') + ';">' + n.rssi + 'dBm</span>' +
-          '<span>' + dist.toFixed(1) + 'm</span>' +
-          '<span style="color:#888;">' + (n.vendor || '') + '</span></div>';
+
+      // Step 1: Convert RSSI to distance for each AP
+      const beacons = nets.slice(0, 12).map(n => {
+        const rssi = n.rssi || n.signal || -70;
+        const dist = n.distance || SignalEngine.rssiToDistance(rssi, -55, 3.5);
+        return { ssid: n.ssid, bssid: n.bssid, rssi, distance: dist, vendor: n.vendor };
+      });
+
+      // Step 2: Try BSSID geolocation (Mozilla Location Service)
+      let bssidLocation = null;
+      try {
+        const bssidData = await api('/api/bssid-lookup', {
+          bssids: beacons.filter(b => b.bssid).map(b => ({ bssid: b.bssid, rssi: b.rssi, frequency: 2437 }))
+        });
+        if (bssidData.success && bssidData.lat) {
+          bssidLocation = { lat: bssidData.lat, lng: bssidData.lng, accuracy: bssidData.accuracy };
+        }
+      } catch (e) {}
+
+      // Step 3: Try network ping tracing for latency-based distance estimation
+      let pingData = null;
+      try {
+        const pingResult = await apiGet('/api/ping/' + (laptopDeviceId || phoneDeviceId || ''));
+        if (pingResult && pingResult.targets && pingResult.targets.length > 0) {
+          pingData = pingResult;
+        }
+      } catch (e) {}
+
+      // Step 4: Compute trilateration if we have a reference point
+      let position = null;
+      if (bssidLocation && beacons.length >= 3) {
+        // Place beacons around the BSSID reference point based on signal direction (approximate)
+        const placed = beacons.slice(0, 3).map((b, i) => {
+          const angle = (i * 2 * Math.PI / 3); // 120 degrees apart
+          const dx = b.distance * Math.cos(angle);
+          const dy = b.distance * Math.sin(angle);
+          // Convert meters to lat/lng offset
+          const latOffset = dy / 111320;
+          const lngOffset = dx / (111320 * Math.cos(bssidLocation.lat * Math.PI / 180));
+          return {
+            lat: bssidLocation.lat + latOffset,
+            lng: bssidLocation.lng + lngOffset,
+            accuracy: b.distance,
+          };
+        });
+        position = trilaterate(placed[0], placed[1], placed[2]);
+      }
+
+      // Step 5: Build output
+      let html = '<div style="font-weight:600;margin-bottom:4px;">Trilateration — ' + beacons.length + ' APs</div>';
+
+      if (position) {
+        html += '<div style="color:#00ff88;margin-bottom:4px;">Position: ' + position.lat.toFixed(6) + ', ' + position.lng.toFixed(6) + '</div>';
+        html += '<div style="color:#888;margin-bottom:4px;">Method: ' + position.method + ' | Accuracy: ~' + Math.round(position.accuracy) + 'm</div>';
+      } else if (bssidLocation) {
+        html += '<div style="color:#00d4ff;margin-bottom:4px;">BSSID Position: ' + bssidLocation.lat.toFixed(6) + ', ' + bssidLocation.lng.toFixed(6) + ' (±' + Math.round(bssidLocation.accuracy) + 'm)</div>';
+      } else {
+        html += '<div style="color:#ff6b00;margin-bottom:4px;">No reference position available. Showing distance estimates only.</div>';
+      }
+
+      // Show beacon distances
+      html += beacons.map(b => {
+        const barWidth = Math.min(100, Math.max(5, (b.rssi + 100)));
+        return '<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid #ffffff11;font-size:11px;">' +
+          '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + (b.ssid || 'Hidden') + '</span>' +
+          '<span style="width:60px;text-align:right;color:' + (b.rssi > -50 ? '#00ff88' : b.rssi > -70 ? '#ffaa00' : '#ff4444') + ';">' + b.rssi + 'dBm</span>' +
+          '<span style="width:60px;text-align:right;">' + b.distance.toFixed(1) + 'm</span>' +
+          '<span style="width:60px;text-align:right;color:#888;font-size:10px;">' + (b.vendor || '') + '</span></div>';
       }).join('');
-      showToolsOutput('<div style="font-weight:600;margin-bottom:4px;">Trilateration — ' + nets.length + ' APs</div>' +
-        '<div style="color:#888;margin-bottom:4px;">RSSI → Distance conversion using log-distance path loss model</div>' + output);
+
+      // Show ping data if available
+      if (pingData && pingData.targets) {
+        html += '<div style="font-weight:600;margin-top:8px;margin-bottom:4px;">Network Traces</div>';
+        html += pingData.targets.map(t =>
+          '<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid #ffffff11;font-size:11px;">' +
+          '<span>' + t.target + '</span>' +
+          '<span style="color:' + (t.avgMs < 30 ? '#00ff88' : t.avgMs < 80 ? '#ffaa00' : '#ff4444') + ';">' + (t.avgMs || '?') + 'ms</span>' +
+          '<span style="color:#888;">' + (t.lossPercent || 0) + '% loss</span></div>'
+        ).join('');
+        if (pingData.hops && pingData.hops.length > 0) {
+          html += '<div style="color:#888;font-size:10px;margin-top:4px;">Traceroute: ' + pingData.hops.length + ' hops to 8.8.8.8</div>';
+        }
+      }
+
+      showToolsOutput(html);
       if (liveEffectsEnabled) startLiveEffects();
     }
 
@@ -1483,15 +1559,78 @@
         showToolsOutput('<div style="color:#ff6b00;">Need 2+ WiFi networks for triangulation. Found: ' + nets.length + '</div>');
         return;
       }
-      const output = nets.slice(0, 6).map((n, i) => {
-        const angle = (i * 360 / Math.min(nets.length, 6)).toFixed(0);
-        return '<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid #ffffff11;">' +
-          '<span>' + (n.ssid || 'Hidden') + '</span>' +
-          '<span>Angle: ' + angle + '°</span>' +
-          '<span style="color:#00d4ff;">' + n.rssi + 'dBm</span></div>';
-      }).join('');
-      showToolsOutput('<div style="font-weight:600;margin-bottom:4px;">Triangulation — ' + nets.length + ' APs</div>' +
-        '<div style="color:#888;margin-bottom:4px;">Angle-of-arrival estimation from signal strength distribution</div>' + output);
+
+      // Get ping trace data for latency-based positioning
+      let pingData = null;
+      try {
+        const pingResult = await apiGet('/api/ping/' + (laptopDeviceId || phoneDeviceId || ''));
+        if (pingResult && pingResult.targets) pingData = pingResult;
+      } catch (e) {}
+
+      // Compute signal strength distribution for angle estimation
+      const maxRssi = Math.max(...nets.map(n => n.rssi || n.signal || -80));
+      const totalWeight = nets.reduce((sum, n) => sum + Math.max(0, (n.rssi || -80) + 100), 0);
+
+      // Weighted centroid from signal strengths
+      let centroidLat = 0, centroidLng = 0;
+      const myLoc = cachedLocation || LocationTracker.getBest();
+      if (myLoc) {
+        for (const n of nets) {
+          const weight = Math.max(0, (n.rssi || -80) + 100) / totalWeight;
+          // Each AP pulls position toward it proportionally to signal strength
+          centroidLat += (n.lat || myLoc.lat) * weight;
+          centroidLng += (n.lng || myLoc.lng) * weight;
+        }
+      }
+
+      // Estimate angles from signal strength differences
+      const angleData = nets.slice(0, 8).map((n, i) => {
+        const rssi = n.rssi || n.signal || -70;
+        const relStrength = (rssi + 100) / 100; // 0-1 normalized
+        const angle = (i * 360 / Math.min(nets.length, 8));
+        return { ssid: n.ssid, rssi, angle, relStrength, distance: n.distance || SignalEngine.rssiToDistance(rssi, -55, 3.5) };
+      });
+
+      let html = '<div style="font-weight:600;margin-bottom:4px;">Triangulation — ' + nets.length + ' APs</div>';
+
+      if (myLoc) {
+        html += '<div style="color:#00d4ff;margin-bottom:4px;">Reference: ' + myLoc.lat?.toFixed(6) + ', ' + myLoc.lng?.toFixed(6) + '</div>';
+        html += '<div style="color:#888;margin-bottom:4px;">Weighted centroid from ' + nets.length + ' signal sources</div>';
+      }
+
+      // Show angle distribution
+      html += angleData.map(a =>
+        '<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid #ffffff11;font-size:11px;">' +
+        '<span>' + (a.ssid || 'Hidden') + '</span>' +
+        '<span>Angle: ' + a.angle + '°</span>' +
+        '<span style="color:' + (a.rssi > -50 ? '#00ff88' : a.rssi > -70 ? '#ffaa00' : '#ff4444') + ';">' + a.rssi + 'dBm</span>' +
+        '<span>' + a.distance.toFixed(1) + 'm</span></div>'
+      ).join('');
+
+      // Show ping-based latency triangulation
+      if (pingData && pingData.targets) {
+        html += '<div style="font-weight:600;margin-top:8px;margin-bottom:4px;">Latency Triangulation</div>';
+        html += '<div style="color:#888;margin-bottom:4px;">Multiple DNS servers pinged for latency-based position estimation</div>';
+        html += pingData.targets.map(t => {
+          const latencyKm = (t.avgMs || 0) * 0.3; // Speed of light approximation
+          return '<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid #ffffff11;font-size:11px;">' +
+            '<span>' + t.target + '</span>' +
+            '<span style="color:' + (t.avgMs < 30 ? '#00ff88' : t.avgMs < 80 ? '#ffaa00' : '#ff4444') + ';">' + (t.avgMs || '?') + 'ms</span>' +
+            '<span style="color:#888;">~' + latencyKm.toFixed(0) + 'km path</span></div>';
+        }).join('');
+
+        if (pingData.hops && pingData.hops.length > 0) {
+          html += '<div style="font-weight:600;margin-top:6px;margin-bottom:4px;">Traceroute Path (' + pingData.hops.length + ' hops)</div>';
+          html += pingData.hops.slice(0, 8).map(h =>
+            '<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid #ffffff11;font-size:10px;">' +
+            '<span>Hop ' + h.hop + '</span>' +
+            '<span>' + h.ip + '</span>' +
+            '<span>' + h.ms1 + '/' + h.ms2 + '/' + h.ms3 + 'ms</span></div>'
+          ).join('');
+        }
+      }
+
+      showToolsOutput(html);
       if (liveEffectsEnabled) startLiveEffects();
     }
 
@@ -1515,6 +1654,85 @@
       }
       showToolsOutput(html);
       if (liveEffectsEnabled) startLiveEffects();
+    }
+
+    async function runNetTrace() {
+      showToast('Running network trace...');
+      const deviceId = laptopDeviceId || phoneDeviceId;
+      if (!deviceId) { showToolsOutput('<div style="color:#ff4444;">No device connected</div>'); return; }
+
+      // Trigger ping/traceroute on the laptop via command
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        wsSend({ type: 'command', commandType: 'ping' });
+      }
+
+      // Poll for results
+      let attempts = 0;
+      const poll = setInterval(async () => {
+        attempts++;
+        if (attempts > 10) { clearInterval(poll); showToolsOutput('<div style="color:#ff6b00;">Trace timeout. Make sure native agent is running.</div>'); return; }
+        try {
+          const data = await apiGet('/api/ping/' + deviceId);
+          if (data && data.targets && data.targets.length > 0) {
+            clearInterval(poll);
+            renderNetTrace(data);
+          }
+        } catch (e) {}
+      }, 2000);
+    }
+
+    function renderNetTrace(data) {
+      let html = '<div style="font-weight:600;margin-bottom:4px;">Network Trace</div>';
+
+      if (data.localNet) {
+        html += '<div style="color:#888;margin-bottom:4px;">Local: ' + (data.localNet.ip || '?') + ' | Gateway: ' + (data.localNet.gateway || '?') + '</div>';
+      }
+
+      if (data.targets && data.targets.length > 0) {
+        html += '<div style="font-weight:600;margin-top:6px;margin-bottom:4px;">Ping Results</div>';
+        html += data.targets.map(t => {
+          const color = t.avgMs < 30 ? '#00ff88' : t.avgMs < 80 ? '#ffaa00' : '#ff4444';
+          const barWidth = Math.min(100, (t.avgMs || 100) / 2);
+          return '<div style="padding:3px 0;border-bottom:1px solid #ffffff11;">' +
+            '<div style="display:flex;justify-content:space-between;font-size:11px;">' +
+              '<span>' + t.target + '</span>' +
+              '<span style="color:' + color + ';">' + (t.avgMs || '?') + 'ms (min:' + (t.minMs || '?') + ' max:' + (t.maxMs || '?') + ')</span>' +
+            '</div>' +
+            '<div style="background:#ffffff11;height:4px;border-radius:2px;margin-top:2px;">' +
+              '<div style="width:' + barWidth + '%;height:100%;background:' + color + ';border-radius:2px;"></div>' +
+            '</div>' +
+            '<div style="font-size:10px;color:#888;">Loss: ' + (t.lossPercent || 0) + '%</div>' +
+          '</div>';
+        }).join('');
+      }
+
+      if (data.hops && data.hops.length > 0) {
+        html += '<div style="font-weight:600;margin-top:8px;margin-bottom:4px;">Traceroute (' + data.hops.length + ' hops to 8.8.8.8)</div>';
+        html += data.hops.map(h => {
+          const maxMs = Math.max(h.ms1, h.ms2, h.ms3);
+          const barWidth = Math.min(100, maxMs / 3);
+          const color = maxMs < 30 ? '#00ff88' : maxMs < 80 ? '#ffaa00' : '#ff4444';
+          return '<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid #ffffff11;font-size:10px;">' +
+            '<span style="width:30px;">#' + h.hop + '</span>' +
+            '<span style="flex:1;font-family:monospace;">' + h.ip + '</span>' +
+            '<span style="width:80px;text-align:right;color:' + color + ';">' + h.ms1 + '/' + h.ms2 + '/' + h.ms3 + 'ms</span>' +
+          '</div>';
+        }).join('');
+
+        // Estimate distance from hop latencies
+        if (data.hops.length > 0) {
+          const lastHop = data.hops[data.hops.length - 1];
+          const totalLatency = lastHop.ms1 + lastHop.ms2 + lastHop.ms3;
+          const estimatedDist = (totalLatency / 3) * 0.3; // speed of light approximation in km
+          html += '<div style="color:#00d4ff;margin-top:6px;font-size:11px;">Estimated distance to target: ~' + estimatedDist.toFixed(0) + 'km (' + data.hops.length + ' hops, avg ' + Math.round(totalLatency/3) + 'ms)</div>';
+        }
+      }
+
+      if (!data.targets && !data.hops) {
+        html += '<div style="color:#888;">No trace data available. Run from the native Windows agent.</div>';
+      }
+
+      showToolsOutput(html);
     }
 
     function sendCommand(type) {

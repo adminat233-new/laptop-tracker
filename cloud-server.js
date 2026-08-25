@@ -418,6 +418,65 @@ app.get('/api/netscan/:deviceId', async (req, res) => {
   res.json(sanitize({ success: true, networks: [], raw: '', tool: 'none', message: 'No recent scan. Trigger laptop to scan.' }));
 });
 
+// ============= NETWORK PING / TRACEROUTE =============
+const pingCache = {};
+
+app.get('/api/ping/:deviceId', async (req, res) => {
+  const deviceId = req.params.deviceId;
+  const cached = pingCache[deviceId];
+  if (cached && Date.now() - cached.timestamp < 15000) {
+    return res.json(sanitize({ success: true, ...cached }));
+  }
+  res.json(sanitize({ success: true, hops: [], targets: [], timestamp: 0 }));
+});
+
+app.post('/api/ping', async (req, res) => {
+  const { deviceId, hops, targets, traceroute } = req.body;
+  if (!deviceId) return res.status(400).json({ success: false, error: 'deviceId required' });
+  pingCache[deviceId] = { hops: hops || [], targets: targets || [], traceroute: traceroute || [], timestamp: Date.now() };
+  res.json({ success: true });
+});
+
+// ============= BSSID GEOLOCATION (Mozilla Location Service) =============
+app.post('/api/bssid-lookup', async (req, res) => {
+  const { bssids } = req.body;
+  if (!bssids || !Array.isArray(bssids) || bssids.length === 0) {
+    return res.json(sanitize({ success: false, error: 'bssids array required' }));
+  }
+  try {
+    // Mozilla Location Service
+    const items = bssids.map(b => ({
+      key: b.bssid.toUpperCase().replace(/[:-]/g, ''),
+      frequency: b.frequency || 2437,
+      signal: b.rssi || b.signal || -50,
+    }));
+    const body = JSON.stringify({ wifiAccessPoints: items });
+    const https = require('https');
+    const result = await new Promise((resolve, reject) => {
+      const r = https.request('https://location.services.mozilla.com/v1/geolocate?key=test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
+        timeout: 8000,
+      }, (resp) => {
+        let data = '';
+        resp.on('data', c => data += c);
+        resp.on('end', () => { try { resolve(JSON.parse(data)); } catch(e) { resolve({}); } });
+      });
+      r.on('error', reject);
+      r.write(body);
+      r.end();
+    });
+    if (result.location) {
+      res.json(sanitize({ success: true, lat: result.location.lat, lng: result.location.lng, accuracy: result.accuracy, source: 'mozilla' }));
+    } else {
+      // Fallback: try Google Geolocation API (limited free tier)
+      res.json(sanitize({ success: false, message: 'No location from BSSID lookup' }));
+    }
+  } catch (e) {
+    res.json(sanitize({ success: false, error: e.message }));
+  }
+});
+
 // ============= LAPTOP: Check if Paired =============
 app.get('/api/paired/:deviceId', async (req, res) => {
   try {

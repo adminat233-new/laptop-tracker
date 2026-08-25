@@ -457,6 +457,151 @@ async function scanBle() {
   }
 }
 
+// ─── Network Ping & Traceroute ────────────────────────────────────────────────
+
+async function runPingTrace() {
+  const targets = [
+    '8.8.8.8',        // Google DNS
+    '1.1.1.1',        // Cloudflare DNS
+    '208.67.222.222', // OpenDNS
+    '9.9.9.9',        // Quad9
+  ];
+
+  const hops = [];
+  const pingResults = [];
+
+  // Ping each target for latency
+  for (const target of targets) {
+    try {
+      const result = await runCommand(`ping -n 3 -w 2000 ${target}`, 8000);
+      if (result.success) {
+        const avgMatch = result.stdout.match(/Average\s*=\s*(\d+)ms/i);
+        const minMatch = result.stdout.match(/Minimum\s*=\s*(\d+)ms/i);
+        const maxMatch = result.stdout.match(/Maximum\s*=\s*(\d+)ms/i);
+        const lossMatch = result.stdout.match(/(\d+)%\s*loss/i);
+        pingResults.push({
+          target,
+          avgMs: avgMatch ? parseInt(avgMatch[1]) : null,
+          minMs: minMatch ? parseInt(minMatch[1]) : null,
+          maxMs: maxMatch ? parseInt(maxMatch[1]) : null,
+          lossPercent: lossMatch ? parseInt(lossMatch[1]) : 100,
+        });
+      }
+    } catch (e) {}
+  }
+
+  // Traceroute to Google DNS
+  try {
+    const result = await runCommand('tracert -d -h 15 8.8.8.8', 30000);
+    if (result.success && result.stdout) {
+      const lines = result.stdout.split('\n');
+      for (const line of lines) {
+        const match = line.match(/^\s*(\d+)\s+(<?\d+)\s*ms\s+(<?\d+)\s*ms\s+(<?\d+)\s*ms\s+([\d.]+)/);
+        if (match) {
+          hops.push({
+            hop: parseInt(match[1]),
+            ms1: match[2] === '<1' ? 0 : parseInt(match[2]),
+            ms2: match[3] === '<1' ? 0 : parseInt(match[3]),
+            ms3: match[4] === '<1' ? 0 : parseInt(match[4]),
+            ip: match[5],
+          });
+        }
+      }
+    }
+  } catch (e) {}
+
+  // Get local network info for context
+  let localNet = {};
+  try {
+    const result = await runCommand('ipconfig', 5000);
+    if (result.success) {
+      const gwMatch = result.stdout.match(/Default Gateway\s*:\s*([\d.]+)/);
+      const ipMatch = result.stdout.match(/IPv4 Address\s*:\s*([\d.]+)/);
+      localNet.gateway = gwMatch ? gwMatch[1] : null;
+      localNet.ip = ipMatch ? ipMatch[1] : null;
+    }
+  } catch (e) {}
+
+  const traceData = { hops, targets: pingResults, localNet, timestamp: new Date().toISOString() };
+
+  // Post results to server
+  try {
+    const https = require('https');
+    const http = require('http');
+    const postData = JSON.stringify({ deviceId: DEVICE_ID, ...traceData });
+    const url = new URL(SERVER_URL.replace('wss:', 'https:').replace('ws:', 'http:') + '/api/ping');
+    const client = url.protocol === 'https:' ? https : http;
+    const req = client.request(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(postData) } });
+    req.write(postData);
+    req.end();
+  } catch (e) {}
+
+  return traceData;
+}
+
+// ─── BSSID Geolocation Lookup ────────────────────────────────────────────────
+
+async function lookupBssids(params) {
+  const networks = params?.networks || [];
+  if (networks.length === 0) {
+    // Auto-scan first
+    const scan = await scanWifi();
+    if (scan.networks) {
+      for (const n of scan.networks) {
+        if (n.bssids) {
+          for (const b of n.bssids) {
+            if (b.bssid) networks.push({ bssid: b.bssid, rssi: b.rssi, frequency: 2437 });
+          }
+        }
+        if (n.bssid) networks.push({ bssid: n.bssid, rssi: n.rssi, frequency: 2437 });
+      }
+    }
+  }
+
+  if (networks.length === 0) return { success: false, error: 'No BSSIDs to look up' };
+
+  try {
+    const https = require('https');
+    const body = JSON.stringify({
+      wifiAccessPoints: networks.slice(0, 10).map(n => ({
+        key: n.bssid.toUpperCase().replace(/[:-]/g, ''),
+        frequency: n.frequency || 2437,
+        signal: n.rssi || n.signal || -50,
+      }))
+    });
+
+    const result = await new Promise((resolve, reject) => {
+      const r = https.request('https://location.services.mozilla.com/v1/geolocate?key=test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
+        timeout: 8000,
+      }, (resp) => {
+        let data = '';
+        resp.on('data', c => data += c);
+        resp.on('end', () => { try { resolve(JSON.parse(data)); } catch(e) { resolve({}); } });
+      });
+      r.on('error', reject);
+      r.write(body);
+      r.end();
+    });
+
+    if (result.location) {
+      return {
+        success: true,
+        lat: result.location.lat,
+        lng: result.location.lng,
+        accuracy: result.accuracy,
+        source: 'mozilla-bssid',
+        bssidCount: networks.length,
+      };
+    }
+  } catch (e) {
+    log('warn', 'BSSID lookup failed:', e.message);
+  }
+
+  return { success: false, error: 'BSSID lookup failed' };
+}
+
 // ─── System Sounds ────────────────────────────────────────────────────────────
 
 async function playSiren() {
@@ -784,6 +929,16 @@ async function handleCommand(msg) {
       case 'netscan':
       case 'network-scan':
         result = await networkScan();
+        break;
+
+      case 'ping':
+      case 'traceroute':
+      case 'nettrace':
+        result = await runPingTrace();
+        break;
+
+      case 'bssid-lookup':
+        result = await lookupBssids(msg.params);
         break;
 
       case 'sysinfo':
