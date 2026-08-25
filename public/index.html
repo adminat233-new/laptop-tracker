@@ -365,6 +365,7 @@
         document.getElementById('laptop-status').textContent = 'Code: ' + data.pairCode + ' - Waiting for phone...';
         if (laptopPollInterval) clearInterval(laptopPollInterval);
         startLaptopPolling();
+        startBgLocationTracking(laptopDeviceId, 'laptop');
         return data.pairCode;
       }
     }
@@ -388,6 +389,8 @@
           setTimeout(() => { if (!map) initMap(); else map.invalidateSize(); }, 200);
           startPhonePolling();
           startRealTimeTracking();
+          startBgLocationTracking(phoneDeviceId, 'phone');
+          requestNotifyPermission();
         }, 1500);
       } else {
         showScreen('pair-screen');
@@ -737,6 +740,144 @@
     }
 
     detectDevice();
+
+    // Register Service Worker for background location tracking
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').then((reg) => {
+        console.log('SW registered', reg.scope);
+        if ('periodicSync' in reg) {
+          reg.periodicSync.register('bg-location-periodic', { minInterval: 15000 }).catch(() => {});
+        }
+      }).catch(() => {});
+
+      navigator.serviceWorker.addEventListener('message', (event) => {
+        if (event.data.type === 'SW_LOCATION_REQUEST') {
+          sendBgLocation(event.data.deviceId, event.data.deviceType);
+        }
+      });
+    }
+
+    // Background GPS sender — keeps updating server even when tab is hidden
+    let bgLocationWatchId = null;
+
+    function startBgLocationTracking(deviceId, deviceType) {
+      if (!navigator.geolocation) return;
+      if (bgLocationWatchId !== null) return;
+
+      bgLocationWatchId = navigator.geolocation.watchPosition(
+        (pos) => {
+          const { latitude, longitude, accuracy } = pos.coords;
+          const locData = {
+            lat: latitude, lng: longitude,
+            intLat: Math.round(latitude * 1000000),
+            intLng: Math.round(longitude * 1000000),
+            accuracy, source: 'gps',
+          };
+
+          // Always send to server regardless of tab state
+          fetch('/api/heartbeat', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ deviceId, location: locData, systemInfo: { type: deviceType } }),
+          }).catch(() => {});
+
+          fetch('/api/location/phone', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ deviceId, location: locData }),
+          }).catch(() => {});
+
+          // Update UI if visible
+          if (deviceType === 'phone' && map && phoneMarker) {
+            phoneMarker.setLatLng([latitude, longitude]);
+          }
+        },
+        () => {},
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 2000 }
+      );
+
+      // Also send heartbeat via fetch every 10s as fallback
+      setInterval(() => {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            const { latitude, longitude, accuracy } = pos.coords;
+            const locData = {
+              lat: latitude, lng: longitude,
+              intLat: Math.round(latitude * 1000000),
+              intLng: Math.round(longitude * 1000000),
+              accuracy, source: 'gps',
+            };
+            fetch('/api/heartbeat', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ deviceId, location: locData, systemInfo: { type: deviceType } }),
+            }).catch(() => {});
+            if (deviceType === 'phone') {
+              fetch('/api/location/phone', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ deviceId, location: locData }),
+              }).catch(() => {});
+            }
+          }, () => {},
+          { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
+        );
+      }, 10000);
+    }
+
+    function sendBgLocation(deviceId, deviceType) {
+      if (!navigator.geolocation) return;
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const { latitude, longitude, accuracy } = pos.coords;
+          const locData = {
+            lat: latitude, lng: longitude,
+            intLat: Math.round(latitude * 1000000),
+            intLng: Math.round(longitude * 1000000),
+            accuracy, source: 'gps',
+          };
+          fetch('/api/heartbeat', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ deviceId, location: locData, systemInfo: { type: deviceType } }),
+          }).catch(() => {});
+          if (deviceType === 'phone') {
+            fetch('/api/location/phone', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ deviceId, location: locData }),
+            }).catch(() => {});
+          }
+        }, () => {},
+        { enableHighAccuracy: true, timeout: 10000 }
+      );
+    }
+
+    // Request Notification permission for background alerts
+    function requestNotifyPermission() {
+      if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission();
+      }
+    }
+
+    // Also send location via Page Visibility API — triggers when tab becomes visible
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        if (isLaptop && laptopDeviceId) {
+          getLocation().then(async (loc) => {
+            cachedLocation = loc;
+            if (loc) {
+              await api('/api/heartbeat', { deviceId: laptopDeviceId, location: loc, systemInfo: laptopSystemInfo });
+            }
+          }).catch(() => {});
+        } else if (!isLaptop && phoneDeviceId) {
+          navigator.geolocation.getCurrentPosition(
+            (pos) => {
+              const { latitude, longitude, accuracy } = pos.coords;
+              const locData = { lat: latitude, lng: longitude, intLat: Math.round(latitude * 1000000), intLng: Math.round(longitude * 1000000), accuracy, source: 'gps' };
+              api('/api/heartbeat', { deviceId: phoneDeviceId, location: locData, systemInfo: { type: 'phone' } });
+              api('/api/location/phone', { deviceId: phoneDeviceId, location: locData });
+            }, () => {},
+            { enableHighAccuracy: true, timeout: 10000 }
+          );
+        }
+      }
+    });
+
     if (isLaptop) {
       document.getElementById('pair-title').textContent = 'Laptop Mode';
       document.getElementById('pair-subtitle').textContent = 'Generate code, share with phone';
