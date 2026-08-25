@@ -660,12 +660,12 @@
     }
 
     function sendMyLocation() {
-      // Always try to send location, even without WS (use HTTP fallback)
-      // First try to get fresh GPS fix
+      // Try to send location, with multiple fallbacks
       if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
           (pos) => {
             const { latitude, longitude, accuracy } = pos.coords;
+            if (latitude === 0 && longitude === 0) return;
             const gpsFix = LocationTracker.updateGps(latitude, longitude, accuracy || 10);
             const loc = {
               lat: gpsFix.lat, lng: gpsFix.lng,
@@ -676,77 +676,42 @@
               trend: LocationTracker.getAccuracyTrend(),
             };
             cachedLocation = loc;
-            if (ws && ws.readyState === WebSocket.OPEN) {
-              wsSend({ type: 'location', location: loc });
-            } else {
-              fetch('/api/heartbeat', {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ deviceId: laptopDeviceId, location: loc, systemInfo: laptopSystemInfo }),
-              }).catch(() => {});
-            }
+            if (ws && ws.readyState === WebSocket.OPEN) wsSend({ type: 'location', location: loc });
+            else fetch('/api/heartbeat', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ deviceId: laptopDeviceId, location: loc, systemInfo: laptopSystemInfo }) }).catch(() => {});
           },
           () => {
-            // GPS denied — try computePreciseLocation (IP + Kalman fusion)
-            computePreciseLocation().then((precise) => {
-              let loc;
-              if (precise && precise.lat !== 0 && precise.lon !== 0) {
-                loc = {
-                  lat: precise.lat, lng: precise.lon,
-                  accuracy: precise.accuracy,
-                  source: precise.sources.map(s => s.source).join('+'),
-                  intLat: Math.round(precise.lat * 1000000),
-                  intLng: Math.round(precise.lon * 1000000),
-                  wifiCount: precise.wifiCount,
-                  bleCount: precise.bleCount,
-                  trend: precise.trend,
-                };
-              } else {
-                const best = LocationTracker.getBest();
-                if (best && best.lat !== 0 && best.lng !== 0) {
-                  loc = {
-                    lat: best.lat, lng: best.lng,
-                    accuracy: best.accuracy,
-                    source: best.source,
-                    intLat: Math.round(best.lat * 1000000),
-                    intLng: Math.round(best.lng * 1000000),
-                  };
-                } else if (cachedLocation && cachedLocation.lat && cachedLocation.lat !== 0) {
-                  loc = cachedLocation;
-                }
-              }
-              if (loc) {
-                cachedLocation = loc;
-                if (ws && ws.readyState === WebSocket.OPEN) wsSend({ type: 'location', location: loc });
-                else fetch('/api/heartbeat', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ deviceId: laptopDeviceId, location: loc, systemInfo: laptopSystemInfo }) }).catch(() => {});
-              } else {
-                // Last resort: force IP fallback directly
-                fetch('https://ip-api.com/json/', { signal: AbortSignal.timeout(4000) })
-                  .then(r => r.json())
-                  .then(data => {
-                    if (data.lat && data.lon && data.lat !== 0) {
-                      const loc = { lat: data.lat, lng: data.lon, accuracy: 10000, source: 'ip-fallback',
-                        intLat: Math.round(data.lat * 1000000), intLng: Math.round(data.lon * 1000000) };
-                      cachedLocation = loc;
-                      if (ws && ws.readyState === WebSocket.OPEN) wsSend({ type: 'location', location: loc });
-                    }
-                  }).catch(() => {});
-              }
-            }).catch(() => {});
+            // GPS denied — try IP fallback directly
+            const ipServices = [
+              'https://ip-api.com/json/',
+              'https://ipwho.is/',
+              'https://freeipapi.com/api/json',
+            ];
+            let ipDone = false;
+            for (const url of ipServices) {
+              if (ipDone) break;
+              fetch(url, { signal: AbortSignal.timeout(4000) })
+                .then(r => r.json())
+                .then(data => {
+                  if (ipDone) return;
+                  const lat = data.lat || data.latitude;
+                  const lon = data.lon || data.longitude;
+                  if (lat && lon && lat !== 0 && lon !== 0) {
+                    ipDone = true;
+                    const loc = { lat, lng: lon, accuracy: 10000, source: 'ip',
+                      intLat: Math.round(lat * 1000000), intLng: Math.round(lon * 1000000) };
+                    cachedLocation = loc;
+                    if (ws && ws.readyState === WebSocket.OPEN) wsSend({ type: 'location', location: loc });
+                  }
+                }).catch(() => {});
+            }
+            // Also send cached if available
+            if (cachedLocation && cachedLocation.lat) {
+              if (ws && ws.readyState === WebSocket.OPEN) wsSend({ type: 'location', location: cachedLocation });
+            }
           },
-          { enableHighAccuracy: true, timeout: 8000, maximumAge: 3000 }
+          { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
         );
-      } else {
-        // No geolocation API — use IP fallback
-        computePreciseLocation().then((precise) => {
-          if (precise) {
-            const loc = { lat: precise.lat, lng: precise.lon, accuracy: precise.accuracy,
-              source: precise.sources.map(s => s.source).join('+'),
-              intLat: Math.round(precise.lat * 1000000), intLng: Math.round(precise.lon * 1000000) };
-            cachedLocation = loc;
-            if (ws && ws.readyState === WebSocket.OPEN) wsSend({ type: 'location', location: loc });
-          }
-        }).catch(() => {});
       }
     }
 
