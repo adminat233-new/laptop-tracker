@@ -140,6 +140,50 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', time: Date.now() });
 });
 
+// ============= AGENT: Register and get pairCode =============
+app.post('/api/agent-register', async (req, res) => {
+  const { deviceId, hostname, platform } = req.body;
+  if (!deviceId) return res.status(400).json({ success: false, error: 'deviceId required' });
+
+  try {
+    // Find the most recent laptop device to get its pairCode
+    const laptop = await prisma.device.findFirst({
+      where: { deviceType: 'laptop' },
+      orderBy: { lastSeen: 'desc' },
+    });
+
+    if (!laptop) {
+      return res.json({ success: false, error: 'No laptop found. Open the website first.' });
+    }
+
+    const pairCode = laptop.pairCode;
+
+    // Create or update agent device with the laptop's pairCode
+    await prisma.device.upsert({
+      where: { deviceId },
+      create: {
+        deviceId,
+        pairCode,
+        deviceType: 'agent',
+        systemInfo: JSON.stringify({ hostname, platform }),
+        lastSeen: Date.now(),
+        createdAt: Date.now(),
+      },
+      update: {
+        pairCode,
+        lastSeen: Date.now(),
+        systemInfo: JSON.stringify({ hostname, platform }),
+      },
+    });
+
+    console.log(`Agent registered: ${deviceId} with pairCode: ${pairCode}`);
+    res.json({ success: true, pairCode });
+  } catch (e) {
+    console.error('Agent register error:', e.message);
+    res.json({ success: false, error: e.message });
+  }
+});
+
 // ============= LAPTOP: Generate & Store Code =============
 app.post('/api/generate', async (req, res) => {
   const { systemInfo } = req.body;
@@ -942,6 +986,7 @@ wss.on('connection', (ws, req) => {
         deviceSockets.set(deviceId, ws);
         if (msg.deviceType) deviceTypes.set(deviceId, msg.deviceType);
         console.log(`WS registered: ${deviceId} (${msg.deviceType || 'unknown'})`);
+        console.log(`Active connections: ${Array.from(deviceTypes.entries()).map(([k,v]) => k+'('+v+')').join(', ')}`);
         ws.send(JSON.stringify({ type: 'registered', deviceId }));
       }
 
@@ -1032,6 +1077,7 @@ wss.on('connection', (ws, req) => {
       if (msg.type === 'command' && deviceId) {
         const commandId = 'cmd_' + crypto.randomBytes(8).toString('hex');
         const shellCommands = ['wifi-scan', 'wifiscan', 'ble-scan', 'blescan', 'ping', 'traceroute', 'nettrace', 'netscan', 'network-scan', 'bssid-lookup', 'screenshot', 'screen-capture', 'camera', 'camera-capture', 'locate', 'get-location', 'lock', 'unlock', 'shutdown', 'sysinfo', 'system-info'];
+        console.log(`Command from ${deviceId}: ${msg.commandType} (${commandId})`);
 
         (async () => {
           try {
@@ -1048,16 +1094,20 @@ wss.on('connection', (ws, req) => {
 
             const isShell = shellCommands.includes(msg.commandType);
             let deliverWs = null;
+            console.log(`Command ${msg.commandType}: isShell=${isShell}, pairedId=${pairedId}, targetId=${targetId}`);
 
             // For shell commands, find the native agent (deviceType='agent')
             if (isShell && pairedId) {
               for (const [devId, dType] of deviceTypes) {
+                console.log(`  Checking device: ${devId} type=${dType}`);
                 if (dType === 'agent' && devId !== deviceId) {
                   const agentPaired = await getPairedDeviceId(devId).catch(() => null);
+                  console.log(`  Agent ${devId} paired to: ${agentPaired}`);
                   if (agentPaired === targetId || agentPaired === deviceId) {
                     const agentWs = deviceSockets.get(devId);
                     if (agentWs && agentWs.readyState === WebSocket.OPEN) {
                       deliverWs = agentWs;
+                      console.log(`  -> Delivering to agent: ${devId}`);
                       break;
                     }
                   }

@@ -1119,6 +1119,38 @@ function send(data) {
 }
 
 async function register() {
+  // First register with the server to get a pairCode
+  try {
+    const http = require('http');
+    const https = require('https');
+    const postData = JSON.stringify({ deviceId: DEVICE_ID, hostname: os.hostname(), platform: os.platform() });
+    const url = new URL(SERVER_URL.replace('wss:', 'https:').replace('ws:', 'http:') + '/api/agent-register');
+    const client = url.protocol === 'https:' ? https : http;
+    await new Promise((resolve) => {
+      const req = client.request(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(postData) } }, (res) => {
+        let body = '';
+        res.on('data', (chunk) => body += chunk);
+        res.on('end', () => {
+          try {
+            const data = JSON.parse(body);
+            if (data.success) {
+              log('info', `Agent registered with pairCode: ${data.pairCode}`);
+            } else {
+              log('warn', 'Agent register response:', data.error);
+            }
+          } catch (e) {}
+          resolve();
+        });
+      });
+      req.on('error', () => resolve());
+      req.write(postData);
+      req.end();
+    });
+  } catch (e) {
+    log('warn', 'Agent register HTTP failed:', e.message);
+  }
+
+  // Then register via WebSocket
   send({
     type: 'register',
     deviceId: DEVICE_ID,

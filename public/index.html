@@ -88,8 +88,9 @@
     .toast { position: fixed; top: 80px; left: 50%; transform: translateX(-50%) translateY(-20px); background: rgba(0,212,255,0.95); color: #fff; padding: 10px 20px; border-radius: 10px; font-size: 12px; font-weight: 500; z-index: 2000; opacity: 0; transition: all 0.3s; pointer-events: none; }
     .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
     .custom-marker { background: none; border: none; }
-    .marker-laptop { width: 24px; height: 24px; background: #00d4ff; border: 3px solid #fff; border-radius: 50%; box-shadow: 0 0 15px rgba(0,212,255,0.6); }
-    .marker-phone { width: 24px; height: 24px; background: #00ff88; border: 3px solid #fff; border-radius: 50%; box-shadow: 0 0 15px rgba(0,255,136,0.6); }
+    .marker-laptop { width: 24px; height: 24px; background: #00d4ff; border: 3px solid #fff; border-radius: 50%; box-shadow: 0 0 15px rgba(0,212,255,0.6); position: relative; }
+    .marker-phone { width: 24px; height: 24px; background: #00ff88; border: 3px solid #fff; border-radius: 50%; box-shadow: 0 0 15px rgba(0,255,136,0.6); position: relative; }
+    .marker-label { position: absolute; top: -22px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.85); color: #fff; padding: 2px 8px; border-radius: 6px; font-size: 10px; font-weight: 700; white-space: nowrap; pointer-events: none; border: 1px solid #ffffff33; }
     .hidden { display: none !important; }
     .signal-tool { background: linear-gradient(135deg, #0a0e1a, #1a1e3a) !important; border: 1px solid #00d4ff44 !important; color: #00d4ff !important; }
     .signal-tool:hover { border-color: #00d4ff !important; box-shadow: 0 0 12px rgba(0,212,255,0.3); }
@@ -1338,7 +1339,7 @@
           if (phonePath.length > 100) phonePath.shift();
 
           if (phoneMarker) phoneMarker.setLatLng([latitude, longitude]);
-          else phoneMarker = L.marker([latitude, longitude], { icon: L.divIcon({ className: 'custom-marker', html: '<div class="marker-phone"></div>', iconSize: [24, 24], iconAnchor: [12, 12] }) }).addTo(map);
+          else phoneMarker = L.marker([latitude, longitude], { icon: L.divIcon({ className: 'custom-marker', html: '<div class="marker-phone"></div><div class="marker-label">PHONE</div>', iconSize: [24, 24], iconAnchor: [12, 12] }) }).addTo(map);
 
           if (phonePath.length >= 2) {
             const points = phonePath.map(p => [p.lat, p.lng]);
@@ -1383,7 +1384,7 @@
       if (!map) { initMap(); setTimeout(() => updateLaptopLocation(loc), 1000); return; }
 
       if (laptopMarker) laptopMarker.setLatLng(latlng);
-      else laptopMarker = L.marker(latlng, { icon: L.divIcon({ className: 'custom-marker', html: '<div class="marker-laptop"></div>', iconSize: [24, 24], iconAnchor: [12, 12] }) }).addTo(map);
+      else laptopMarker = L.marker(latlng, { icon: L.divIcon({ className: 'custom-marker', html: '<div class="marker-laptop"></div><div class="marker-label">LAPTOP</div>', iconSize: [24, 24], iconAnchor: [12, 12] }) }).addTo(map);
 
       if (laptopPath.length >= 2) {
         const points = laptopPath.map(p => [p.lat, p.lng]);
@@ -1441,7 +1442,7 @@
       if (Math.abs(lat) < 0.001 && Math.abs(lng) < 0.001) return; // Reject 0,0
       const latlng = [lat, lng];
       if (phoneMarker) phoneMarker.setLatLng(latlng);
-      else phoneMarker = L.marker(latlng, { icon: L.divIcon({ className: 'custom-marker', html: '<div class="marker-phone"></div>', iconSize: [24, 24], iconAnchor: [12, 12] }) }).addTo(map);
+      else phoneMarker = L.marker(latlng, { icon: L.divIcon({ className: 'custom-marker', html: '<div class="marker-phone"></div><div class="marker-label">PHONE</div>', iconSize: [24, 24], iconAnchor: [12, 12] }) }).addTo(map);
 
       const sourceLabel = loc.source || 'gps';
       const accuracy = loc.accuracy ? ' +/- ' + Math.round(loc.accuracy) + 'm' : '';

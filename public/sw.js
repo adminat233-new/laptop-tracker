@@ -1,4 +1,4 @@
-const CACHE_NAME = 'laptop-tracker-v25-role-timer';
+const CACHE_NAME = 'laptop-tracker-v26-agent-paircode';
 const LOCATION_INTERVAL = 10000;
 let locationTimer = null;
 let trackedDeviceId = null;
