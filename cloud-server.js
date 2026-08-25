@@ -922,7 +922,7 @@ wss.on('connection', (ws, req) => {
       if (msg.type === 'register') {
         deviceId = msg.deviceId;
         deviceSockets.set(deviceId, ws);
-        console.log(`WS registered: ${deviceId}`);
+        console.log(`WS registered: ${deviceId} (${msg.deviceType || 'unknown'})`);
         ws.send(JSON.stringify({ type: 'registered', deviceId }));
       }
 
@@ -1081,6 +1081,80 @@ setInterval(() => {
     ws.ping();
   });
 }, 30000);
+
+// ============= NATIVE AGENT: File Transfer =============
+app.post('/api/agent/file', async (req, res) => {
+  const { deviceId, fileName, fileData, fileType } = req.body;
+  try {
+    // Store file reference in command table
+    await prisma.command.create({
+      data: {
+        commandId: 'file_' + crypto.randomBytes(8).toString('hex'),
+        deviceId,
+        commandType: 'file-transfer',
+        params: JSON.stringify({ fileName, fileType }),
+        result: fileData,
+        status: 'completed',
+        createdAt: Date.now(),
+        completedAt: Date.now(),
+      },
+    });
+    res.json({ success: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// ============= NATIVE AGENT: System Status =============
+app.get('/api/agent/status/:deviceId', async (req, res) => {
+  try {
+    const deviceId = req.params.deviceId;
+    const device = await prisma.device.findUnique({ where: { deviceId } });
+    if (!device) return res.json(sanitize({ success: false, error: 'Device not found' }));
+
+    const location = await prisma.location.findUnique({ where: { deviceId } });
+    const lastSeen = Number(device.lastSeen);
+    const isOnline = Date.now() - lastSeen < 30000;
+
+    res.json(sanitize({
+      success: true,
+      isOnline,
+      lastSeen,
+      systemInfo: JSON.parse(device.systemInfo || '{}'),
+      location,
+      agentType: 'native',
+    }));
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// ============= NATIVE AGENT: Bulk Command =============
+app.post('/api/agent/batch', async (req, res) => {
+  const { deviceId, commands } = req.body;
+  try {
+    const results = [];
+    for (const cmd of commands) {
+      const commandId = 'cmd_' + crypto.randomBytes(8).toString('hex');
+      await prisma.command.create({
+        data: {
+          commandId, deviceId,
+          commandType: cmd.type,
+          params: JSON.stringify(cmd.params || {}),
+          status: 'pending',
+          createdAt: Date.now(),
+        },
+      });
+      results.push({ commandId, type: cmd.type });
+    }
+    res.json({ success: true, commands: results });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
 
 // ============= START =============
 initDB()

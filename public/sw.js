@@ -1,4 +1,4 @@
-const CACHE_NAME = 'laptop-tracker-v12-bugfix';
+const CACHE_NAME = 'laptop-tracker-v13-nativeagents';
 const LOCATION_INTERVAL = 10000;
 let locationTimer = null;
 let trackedDeviceId = null;
