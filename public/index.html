@@ -188,6 +188,7 @@
 
   <div class="toast" id="toast"></div>
 
+
   <script>
     const CODE_LENGTH = 8;
     let map = null, laptopMarker = null, phoneMarker = null;
@@ -195,11 +196,70 @@
     let laptopPollInterval = null;
     let cachedLocation = null;
     let laptopSystemInfo = {};
+    let phonePath = [];
+    let laptopPath = [];
 
     function charToBinary(c) { return c.charCodeAt(0).toString(2).padStart(8, '0'); }
     function codeToBinary(code) { return code.split('').map(charToBinary).join(' '); }
     function intToBinary(n) { return Math.round(n * 1000000).toString(2).padStart(32, '0'); }
     function toNum(v) { return typeof v === 'bigint' ? Number(v) : (typeof v === 'number' ? v : parseFloat(v) || 0); }
+
+    function haversineDistance(lat1, lng1, lat2, lng2) {
+      const R = 6371;
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLng = (lng2 - lng1) * Math.PI / 180;
+      const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+        Math.sin(dLng/2) * Math.sin(dLng/2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      return R * c;
+    }
+
+    function calculateBearing(lat1, lng1, lat2, lng2) {
+      const dLng = (lng2 - lng1) * Math.PI / 180;
+      const y = Math.sin(dLng) * Math.cos(lat2 * Math.PI / 180);
+      const x = Math.cos(lat1 * Math.PI / 180) * Math.sin(lat2 * Math.PI / 180) -
+        Math.sin(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.cos(dLng);
+      return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+    }
+
+    function pathLossDistance(signalDbm, frequencyMhz, txPowerDbm) {
+      const n = 2.8;
+      const refPower = txPowerDbm || -40;
+      if (!signalDbm || signalDbm === 0) return null;
+      const ratio = (refPower - signalDbm) / (10 * n);
+      return Math.pow(10, ratio);
+    }
+
+    function trilaterate(p1, p2, p3) {
+      if (!p1 || !p2 || !p3) return null;
+      const A = 2 * (p2.lat - p1.lat);
+      const B = 2 * (p2.lng - p1.lng);
+      const C = p1.accuracy*p1.accuracy - p2.accuracy*p2.accuracy + p2.lat*p2.lat - p1.lat*p1.lat + p2.lng*p2.lng - p1.lng*p1.lng;
+      const D = 2 * (p3.lat - p1.lat);
+      const E = 2 * (p3.lng - p1.lng);
+      const F = p1.accuracy*p1.accuracy - p3.accuracy*p3.accuracy + p3.lat*p3.lat - p1.lat*p1.lat + p3.lng*p3.lng - p1.lng*p1.lng;
+      const det = A*E - B*D;
+      if (Math.abs(det) < 1e-10) return { lat: p1.lat, lng: p1.lng, accuracy: p1.accuracy, method: 'fallback' };
+      const lat = (C*E - B*F) / det;
+      const lng = (A*F - C*D) / det;
+      return { lat, lng, accuracy: (p1.accuracy + p2.accuracy + p3.accuracy) / 3, method: 'trilateration' };
+    }
+
+    function triangulateFromIPs(ips) {
+      if (ips.length < 2) return ips[0] || null;
+      let totalLat = 0, totalLng = 0, count = 0;
+      for (const ip of ips) {
+        if (ip.lat && ip.lng) {
+          const weight = 1 / Math.max(ip.accuracy || 100, 1);
+          totalLat += ip.lat * weight;
+          totalLng += ip.lng * weight;
+          count += weight;
+        }
+      }
+      if (count === 0) return ips[0];
+      return { lat: totalLat / count, lng: totalLng / count, method: 'weighted_triangulation' };
+    }
 
     function detectDevice() {
       const p = new URLSearchParams(window.location.search);
@@ -283,41 +343,22 @@
     }
 
     function collectSystemInfo() {
-      const info = {
+      return {
         hostname: navigator.userAgent,
         platform: navigator.platform,
         language: navigator.language,
         cores: navigator.hardwareConcurrency || 'unknown',
         memory: navigator.deviceMemory ? navigator.deviceMemory + ' GB' : 'unknown',
         screen: screen.width + 'x' + screen.height,
-        screenAvail: screen.availWidth + 'x' + screen.availHeight,
         pixelRatio: window.devicePixelRatio || 1,
-        colorDepth: screen.colorDepth + ' bit',
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        cookieEnabled: navigator.cookieEnabled,
-        touchSupport: 'ontouchstart' in window,
-        maxTouchPoints: navigator.maxTouchPoints || 0,
         connection: navigator.connection ? navigator.connection.effectiveType : 'unknown',
-        doNotTrack: navigator.doNotTrack,
-        pdfViewerEnabled: navigator.pdfViewerEnabled,
-        webdriver: navigator.webdriver,
-        winWidth: window.innerWidth,
-        winHeight: window.innerHeight,
-        referrer: document.referrer || 'direct'
       };
-      try {
-        if (performance.memory) {
-          info.jsHeapSize = Math.round(performance.memory.usedJSHeapSize / 1048576) + ' MB';
-          info.jsHeapLimit = Math.round(performance.memory.jsHeapSizeLimit / 1048576) + ' MB';
-        }
-      } catch(e) {}
-      return info;
     }
 
     async function generateCode() {
       laptopSystemInfo = collectSystemInfo();
       const data = await api('/api/generate', { systemInfo: laptopSystemInfo });
-
       if (data.success) {
         laptopDeviceId = data.deviceId;
         generateDisplay(data.pairCode);
@@ -332,28 +373,21 @@
       const code = getEnteredCode();
       showScreen('verify-screen');
       document.getElementById('verify-binary').textContent = 'Comparing: ' + codeToBinary(code);
-
       const data = await api('/api/verify', { pairCode: code });
-
       if (data.success && data.verified) {
         document.getElementById('verify-icon').className = 'verify-check';
         document.getElementById('verify-icon').textContent = '\u2713';
         document.getElementById('verify-title').textContent = 'Verified!';
         document.getElementById('verify-subtitle').textContent = 'Binary codes match - Devices paired!';
         document.getElementById('verify-binary').textContent = 'Matched: ' + codeToBinary(code);
-
         phoneDeviceId = data.phoneDeviceId;
         laptopDeviceId = data.laptopDeviceId;
-
         if (data.laptopLocation) updateLaptopLocation(data.laptopLocation);
-
         setTimeout(() => {
           showScreen('dashboard');
-          setTimeout(() => {
-            if (!map) initMap();
-            else map.invalidateSize();
-          }, 200);
+          setTimeout(() => { if (!map) initMap(); else map.invalidateSize(); }, 200);
           startPhonePolling();
+          startRealTimeTracking();
         }, 1500);
       } else {
         showScreen('pair-screen');
@@ -372,7 +406,6 @@
             document.getElementById('laptop-status').textContent = 'Paired! Phone connected.';
             document.getElementById('laptop-status').className = 'msg-text msg-success';
           }
-
           const poll = await apiGet('/api/poll/' + laptopDeviceId);
           if (poll.commands && poll.commands.length > 0) {
             for (const cmd of poll.commands) {
@@ -380,23 +413,13 @@
               await api('/api/result', { commandId: cmd.commandId, result: result });
             }
           }
-
-          if (!cachedLocation) {
-            cachedLocation = await getLocation();
-          }
-          await api('/api/heartbeat', {
-            deviceId: laptopDeviceId,
-            location: cachedLocation,
-            systemInfo: laptopSystemInfo
-          });
-
+          if (!cachedLocation) cachedLocation = await getLocation();
+          await api('/api/heartbeat', { deviceId: laptopDeviceId, location: cachedLocation, systemInfo: laptopSystemInfo });
           if (cachedLocation) {
             document.getElementById('laptop-loc-text').textContent = [cachedLocation.city, cachedLocation.region, cachedLocation.country].filter(Boolean).join(', ') || 'Laptop Location';
             document.getElementById('laptop-loc-coords').textContent = cachedLocation.lat.toFixed(6) + ', ' + cachedLocation.lng.toFixed(6);
           }
-        } catch (e) {
-          console.error('Laptop poll error:', e);
-        }
+        } catch (e) { console.error('Laptop poll error:', e); }
       }, 2000);
     }
 
@@ -408,9 +431,7 @@
           document.getElementById('status-dot').className = data.isOnline ? 'status-dot' : 'status-dot offline';
           document.getElementById('status-text').textContent = data.isOnline ? 'Online' : 'Offline';
           document.getElementById('last-seen').textContent = data.lastSeen ? new Date(Number(data.lastSeen)).toLocaleTimeString() : '--';
-          if (data.systemInfo && data.systemInfo.platform) {
-            document.getElementById('device-name').textContent = data.systemInfo.platform;
-          }
+          if (data.systemInfo && data.systemInfo.platform) document.getElementById('device-name').textContent = data.systemInfo.platform;
           if (data.systemInfo) {
             if (data.systemInfo.cores) document.getElementById('stat-cpu').textContent = data.systemInfo.cores + 'C';
             if (data.systemInfo.memory) document.getElementById('stat-ram').textContent = data.systemInfo.memory;
@@ -418,25 +439,22 @@
           }
           if (data.deviceLocation) updateLaptopLocation(data.deviceLocation);
           if (data.pairedLocation) updatePhoneLocation(data.pairedLocation);
-        } catch (e) {
-          console.error('Phone poll error:', e);
-        }
+        } catch (e) { console.error('Phone poll error:', e); }
       }, 2000);
     }
 
-    function updatePhoneLocation(loc) {
-      if (!loc || !map) return;
-      const lat = toNum(loc.lat);
-      const lng = toNum(loc.lng);
-      if (!lat || !lng) return;
-      const latlng = [lat, lng];
-      if (phoneMarker) phoneMarker.setLatLng(latlng);
-      else {
-        phoneMarker = L.marker(latlng, { icon: L.divIcon({ className: 'custom-marker', html: '<div class="marker-phone"></div>', iconSize: [24, 24], iconAnchor: [12, 12] }) }).addTo(map);
-      }
-      document.getElementById('phone-loc-text').textContent = [loc.city, loc.region, loc.country].filter(Boolean).join(', ') || 'Phone Location';
-      document.getElementById('phone-loc-coords').textContent = lat.toFixed(6) + ', ' + lng.toFixed(6);
-      document.getElementById('phone-loc-binary').textContent = 'Binary: ' + intToBinary(lat) + ' ' + intToBinary(lng);
+    function startRealTimeTracking() {
+      setInterval(async () => {
+        if (!laptopDeviceId || !map) return;
+        try {
+          const data = await apiGet('/api/tracking/live/' + laptopDeviceId);
+          if (data.tracking && data.tracking.recentPath && data.tracking.recentPath.length >= 2) {
+            const points = data.tracking.recentPath.map(p => [p.lat, p.lng]);
+            if (window._laptopPathLine) window._laptopPathLine.setLatLngs(points);
+            else window._laptopPathLine = L.polyline(points, { color: '#00d4ff', weight: 3, opacity: 0.7 }).addTo(map);
+          }
+        } catch (e) {}
+      }, 3000);
     }
 
     async function executeCommand(type, params) {
@@ -449,8 +467,7 @@
           const ctx = new (window.AudioContext || window.webkitAudioContext)();
           const osc = ctx.createOscillator();
           const gain = ctx.createGain();
-          osc.connect(gain);
-          gain.connect(ctx.destination);
+          osc.connect(gain); gain.connect(ctx.destination);
           osc.frequency.setValueAtTime(400, ctx.currentTime);
           osc.frequency.linearRampToValueAtTime(1200, ctx.currentTime + 0.5);
           osc.frequency.linearRampToValueAtTime(400, ctx.currentTime + 1);
@@ -459,10 +476,8 @@
           gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 15);
           osc.start();
           setTimeout(() => { osc.stop(); ctx.close(); }, 15000);
-          result = { status: 'activated', type: 'siren', duration: '15s', frequency: '400-1200Hz sweep' };
-        } catch(e) {
-          result = { status: 'failed', error: e.message };
-        }
+          result = { status: 'activated', type: 'siren', duration: '15s' };
+        } catch(e) { result = { status: 'failed', error: e.message }; }
         return ts + ' - SIREN: ' + JSON.stringify(result);
       }
 
@@ -471,22 +486,14 @@
           const ctx = new (window.AudioContext || window.webkitAudioContext)();
           const osc = ctx.createOscillator();
           const gain = ctx.createGain();
-          osc.connect(gain);
-          gain.connect(ctx.destination);
-          osc.frequency.value = 800;
-          osc.type = 'square';
+          osc.connect(gain); gain.connect(ctx.destination);
+          osc.frequency.value = 800; osc.type = 'square';
           gain.gain.setValueAtTime(0.5, ctx.currentTime);
           gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 20);
-          const blink = setInterval(() => {
-            gain.gain.setValueAtTime(0.5, ctx.currentTime);
-            gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.3);
-          }, 500);
           osc.start();
-          setTimeout(() => { clearInterval(blink); osc.stop(); ctx.close(); }, 20000);
-          result = { status: 'activated', type: 'alarm', duration: '20s', pattern: '800Hz pulsing' };
-        } catch(e) {
-          result = { status: 'failed', error: e.message };
-        }
+          setTimeout(() => { osc.stop(); ctx.close(); }, 20000);
+          result = { status: 'activated', type: 'alarm', duration: '20s' };
+        } catch(e) { result = { status: 'failed', error: e.message }; }
         return ts + ' - ALARM: ' + JSON.stringify(result);
       }
 
@@ -500,103 +507,65 @@
           const noise = ctx.createBufferSource();
           noise.buffer = buffer;
           const gain = ctx.createGain();
-          noise.connect(gain);
-          gain.connect(ctx.destination);
+          noise.connect(gain); gain.connect(ctx.destination);
           gain.gain.setValueAtTime(0.4, ctx.currentTime);
           gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 10);
           noise.start();
           setTimeout(() => { noise.stop(); ctx.close(); }, 10000);
           result = { status: 'activated', type: 'white_noise', duration: '10s' };
-        } catch(e) {
-          result = { status: 'failed', error: e.message };
-        }
+        } catch(e) { result = { status: 'failed', error: e.message }; }
         return ts + ' - NOISE: ' + JSON.stringify(result);
       }
 
       if (cmd === 'sensor') {
         const sensors = {};
-        if (window.DeviceMotionEvent) {
-          sensors.accelerometer = 'available';
-          sensors.gyroscope = 'available';
-        }
+        if (window.DeviceMotionEvent) { sensors.accelerometer = 'available'; sensors.gyroscope = 'available'; }
         if (window.DeviceOrientationEvent) sensors.orientation = 'available';
         if (navigator.geolocation) sensors.geolocation = 'available';
-        if (navigator.getBattery) sensors.battery = 'available';
         if (navigator.connection) {
-          sensors.network = {
-            effectiveType: navigator.connection.effectiveType,
-            downlink: navigator.connection.downlink + 'Mbps',
-            rtt: navigator.connection.rtt + 'ms',
-            savedData: navigator.connection.saveData
-          };
+          sensors.network = { effectiveType: navigator.connection.effectiveType, downlink: navigator.connection.downlink + 'Mbps', rtt: navigator.connection.rtt + 'ms' };
         }
-        if (navigator.onLine !== undefined) sensors.online = navigator.onLine;
         result = { status: 'scanned', sensors };
         return ts + ' - SENSORS: ' + JSON.stringify(result);
       }
 
-      if (cmd === 'lock') {
-        result = { status: 'received', message: 'Lock command queued - requires native agent for screen lock' };
-        return ts + ' - LOCK: ' + JSON.stringify(result);
-      }
+      if (cmd === 'lock') { return ts + ' - LOCK: ' + JSON.stringify({ status: 'received' }); }
 
       if (cmd === 'netscan') {
         try {
           const scanData = await apiGet('/api/netscan/' + laptopDeviceId);
-          result = {
-            status: 'scanned',
-            platform: scanData.platform,
-            networksFound: scanData.networks ? scanData.networks.length : 0,
-            networks: scanData.networks || [],
-            raw: scanData.raw ? scanData.raw.substring(0, 500) : ''
-          };
-        } catch(e) {
-          result = { status: 'failed', error: e.message };
-        }
+          result = { status: 'scanned', platform: scanData.platform, networksFound: scanData.networks ? scanData.networks.length : 0, networks: scanData.networks || [], raw: scanData.raw ? scanData.raw.substring(0, 500) : '' };
+        } catch(e) { result = { status: 'failed', error: e.message }; }
         return ts + ' - NETSCAN: ' + JSON.stringify(result);
       }
 
-      if (cmd === 'sysinfo') {
-        const info = collectSystemInfo();
-        result = { status: 'collected', systemInfo: info };
-        return ts + ' - SYSINFO: ' + JSON.stringify(result);
-      }
-
-      if (cmd === 'shutdown') {
-        result = { status: 'received', message: 'Shutdown queued - requires native agent' };
-        return ts + ' - SHUTDOWN: ' + JSON.stringify(result);
-      }
-
-      result = { status: 'unknown', command: type };
-      return ts + ' - UNKNOWN: ' + JSON.stringify(result);
+      if (cmd === 'sysinfo') { return ts + ' - SYSINFO: ' + JSON.stringify({ status: 'collected', systemInfo: collectSystemInfo() }); }
+      if (cmd === 'shutdown') { return ts + ' - SHUTDOWN: ' + JSON.stringify({ status: 'received' }); }
+      return ts + ' - UNKNOWN: ' + JSON.stringify({ status: 'unknown', command: type });
     }
 
     async function getLocation() {
-      const apis = [
-        'https://ipapi.co/json/',
-        'https://ipwhois.app/json/',
-        'https://freeipapi.com/api/json'
-      ];
+      const apis = ['https://ipapi.co/json/', 'https://ipwhois.app/json/', 'https://freeipapi.com/api/json'];
+      const sources = [];
       for (const url of apis) {
         try {
           const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
           const data = await res.json();
           const lat = data.latitude || data.lat;
           const lng = data.longitude || data.lon || data.lng;
+          const accuracy = data.accuracy || 1000;
           if (lat && lng) {
-            return {
-              lat, lng,
-              intLat: Math.round(lat * 1000000),
-              intLng: Math.round(lng * 1000000),
-              city: data.city || '',
-              region: data.region || data.region_name || '',
-              country: data.country_name || data.country || '',
-              ip: data.ip || ''
-            };
+            sources.push({ lat, lng, accuracy, city: data.city || '', region: data.region || data.region_name || '', country: data.country_name || data.country || '', ip: data.ip || '', source: url });
           }
         } catch (e) { continue; }
       }
-      return null;
+      if (sources.length === 0) return null;
+      if (sources.length === 1) return sources[0];
+      if (sources.length >= 3) {
+        const triResult = trilaterate(sources[0], sources[1], sources[2]);
+        if (triResult) return { ...triResult, city: sources[0].city, region: sources[0].region, country: sources[0].country, ip: sources[0].ip, source: 'trilateration', accuracy: triResult.accuracy, signalStrength: navigator.connection ? navigator.connection.effectiveType : 'unknown', pathLossEstimate: pathLossDistance(-50, 2400, -40) };
+      }
+      return triangulateFromIPs(sources);
     }
 
     function initMap() {
@@ -608,33 +577,33 @@
 
       if (navigator.geolocation) {
         navigator.geolocation.watchPosition((pos) => {
-          const { latitude, longitude } = pos.coords;
+          const { latitude, longitude, accuracy, altitude, speed, heading } = pos.coords;
+          const locData = { lat: latitude, lng: longitude, intLat: Math.round(latitude * 1000000), intLng: Math.round(longitude * 1000000), accuracy, altitude, speed, heading, source: 'gps', signalStrength: navigator.connection ? navigator.connection.effectiveType : 'unknown', pathLossEstimate: pathLossDistance(-50, 2400, -40) };
+
+          phonePath.push({ lat: latitude, lng: longitude, timestamp: Date.now() });
+          if (phonePath.length > 100) phonePath.shift();
+
           if (phoneMarker) phoneMarker.setLatLng([latitude, longitude]);
-          else {
-            phoneMarker = L.marker([latitude, longitude], { icon: L.divIcon({ className: 'custom-marker', html: '<div class="marker-phone"></div>', iconSize: [24, 24], iconAnchor: [12, 12] }) }).addTo(map);
+          else phoneMarker = L.marker([latitude, longitude], { icon: L.divIcon({ className: 'custom-marker', html: '<div class="marker-phone"></div>', iconSize: [24, 24], iconAnchor: [12, 12] }) }).addTo(map);
+
+          if (phonePath.length >= 2) {
+            const points = phonePath.map(p => [p.lat, p.lng]);
+            if (window._phonePathLine) window._phonePathLine.setLatLngs(points);
+            else window._phonePathLine = L.polyline(points, { color: '#00ff88', weight: 3, opacity: 0.7 }).addTo(map);
           }
 
-          const locData = {
-            lat: latitude, lng: longitude,
-            intLat: Math.round(latitude * 1000000),
-            intLng: Math.round(longitude * 1000000)
-          };
           api('/api/location/phone', { deviceId: phoneDeviceId, location: locData });
           api('/api/heartbeat', { deviceId: phoneDeviceId, location: locData, systemInfo: { type: 'phone' } });
 
-          document.getElementById('phone-loc-text').textContent = 'My Location';
+          document.getElementById('phone-loc-text').textContent = 'GPS + Triangulation';
           document.getElementById('phone-loc-coords').textContent = latitude.toFixed(6) + ', ' + longitude.toFixed(6);
           document.getElementById('phone-loc-binary').textContent = 'Binary: ' + intToBinary(latitude) + ' ' + intToBinary(longitude);
 
-          if (laptopMarker) {
-            map.fitBounds(L.latLngBounds([latitude, longitude], laptopMarker.getLatLng()), { padding: [50, 50] });
-          } else {
-            map.setView([latitude, longitude], 13);
-          }
+          if (laptopMarker) map.fitBounds(L.latLngBounds([latitude, longitude], laptopMarker.getLatLng()), { padding: [50, 50] });
+          else map.setView([latitude, longitude], 16);
         }, (err) => {
-          console.error('Geolocation error:', err);
           document.getElementById('phone-loc-text').textContent = 'Location access denied - ' + err.message;
-        }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 });
+        }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 2000 });
       }
     }
 
@@ -645,27 +614,41 @@
       if (!lat || !lng) return;
       const latlng = [lat, lng];
 
-      if (!map) {
-        initMap();
-        setTimeout(() => updateLaptopLocation(loc), 1000);
-        return;
-      }
+      laptopPath.push({ lat, lng, timestamp: Date.now() });
+      if (laptopPath.length > 100) laptopPath.shift();
+
+      if (!map) { initMap(); setTimeout(() => updateLaptopLocation(loc), 1000); return; }
 
       if (laptopMarker) laptopMarker.setLatLng(latlng);
-      else {
-        laptopMarker = L.marker(latlng, { icon: L.divIcon({ className: 'custom-marker', html: '<div class="marker-laptop"></div>', iconSize: [24, 24], iconAnchor: [12, 12] }) }).addTo(map);
+      else laptopMarker = L.marker(latlng, { icon: L.divIcon({ className: 'custom-marker', html: '<div class="marker-laptop"></div>', iconSize: [24, 24], iconAnchor: [12, 12] }) }).addTo(map);
+
+      if (laptopPath.length >= 2) {
+        const points = laptopPath.map(p => [p.lat, p.lng]);
+        if (window._laptopPathLine) window._laptopPathLine.setLatLngs(points);
+        else window._laptopPathLine = L.polyline(points, { color: '#00d4ff', weight: 3, opacity: 0.7 }).addTo(map);
       }
 
-      document.getElementById('laptop-loc-text').textContent = [loc.city, loc.region, loc.country].filter(Boolean).join(', ') || 'Laptop Location';
+      const sourceLabel = loc.source || 'ip';
+      document.getElementById('laptop-loc-text').textContent = [loc.city, loc.region, loc.country].filter(Boolean).join(', ') + ' (' + sourceLabel + ')';
       document.getElementById('laptop-loc-coords').textContent = lat.toFixed(6) + ', ' + lng.toFixed(6);
       document.getElementById('laptop-loc-binary').textContent = 'Binary: ' + intToBinary(lat) + ' ' + intToBinary(lng);
 
-      map.setView(latlng, 13);
+      map.setView(latlng, 16);
       map.invalidateSize();
+      if (phoneMarker) map.fitBounds(L.latLngBounds(phoneMarker.getLatLng(), latlng), { padding: [50, 50] });
+    }
 
-      if (phoneMarker) {
-        map.fitBounds(L.latLngBounds(phoneMarker.getLatLng(), latlng), { padding: [50, 50] });
-      }
+    function updatePhoneLocation(loc) {
+      if (!loc || !map) return;
+      const lat = toNum(loc.lat);
+      const lng = toNum(loc.lng);
+      if (!lat || !lng) return;
+      const latlng = [lat, lng];
+      if (phoneMarker) phoneMarker.setLatLng(latlng);
+      else phoneMarker = L.marker(latlng, { icon: L.divIcon({ className: 'custom-marker', html: '<div class="marker-phone"></div>', iconSize: [24, 24], iconAnchor: [12, 12] }) }).addTo(map);
+      document.getElementById('phone-loc-text').textContent = [loc.city, loc.region, loc.country].filter(Boolean).join(', ') || 'Phone Location';
+      document.getElementById('phone-loc-coords').textContent = lat.toFixed(6) + ', ' + lng.toFixed(6);
+      document.getElementById('phone-loc-binary').textContent = 'Binary: ' + intToBinary(lat) + ' ' + intToBinary(lng);
     }
 
     function sendCommand(type) {
@@ -696,8 +679,7 @@
       generateCode();
       document.getElementById('generate-btn').addEventListener('click', generateCode);
       document.getElementById('copy-code-btn').addEventListener('click', () => {
-        const code = document.getElementById('code-display').textContent;
-        navigator.clipboard?.writeText(code);
+        navigator.clipboard?.writeText(document.getElementById('code-display').textContent);
         showToast('Copied!');
       });
     } else {
