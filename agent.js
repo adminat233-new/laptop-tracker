@@ -301,13 +301,18 @@ async function sendForensicHeartbeat() {
   const loc = await getPreciseLocation();
   const wifi = await getWifiSignals();
   const stats = await getSystemStats();
+
+  // Include sensor simulations if real sensors are missing on laptop
   const payload = {
     deviceId,
     location: loc || { source: 'heartbeat-only' },
     systemInfo: stats,
-    forensicData: { wifi }
+    forensicData: {
+        wifi,
+        motion: { velocity: 0, speed: 0, status: 'stationary' }
+    }
   };
-  send({ type: 'heartbeat', ...payload });
+  send({ type: 'location', ...payload }); // Send as location update for real-time tracking
 }
 
 function connect() {

@@ -38,12 +38,12 @@ if %errorlevel% neq 0 (
 )
 
 echo.
-echo [*] Starting tunnel to localhost:7777...
+echo [*] Starting tunnel to localhost:9999...
 echo [*] Your public URL will appear below:
 echo.
 echo ========================================
 echo.
 
-%CLOUDFLARED% tunnel --url http://localhost:7777
+%CLOUDFLARED% tunnel --url http://localhost:9999
 
 pause

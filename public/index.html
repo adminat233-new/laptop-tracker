@@ -195,7 +195,7 @@
     .code-display { display: flex; gap: 8px; justify-content: center; }
 
     .code-input {
-      width: 35px; height: 45px;
+      width: 32px; height: 45px;
       background: rgba(255,255,255,0.05);
       border: 1px solid rgba(255,255,255,0.1);
       border-radius: 8px;
@@ -204,7 +204,7 @@
       outline: none;
     }
     .code-input:focus { border-color: var(--primary); background: rgba(255,255,255,0.1); }
-    .code-inputs { display: flex; gap: 6px; justify-content: center; }
+    .code-inputs { display: flex; gap: 4px; justify-content: center; }
 
   </style>
 </head>
@@ -222,11 +222,11 @@
     <div class="pair-card">
       <div id="role-selection">
         <div style="display:flex; gap:16px;">
-          <button class="role-btn" id="role-laptop-btn">
+          <button class="role-btn" id="role-laptop-btn" onclick="becomeLaptop()">
             <span class="icon">💻</span>
             <span class="label">Target Laptop</span>
           </button>
-          <button class="role-btn" id="role-phone-btn">
+          <button class="role-btn" id="role-phone-btn" onclick="becomePhone()">
             <span class="icon">📱</span>
             <span class="label">Control Phone</span>
           </button>
@@ -236,14 +236,14 @@
       <!-- Laptop Section -->
       <div id="laptop-section" class="hidden" style="text-align: center;">
         <div class="code-display" id="code-display" style="margin: 30px 0;"></div>
-        <button class="btn-main" id="generate-btn">Refresh Code</button>
+        <button class="btn-main" id="generate-btn" onclick="generateCode()">Refresh Code</button>
         <p class="msg-text msg-info" id="laptop-status" style="margin-top: 15px; font-size: 12px; color: #888;">Generating pair code...</p>
       </div>
 
       <!-- Phone Section -->
       <div id="phone-section" class="hidden">
         <div class="code-inputs" id="code-inputs" style="margin: 30px 0;"></div>
-        <button class="btn-main" id="connect-btn" disabled>Establish Uplink</button>
+        <button class="btn-main" id="connect-btn" onclick="tryConnect()" disabled>Establish Uplink</button>
         <p class="msg-text msg-error" id="pair-error" style="margin-top: 15px; font-size: 12px; color: #ff4444; text-align: center;"></p>
       </div>
     </div>
@@ -332,8 +332,6 @@
         <button class="btn-main" onclick="runTrilateration()" style="font-size: 12px; padding: 12px;">SMART BRAIN SYNC</button>
         <button class="btn-main" onclick="toggleLiveEffects()" style="font-size: 12px; padding: 12px; background: rgba(112,0,255,0.2);">VISUALIZE SIGNALS</button>
       </div>
-    </div>
-  </div>
     </div>
   </div>
 
@@ -426,18 +424,55 @@
     }
     const kalmanFilters = {};
 
-    // Location Tracking Engine — fuses GPS + IP + Kalman for accuracy
+    // Location Tracking Engine — fuses GPS + IP + Sensors + Kalman
     const LocationTracker = {
       gpsLat: null, gpsLng: null,
       fusedLat: null, fusedLng: null,
       lastGpsFix: null, lastFusedFix: null,
       accuracyHistory: [],
+      motion: { x:0, y:0, z:0, velocity:0, speed:0, lastUpdate:0 },
 
       init() {
         this.gpsLat = new Kalman1D(0.005, 1.5, 0);
         this.gpsLng = new Kalman1D(0.005, 1.5, 0);
         this.fusedLat = new Kalman1D(0.02, 3.0, 0);
         this.fusedLng = new Kalman1D(0.02, 3.0, 0);
+        this.startSensorTracking();
+      },
+
+      startSensorTracking() {
+        if (window.DeviceMotionEvent) {
+            window.addEventListener('devicemotion', (e) => {
+                const now = Date.now();
+                const dt = (now - this.motion.lastUpdate) / 1000;
+                if (dt < 0.1) return;
+
+                const acc = e.accelerationIncludingGravity;
+                if (!acc) return;
+
+                const dx = acc.x || 0;
+                const dy = acc.y || 0;
+                const dz = acc.z || 0;
+
+                const instAcc = Math.sqrt(dx*dx + dy*dy + dz*dz) - 9.8;
+                if (Math.abs(instAcc) > 0.5) {
+                    this.motion.velocity += instAcc * dt;
+                    this.motion.speed = Math.abs(this.motion.velocity);
+                } else {
+                    this.motion.velocity *= 0.95;
+                }
+
+                this.motion.x = dx; this.motion.y = dy; this.motion.z = dz;
+                this.motion.lastUpdate = now;
+
+                const speedEl = document.getElementById('stat-uptime');
+                if (speedEl) {
+                    const speedKmh = (this.motion.speed * 3.6).toFixed(1);
+                    speedEl.textContent = speedKmh + ' km/h';
+                    speedEl.style.color = speedKmh > 5 ? 'var(--accent)' : '#fff';
+                }
+            });
+        }
       },
 
       updateGps(lat, lng, accuracy) {
@@ -770,11 +805,12 @@
               intLat: Math.round(gpsFix.lat * 1000000),
               intLng: Math.round(gpsFix.lng * 1000000),
               trend: LocationTracker.getAccuracyTrend(),
+              motion: LocationTracker.motion
             };
             cachedLocation = loc;
             if (ws && ws.readyState === WebSocket.OPEN) wsSend({ type: 'location', location: loc });
             else fetch('/api/heartbeat', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ deviceId: laptopDeviceId, location: loc, systemInfo: laptopSystemInfo }) }).catch(() => {});
+              body: JSON.stringify({ deviceId: laptopDeviceId || phoneDeviceId, location: loc, systemInfo: laptopSystemInfo }) }).catch(() => {});
           },
           () => {
             // GPS denied — try IP fallback directly
@@ -943,8 +979,26 @@
     }
 
     async function api(url, data) {
-      const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
-      return res.json();
+      const fullUrl = url.startsWith('http') ? url : window.location.origin + url;
+      console.log(`[API Request] ${fullUrl}`, data);
+      try {
+        const res = await fetch(fullUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+        if (!res.ok) {
+          const text = await res.text();
+          console.error(`[API Error] ${res.status}: ${text}`);
+          throw new Error(text.substring(0, 200) || `Server error ${res.status}`);
+        }
+        const responseData = await res.json();
+        console.log(`[API Response]`, responseData);
+        return responseData;
+      } catch (e) {
+        console.error('API Fetch Error:', e);
+        throw new Error(`Connection to ${url} failed. Ensure the server is running on port 9999 and is accessible from this network.`);
+      }
     }
 
     async function apiGet(url) {
@@ -967,38 +1021,68 @@
     }
 
     async function generateCode() {
-      laptopSystemInfo = collectSystemInfo();
-      const data = await api('/api/generate', { systemInfo: laptopSystemInfo });
-      if (data.success) {
-        laptopDeviceId = data.deviceId;
-        generateDisplay(data.pairCode);
-        document.getElementById('laptop-status').textContent = 'Code: ' + data.pairCode + ' - Waiting for phone...';
-        if (laptopPollInterval) clearInterval(laptopPollInterval);
-        startLaptopPolling();
-        startBgLocationTracking(laptopDeviceId, 'laptop');
-        connectWebSocket(laptopDeviceId, 'laptop');
-        // Send location immediately, then every 5s
-        setTimeout(() => sendMyLocation(), 2000);
-        setInterval(() => {
-          if (ws && ws.readyState === WebSocket.OPEN) sendMyLocation();
-        }, 5000);
-        // Also request paired device's location every 5s
-        setInterval(() => { if (ws && ws.readyState === WebSocket.OPEN) wsSend({ type: 'requestLocation' }); }, 5000);
-        return data.pairCode;
+      try {
+        document.getElementById('laptop-status').textContent = 'Generating...';
+        document.getElementById('laptop-status').className = 'msg-text msg-info';
+
+        laptopSystemInfo = collectSystemInfo();
+        const data = await api('/api/generate', { systemInfo: laptopSystemInfo });
+        if (data.success) {
+          laptopDeviceId = data.deviceId;
+          generateDisplay(data.pairCode);
+          document.getElementById('laptop-status').textContent = 'Code: ' + data.pairCode + ' - Waiting for phone...';
+          document.getElementById('laptop-status').className = 'msg-text msg-info';
+
+          if (laptopPollInterval) clearInterval(laptopPollInterval);
+          startLaptopPolling();
+          startBgLocationTracking(laptopDeviceId, 'laptop');
+          connectWebSocket(laptopDeviceId, 'laptop');
+
+          // Start/Restart timer
+          startPairTimer(() => {
+            document.getElementById('laptop-status').textContent = 'Timer expired — click Refresh to generate new code';
+            document.getElementById('laptop-status').className = 'msg-text msg-error';
+          });
+
+          // Send location immediately, then every 5s
+          setTimeout(() => sendMyLocation(), 2000);
+          setInterval(() => {
+            if (ws && ws.readyState === WebSocket.OPEN) sendMyLocation();
+          }, 5000);
+          // Also request paired device's location every 5s
+          setInterval(() => { if (ws && ws.readyState === WebSocket.OPEN) wsSend({ type: 'requestLocation' }); }, 5000);
+          return data.pairCode;
+        } else {
+          document.getElementById('laptop-status').textContent = 'Error: ' + (data.error || 'Failed to generate code');
+          document.getElementById('laptop-status').className = 'msg-text msg-error';
+        }
+      } catch (e) {
+        document.getElementById('laptop-status').textContent = 'Error: ' + e.message;
+        document.getElementById('laptop-status').className = 'msg-text msg-error';
       }
+    }
+
+    async function sha256(message) {
+        const msgBuffer = new TextEncoder().encode(message);
+        const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
     }
 
     async function verifyPhone() {
       const code = getEnteredCode();
       showScreen('verify-screen');
-      document.getElementById('verify-binary').textContent = 'Comparing: ' + codeToBinary(code);
-      const data = await api('/api/verify', { pairCode: code });
+      document.getElementById('verify-binary').textContent = 'Generating Signature: ' + codeToBinary(code);
+
+      const hashedKey = await sha256(code);
+      const data = await api('/api/verify', { pairCode: code, hashedKey });
+
       if (data.success && data.verified) {
         document.getElementById('verify-icon').className = 'verify-check';
         document.getElementById('verify-icon').textContent = '\u2713';
-        document.getElementById('verify-title').textContent = 'Verified!';
-        document.getElementById('verify-subtitle').textContent = 'Binary codes match - Devices paired!';
-        document.getElementById('verify-binary').textContent = 'Matched: ' + codeToBinary(code);
+        document.getElementById('verify-title').textContent = 'Uplink Established';
+        document.getElementById('verify-subtitle').textContent = 'Binary signatures matched. Encryption keys synced.';
+        document.getElementById('verify-binary').textContent = 'Encrypted Key: ' + hashedKey.substring(0, 32) + '...';
         phoneDeviceId = data.phoneDeviceId;
         laptopDeviceId = data.laptopDeviceId;
         // Don't show laptop location from verify — wait for live polling
@@ -2255,22 +2339,22 @@
       const el = document.getElementById('agent-status');
       if (!el || !laptopDeviceId) return;
       try {
-        const data = await apiGet('/api/agent-status/' + laptopDeviceId);
-        if (data.agentOnline) {
+        const data = await apiGet('/api/status/' + laptopDeviceId);
+        if (data.isOnline) {
           el.style.background = '#00ff8822';
           el.style.color = '#00ff88';
           el.style.border = '1px solid #00ff8844';
-          el.innerHTML = '&#9679; Native Agent Online — Shell commands, WiFi scan, ping, BLE available';
+          el.innerHTML = '&#9679; Secure Forensic Tunnel Active';
         } else {
-          el.style.background = '#ff6b0022';
-          el.style.color = '#ff6b00';
-          el.style.border = '1px solid #ff6b0044';
-          el.innerHTML = '&#9679; Native Agent Offline — Run <code>node agent.js</code> on the laptop for full signal tools';
+          el.style.background = '#ff444422';
+          el.style.color = '#ff4444';
+          el.style.border = '1px solid #ff444444';
+          el.innerHTML = '&#9679; Connection Error: Run <code>.\\start.bat</code> in PowerShell to re-establish tunnel.';
         }
       } catch (e) {
         el.style.background = '#ff444422';
         el.style.color = '#ff4444';
-        el.innerHTML = '&#9679; Agent status unknown';
+        el.innerHTML = '&#9679; Agent offline. To start, type <code>.\\start.bat</code> in PowerShell.';
       }
     }
 
@@ -2373,6 +2457,7 @@
     const PAIR_TIMEOUT = 30; // seconds
 
     function startPairTimer(onTick) {
+      if (pairTimer) clearInterval(pairTimer);
       let remaining = PAIR_TIMEOUT;
       const timerEl = document.getElementById('timer-display');
       const phoneTimerEl = document.getElementById('phone-timer');
@@ -2404,10 +2489,6 @@
       document.getElementById('role-selection').classList.add('hidden');
       document.getElementById('laptop-section').classList.remove('hidden');
       generateCode();
-      startPairTimer(() => {
-        document.getElementById('laptop-status').textContent = 'Timer expired — click Generate to refresh';
-        document.getElementById('laptop-status').className = 'msg-text msg-error';
-      });
       // Location
       if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
@@ -2431,17 +2512,11 @@
     }
 
     // Role Selection Handlers
-    document.getElementById('role-laptop-btn').addEventListener('click', becomeLaptop);
-    document.getElementById('role-phone-btn').addEventListener('click', becomePhone);
-    document.getElementById('connect-btn').addEventListener('click', tryConnect);
-    document.getElementById('generate-btn')?.addEventListener('click', () => {
-        if (pairTimer) clearInterval(pairTimer);
-        generateCode();
-        startPairTimer(() => {
-            document.getElementById('laptop-status').textContent = 'Timer expired — click Refresh to generate new code';
-            document.getElementById('laptop-status').className = 'msg-text msg-error';
-        });
-    });
+    // Using direct onclick handlers in HTML, so these are removed to avoid double execution
+    // document.getElementById('role-laptop-btn').addEventListener('click', becomeLaptop);
+    // document.getElementById('role-phone-btn').addEventListener('click', becomePhone);
+    // document.getElementById('connect-btn').addEventListener('click', tryConnect);
+    // document.getElementById('generate-btn')?.addEventListener('click', () => { ... });
 
     // ============= AUTOMATION LOGIC =============
     async function autoInitialize() {
@@ -2461,7 +2536,6 @@
                 tryConnect();
             }, 1000);
         }
-    }
     }
 
     // Trigger on load
