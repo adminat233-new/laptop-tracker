@@ -5,6 +5,7 @@ import { StatusBar, LogBox } from 'react-native';
 import PairScreen from './src/screens/PairScreen';
 import DashboardScreen from './src/screens/DashboardScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
+import BusinessScreen from './src/screens/BusinessScreen';
 import { ServerService } from './src/services/ServerService';
 import { LocationService } from './src/services/LocationService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -79,12 +80,12 @@ export default function App() {
         <Tab.Navigator
           screenOptions={{
             headerShown: false,
-            tabBarStyle: { backgroundColor: '#0a0a0f', borderTopColor: '#ffffff11' },
+            tabBarStyle: { backgroundColor: '#0a0a0f', borderTopColor: '#ffffff11', height: 60, paddingBottom: 8 },
             tabBarActiveTintColor: '#00d4ff',
-            tabBarInactiveTintColor: '#666',
+            tabBarInactiveTintColor: '#444',
           }}
         >
-          <Tab.Screen name="Dashboard">
+          <Tab.Screen name="Tracker" options={{ tabBarIcon: () => <Text>📍</Text> }}>
             {props => (
               <DashboardScreen
                 {...props}
@@ -94,7 +95,16 @@ export default function App() {
               />
             )}
           </Tab.Screen>
-          <Tab.Screen name="Settings">
+          <Tab.Screen name="Business" options={{ tabBarIcon: () => <Text>💼</Text> }}>
+            {props => (
+              <BusinessScreen
+                {...props}
+                serverService={serverService!}
+                laptopDeviceId={laptopDeviceId!}
+              />
+            )}
+          </Tab.Screen>
+          <Tab.Screen name="Settings" options={{ tabBarIcon: () => <Text>⚙️</Text> }}>
             {props => <SettingsScreen {...props} onUnpair={handleUnpair} />}
           </Tab.Screen>
         </Tab.Navigator>
@@ -102,3 +112,5 @@ export default function App() {
     </>
   );
 }
+
+import { Text } from 'react-native';

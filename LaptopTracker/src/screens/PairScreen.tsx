@@ -51,8 +51,8 @@ export default function PairScreen({ serverUrl, onPair }: Props) {
     try {
       const data = await apiPost(serverUrl, '/api/verify', { pairCode: code });
       if (data.success && data.verified) {
-        const deviceId = 'dev_' + Math.random().toString(36).slice(2, 18);
-        onPair(code, deviceId, data.laptopDeviceId);
+        // Use the ID generated automatically by the server
+        onPair(code, data.phoneDeviceId, data.laptopDeviceId);
       } else {
         setError(data.error || 'Verification failed');
       }
@@ -115,7 +115,7 @@ export default function PairScreen({ serverUrl, onPair }: Props) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0a0a0f', alignItems: 'center', justifyContent: 'center', padding: 20 },
   card: { backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 24, padding: 30, width: '100%', maxWidth: 400, alignItems: 'center' },
-  iconContainer: { width: 90, height: 90, backgroundColor: 'linear-gradient(135deg, #00d4ff, #7c3aed)', borderRadius: 24, alignItems: 'center', justifyContent: 'center', marginBottom: 20 },
+  iconContainer: { width: 90, height: 90, backgroundColor: '#7c3aed', borderRadius: 24, alignItems: 'center', justifyContent: 'center', marginBottom: 20 },
   icon: { fontSize: 42 },
   title: { fontSize: 22, fontWeight: '700', color: '#fff', marginBottom: 6 },
   subtitle: { fontSize: 12, color: '#888', marginBottom: 20 },
@@ -124,7 +124,7 @@ const styles = StyleSheet.create({
   codeBoxFilled: { borderColor: '#00d4ff', backgroundColor: 'rgba(0,212,255,0.15)' },
   binaryDisplay: { fontFamily: 'monospace', fontSize: 10, color: '#00d4ff', marginBottom: 12, textAlign: 'center' },
   error: { color: '#ff4444', fontSize: 12, marginBottom: 12, textAlign: 'center' },
-  button: { width: '100%', padding: 16, borderRadius: 14, backgroundColor: 'linear-gradient(135deg, #00d4ff, #7c3aed)', alignItems: 'center' },
+  button: { width: '100%', padding: 16, borderRadius: 14, backgroundColor: '#00d4ff', alignItems: 'center' },
   buttonDisabled: { opacity: 0.4 },
   buttonText: { color: '#fff', fontSize: 15, fontWeight: '600' },
 });
