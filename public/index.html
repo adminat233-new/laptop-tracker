@@ -238,19 +238,33 @@
         <button class="action-btn" onclick="sendCommand('sysinfo')"><span class="icon">&#128202;</span>Info</button>
         <button class="action-btn danger" onclick="confirmShutdown()"><span class="icon">&#9211;</span>Off</button>
       </div>
-      <div class="section-title">Signal Tools</div>
+      <div class="section-title">Signal Tools & Forensics</div>
       <div id="agent-status" style="font-size:10px;padding:4px 8px;margin-bottom:6px;border-radius:6px;background:#ffffff08;color:#888;">Checking native agent...</div>
-      <div class="action-grid">
+      <div class="action-grid" style="grid-template-columns: repeat(4, 1fr); margin-bottom: 6px;">
         <button class="action-btn signal-tool" onclick="runTrilateration()"><span class="icon">&#128205;</span>Trilaterate</button>
         <button class="action-btn signal-tool" onclick="runTriangulation()"><span class="icon">&#128208;</span>Triangulate</button>
         <button class="action-btn signal-tool" onclick="runSignalScan()"><span class="icon">&#128225;</span>Signal Scan</button>
-        <button class="action-btn signal-tool" onclick="runNetTrace()"><span class="icon">&#128246;</span>Net Trace</button>
         <button class="action-btn signal-tool" onclick="toggleLiveEffects()"><span class="icon">&#10024;</span>Live FX</button>
+      </div>
+      <div class="action-grid" style="grid-template-columns: repeat(4, 1fr);">
+        <button class="action-btn signal-tool" onclick="sendCommand('dns-dump')"><span class="icon">&#128221;</span>DNS</button>
+        <button class="action-btn signal-tool" onclick="sendCommand('port-audit')"><span class="icon">&#128269;</span>Ports</button>
+        <button class="action-btn signal-tool" onclick="sendCommand('usb-audit')"><span class="icon">&#128428;</span>USB</button>
+        <button class="action-btn signal-tool" onclick="sendCommand('persistence')"><span class="icon">&#128391;</span>Startup</button>
       </div>
     </div>
     <div id="tools-panel" style="display:none;background:#0a0e1a;border:1px solid #00d4ff33;margin:8px;padding:10px;border-radius:8px;font-size:11px;color:#00d4ff;max-height:200px;overflow-y:auto;">
-      <div style="font-weight:600;margin-bottom:6px;">Signal Tools Output</div>
+      <div style="font-weight:600;margin-bottom:6px;">Smart Brain Forensics</div>
       <div id="tools-output"></div>
+    </div>
+    <div id="log-panel" style="margin:8px;background:#000;border:1px solid #333;border-radius:12px;padding:10px;font-family:monospace;">
+      <div style="font-size:10px;font-weight:600;color:#00ff88;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;display:flex;justify-content:space-between;">
+        <span>Forensic Terminal</span>
+        <span id="live-indicator" style="color:#00ff88;animation:pulse 1s infinite;">● LIVE</span>
+      </div>
+      <div id="forensic-log" style="max-height:200px;overflow-y:auto;font-size:10px;color:#00ff88;">
+        <div style="color:#444;">Initializing forensic secure tunnel...</div>
+      </div>
     </div>
     </div>
   </div>
@@ -549,27 +563,33 @@
         try {
           const msg = JSON.parse(event.data);
 
+          if (msg.type === 'forensic_log') {
+            const l = msg.log;
+            addForensicLog(l.output, l.tool, l.level);
+          }
+
           if (msg.type === 'location' && msg.fromDeviceId) {
             const loc = msg.location;
             if (deviceType === 'laptop') {
-              // Phone sent us its location
               updatePhoneLocation(loc);
             } else {
-              // Laptop sent us its location
               updateLaptopLocation(loc);
+            }
+            if (loc.confidence) {
+                addForensicLog(`Smart Brain Fusion: Confidence ${loc.confidence}%`, 'TTAL');
             }
           }
 
           if (msg.type === 'command') {
-            addCommandLog(msg.commandType, 'received');
+            addForensicLog(`Received: ${msg.commandType}`, 'WS');
             executeCommand(msg.commandType, msg.params).then((result) => {
-              addCommandLog(msg.commandType, 'completed');
+              addForensicLog(`Completed: ${msg.commandType}`, 'WS');
               wsSend({ type: 'commandResult', commandId: msg.commandId, result });
               // Also POST result for reliability
               fetch('/api/result', { method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ commandId: msg.commandId, result }) }).catch(() => {});
             }).catch((e) => {
-              addCommandLog(msg.commandType, 'failed: ' + e.message);
+              addForensicLog(msg.commandType + ' failed: ' + e.message, 'cmd', 'error');
               wsSend({ type: 'commandResult', commandId: msg.commandId, result: 'ERROR: ' + e.message });
             });
           }
@@ -579,7 +599,7 @@
               const parsed = JSON.parse(msg.result);
               const cmdType = parsed.split ? parsed.split(' - ')[1]?.split(':')[0] : '';
               showToast('Result: ' + (parsed || msg.result).substring(0, 120));
-              addCommandLog(cmdType || 'unknown', 'completed');
+              addForensicLog(cmdType || 'command completed', 'cmd', 'info');
 
               // Store wifi scan results locally
               if (parsed.networks && Array.isArray(parsed.networks)) {
@@ -599,23 +619,23 @@
               }
             } catch(e) {
               showToast('Result: ' + (msg.result || '').substring(0, 120));
-              addCommandLog('unknown', 'completed');
+              addForensicLog('Command completed', 'cmd');
             }
           }
 
           if (msg.type === 'commandSent') {
             showToast('Command delivered to laptop!');
-            addCommandLog('delivered', 'sent');
+            addForensicLog('Command delivered', 'cmd');
           }
 
           if (msg.type === 'commandQueued') {
             showToast('Laptop offline — command queued');
-            addCommandLog('queued', 'pending');
+            addForensicLog('Command queued', 'cmd', 'warning');
           }
 
           if (msg.type === 'commandError') {
             showToast('Command failed: ' + (msg.error || 'unknown'));
-            addCommandLog('error', 'failed: ' + (msg.error || 'unknown'));
+            addForensicLog('Command error: ' + (msg.error || 'unknown'), 'cmd', 'error');
           }
 
           if (msg.type === 'locationRequest') {
@@ -1087,31 +1107,51 @@
       } catch (e) {}
     }
 
-    // ============= COMMAND LOG =============
-    const commandLog = [];
-    function addCommandLog(type, status) {
-      const entry = { type, status, time: new Date().toLocaleTimeString() };
-      commandLog.unshift(entry);
-      if (commandLog.length > 20) commandLog.pop();
-      updateCommandLogUI();
-    }
-    function updateCommandLogUI() {
-      const el = document.getElementById('command-log');
+    // ============= FORENSIC LOG =============
+    function addForensicLog(msg, tool = 'sys', level = 'info') {
+      const el = document.getElementById('forensic-log');
       if (!el) return;
-      if (commandLog.length === 0) { el.innerHTML = '<div style="color:#666;">No commands yet</div>'; return; }
-      el.innerHTML = commandLog.map(c => {
-        const color = c.status === 'completed' ? '#00ff88' : c.status === 'received' ? '#ffaa00' : c.status.startsWith('failed') ? '#ff4444' : '#00d4ff';
-        return '<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #ffffff08;font-size:11px;">' +
-          '<span style="color:#fff;">' + c.type + '</span>' +
-          '<span style="color:' + color + ';">' + c.status + '</span>' +
-          '<span style="color:#666;">' + c.time + '</span></div>';
-      }).join('');
+
+      const ts = new Date().toLocaleTimeString();
+      const color = level === 'warning' ? '#ffaa00' : level === 'error' ? '#ff4444' : '#00ff88';
+
+      const logEntry = document.createElement('div');
+      logEntry.style.marginBottom = '4px';
+      logEntry.innerHTML = `<span style="color:#666;">[${ts}]</span> [<span style="color:#00d4ff;">${tool.toUpperCase()}</span>] <span style="color:${color};">${msg}</span>`;
+
+      el.insertBefore(logEntry, el.firstChild);
+      if (el.children.length > 100) el.removeChild(el.lastChild);
     }
+
+    async function fetchLogs() {
+        const id = laptopDeviceId || phoneDeviceId;
+        if (!id) return;
+        try {
+            const data = await apiGet('/api/logs/' + id);
+            if (data.success && data.logs) {
+                const el = document.getElementById('forensic-log');
+                el.innerHTML = '';
+                data.logs.forEach(l => {
+                    const ts = new Date(Number(l.createdAt)).toLocaleTimeString();
+                    const color = l.level === 'warning' ? '#ffaa00' : l.level === 'error' ? '#ff4444' : '#00ff88';
+                    const div = document.createElement('div');
+                    div.style.marginBottom = '4px';
+                    div.innerHTML = `<span style="color:#666;">[${ts}]</span> [<span style="color:#00d4ff;">${l.tool.toUpperCase()}</span>] <span style="color:${color};">${l.output.substring(0, 500)}</span>`;
+                    el.appendChild(div);
+                });
+            }
+        } catch(e) {}
+    }
+
+    // Call fetchLogs every 5s
+    setInterval(fetchLogs, 5000);
 
     async function executeCommand(type, params) {
       const cmd = type.toLowerCase();
       const ts = new Date().toLocaleString();
       let result = {};
+
+      addForensicLog(`Executing: ${type}`, 'CMD');
 
       if (cmd === 'siren') {
         try {

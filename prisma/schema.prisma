@@ -26,6 +26,7 @@ model Device {
   pairCode   String  @map("pair_code") @db.VarChar(10)
   deviceType String? @map("device_type") @db.VarChar(10)
   systemInfo String? @map("system_info") @db.Text
+  pathData   String? @map("path_data") @db.Text
   lastSeen   BigInt? @map("last_seen")
   createdAt  BigInt  @map("created_at")
 
@@ -33,19 +34,40 @@ model Device {
 }
 
 model Location {
-  id        Int     @id @default(autoincrement())
-  deviceId  String  @unique @map("device_id") @db.VarChar(50)
-  lat       Float?
-  lng       Float?
-  intLat    BigInt? @map("int_lat")
-  intLng    BigInt? @map("int_lng")
-  city      String? @db.VarChar(100)
-  region    String? @db.VarChar(100)
-  country   String? @db.VarChar(100)
-  ip        String? @db.VarChar(50)
-  updatedAt BigInt  @map("updated_at")
+  id         Int     @id @default(autoincrement())
+  deviceId   String  @unique @map("device_id") @db.VarChar(50)
+  lat        Float?
+  lng        Float?
+  accuracy   Float?
+  source     String? @db.VarChar(50)
+  rssi       Int?
+  confidence Int?
+  updatedAt  BigInt  @map("updated_at")
 
   @@map("locations")
+}
+
+model Log {
+  id        Int     @id @default(autoincrement())
+  deviceId  String  @map("device_id") @db.VarChar(50)
+  tool      String  @db.VarChar(50)
+  output    String  @db.Text
+  influence Float?  @default(0)
+  level     String? @default("info") @db.VarChar(10)
+  createdAt BigInt  @map("created_at")
+
+  @@index([deviceId])
+  @@map("logs")
+}
+
+model SignalReliability {
+  id          Int     @id @default(autoincrement())
+  identifier  String  @unique @db.VarChar(100) // MAC or BSSID
+  reliability Float   @default(0.5)
+  hitCount    Int     @default(0) @map("hit_count")
+  lastSeen    BigInt  @map("last_seen")
+
+  @@map("signal_reliability")
 }
 
 model Command {
@@ -55,7 +77,6 @@ model Command {
   commandType String  @map("command_type") @db.VarChar(20)
   params      String? @db.Text
   result      String? @db.Text
-  error       String? @db.Text
   status      String? @default("pending") @db.VarChar(20)
   createdAt   BigInt  @map("created_at")
   completedAt BigInt? @map("completed_at")
@@ -63,30 +84,24 @@ model Command {
   @@map("commands")
 }
 
-model LocationHistory {
-  id        Int     @id @default(autoincrement())
-  deviceId  String  @map("device_id") @db.VarChar(50)
-  lat       Float
-  lng       Float
-  accuracy  Float?
-  source    String? @db.VarChar(50)
-  speed     Float?
-  heading   Float?
-  timestamp BigInt  @map("timestamp")
+model Sale {
+  id        Int      @id @default(autoincrement())
+  pairCode  String   @map("pair_code") @db.VarChar(10)
+  total     Float
+  time      BigInt
+  details   String?  @db.Text
 
-  @@index([deviceId, timestamp])
-  @@map("location_history")
+  @@index([pairCode])
+  @@map("sales")
 }
 
-model Notification {
-  id        Int     @id @default(autoincrement())
-  deviceId  String  @map("device_id") @db.VarChar(50)
-  title     String  @db.VarChar(200)
-  body      String  @db.Text
-  type      String  @db.VarChar(50)
-  read      Boolean @default(false)
-  createdAt BigInt  @map("created_at")
+model Product {
+  id        Int      @id @default(autoincrement())
+  pairCode  String   @map("pair_code") @db.VarChar(10)
+  name      String   @db.VarChar(100)
+  price     Float
+  stock     Int      @default(0)
 
-  @@index([deviceId, read])
-  @@map("notifications")
+  @@index([pairCode])
+  @@map("products")
 }
