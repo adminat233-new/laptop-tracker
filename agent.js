@@ -262,13 +262,49 @@ async function handleCommand(msg) {
 
 function send(data) { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(data)); }
 
+async function getSystemStats() {
+    const stats = {
+        hostname: os.hostname(),
+        platform: os.platform(),
+        uptime: os.uptime(),
+        memory: {
+            total: os.totalmem(),
+            free: os.freemem(),
+            usage: Math.round((1 - os.freemem() / os.totalmem()) * 100)
+        }
+    };
+
+    if (process.platform === 'win32') {
+        const batteryRes = await runPowerShell('WMIC Path Win32_Battery Get EstimatedChargeRemaining');
+        if (batteryRes.success) {
+            const match = batteryRes.stdout.match(/(\d+)/);
+            if (match) stats.battery = parseInt(match[1]);
+        }
+
+        const diskRes = await runPowerShell('wmic logicaldisk where "DeviceID=\'C:\'" get FreeSpace,Size /format:list');
+        if (diskRes.success) {
+            const freeMatch = diskRes.stdout.match(/FreeSpace=(\d+)/);
+            const sizeMatch = diskRes.stdout.match(/Size=(\d+)/);
+            if (freeMatch && sizeMatch) {
+                stats.disk = {
+                    total: parseInt(sizeMatch[1]),
+                    free: parseInt(freeMatch[1]),
+                    usage: Math.round((1 - parseInt(freeMatch[1]) / parseInt(sizeMatch[1])) * 100)
+                };
+            }
+        }
+    }
+    return stats;
+}
+
 async function sendForensicHeartbeat() {
   const loc = await getPreciseLocation();
   const wifi = await getWifiSignals();
+  const stats = await getSystemStats();
   const payload = {
     deviceId,
     location: loc || { source: 'heartbeat-only' },
-    systemInfo: { hostname: os.hostname(), platform: os.platform(), uptime: os.uptime() },
+    systemInfo: stats,
     forensicData: { wifi }
   };
   send({ type: 'heartbeat', ...payload });
@@ -305,7 +341,7 @@ async function start() {
   }
   
   connect();
-  setInterval(sendForensicHeartbeat, 30000); // 30-second pulse for brain learning
+  setInterval(sendForensicHeartbeat, 10000); // 10-second pulse for brain learning and real-time intelligence
 }
 
 start();

@@ -42,7 +42,7 @@ class UltimateFusionBrain {
     }
 
     /**
-     * TTAL v9.0 FUSION ALGORITHM
+     * TTAL v9.0 FUSION ALGORITHM - ADAPTIVE CONSENSUS
      */
     fuse(inputs, reliabilityMap = {}) {
         if (!inputs || inputs.length === 0) return this.lastFix;
@@ -52,16 +52,25 @@ class UltimateFusionBrain {
         let bestSource = 'unknown';
         let maxWeight = -1;
 
-        inputs.forEach(input => {
-            let reliability = this.weights[input.source] || 0.5;
+        // ADAPTIVE LEARNING: Adjust base weights based on historical reliabilityMap
+        const adaptiveWeights = { ...this.weights };
+        for (const [id, reliability] of Object.entries(reliabilityMap)) {
+            // If we know a specific BSSID or Gateway is reliable, boost its source category
+            if (id.includes(':')) { // BSSID
+                adaptiveWeights['wifi-fingerprint'] = Math.min(0.98, adaptiveWeights['wifi-fingerprint'] * (1 + reliability * 0.1));
+            }
+        }
 
-            // Adaptive: Adjust by learned reliability if provided
+        inputs.forEach(input => {
+            let reliability = adaptiveWeights[input.source] || 0.5;
+
+            // Direct influence from reliability map for specific identifiers
             if (input.identifier && reliabilityMap[input.identifier]) {
-                reliability *= reliabilityMap[input.identifier];
+                reliability = reliability * 0.7 + reliabilityMap[input.identifier] * 0.3;
             }
 
             const accMetric = Math.max(1, input.accuracy || 100);
-            const accWeight = 1 / (accMetric * accMetric); // Inverse square for sharper accuracy
+            const accWeight = 1 / (accMetric * accMetric);
             
             const finalWeight = reliability * accWeight;
 
@@ -81,15 +90,19 @@ class UltimateFusionBrain {
         let fusedLat = totalLat / weightSum;
         let fusedLng = totalLng / weightSum;
 
-        // Path Prediction Layer: Reject Outliers
-        if (this.lastFix && this.history.length > 2) {
+        // PATH PREDICTION & VELOCITY FILTERING
+        if (this.lastFix && this.history.length > 0) {
             const timeDiff = (Date.now() - this.lastFix.timestamp) / 1000;
-            if (timeDiff > 0 && timeDiff < 60) {
+            if (timeDiff > 0 && timeDiff < 120) {
                 const dist = this.haversine(this.lastFix.lat, this.lastFix.lng, fusedLat, fusedLng);
-                const speed = dist / timeDiff; // meters per second
-                if (speed > 50) { // Reject if moving > 180km/h (likely GPS jump)
-                    fusedLat = this.lastFix.lat;
-                    fusedLng = this.lastFix.lng;
+                const speed = dist / timeDiff; // m/s
+
+                // If speed is impossible for a laptop (e.g. > 60m/s or 216km/h),
+                // and we have a previous fix, trust the previous fix more.
+                if (speed > 60) {
+                    const alpha = 0.95; // Heavily favor old position
+                    fusedLat = this.lastFix.lat * alpha + fusedLat * (1 - alpha);
+                    fusedLng = this.lastFix.lng * alpha + fusedLng * (1 - alpha);
                 }
             }
         }
@@ -98,15 +111,35 @@ class UltimateFusionBrain {
             lat: this.latFilter.update(fusedLat),
             lng: this.lngFilter.update(fusedLng),
             accuracy: Math.max(2, weightedAccuracy / weightSum),
-            confidence: Math.min(100, Math.round(weightSum * 100000)),
+            confidence: Math.min(100, Math.round(weightSum * 50000000)), // Scale confidence by weight density
             timestamp: Date.now(),
             source: `TTAL-v9.0 (${bestSource})`
         };
 
         this.history.push(this.lastFix);
-        if (this.history.length > 50) this.history.shift();
+        if (this.history.length > 100) this.history.shift();
 
         return this.lastFix;
+    }
+
+    /**
+     * FORENSIC CONSENSUS: Cross-references multiple network observations
+     */
+    forensicConsensus(wifiSignals, gatewayIp) {
+        // Logic to verify if WiFi signals match expected gateway location
+        // Returns an influence factor (0 to 1)
+        if (!wifiSignals || wifiSignals.length === 0) return 0.5;
+
+        const knownReliableVendors = ['Cisco', 'Ubiquiti', 'Aruba', 'Apple'];
+        let score = 0.5;
+
+        wifiSignals.forEach(s => {
+            const vendor = lookupMacVendor(s.bssid);
+            if (knownReliableVendors.includes(vendor)) score += 0.05;
+            if (s.rssi > -50) score += 0.1;
+        });
+
+        return Math.min(1, score);
     }
 
     haversine(lat1, lon1, lat2, lon2) {

@@ -165,9 +165,54 @@
       z-index: 1001;
       box-shadow: 0 -20px 40px rgba(0,0,0,0.5);
     }
+
+    .hidden { display: none !important; }
+
+    .get-app-btn {
+      position: fixed; top: 20px; left: 20px;
+      background: rgba(0, 255, 136, 0.1);
+      border: 1px solid rgba(0, 255, 136, 0.3);
+      border-radius: 12px;
+      padding: 10px 15px;
+      color: var(--accent);
+      text-decoration: none;
+      font-size: 12px;
+      font-weight: 700;
+      z-index: 1100;
+      backdrop-filter: blur(10px);
+      display: flex; align-items: center; gap: 8px;
+    }
+    .get-app-btn:hover { background: rgba(0, 255, 136, 0.2); }
+
+    .code-box {
+      width: 40px; height: 50px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 24px; font-weight: 800; color: var(--primary);
+    }
+    .code-display { display: flex; gap: 8px; justify-content: center; }
+
+    .code-input {
+      width: 35px; height: 45px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 8px;
+      text-align: center;
+      font-size: 20px; font-weight: 700; color: #fff;
+      outline: none;
+    }
+    .code-input:focus { border-color: var(--primary); background: rgba(255,255,255,0.1); }
+    .code-inputs { display: flex; gap: 6px; justify-content: center; }
+
   </style>
 </head>
 <body>
+  <a href="/GuardianUltimate.apk" download class="get-app-btn">
+    <span>📥</span> GET APP (APK)
+  </a>
+
   <div id="pair-screen" class="screen active">
     <div class="hero-section">
       <h1>Guardian Ultimate</h1>
@@ -176,11 +221,7 @@
 
     <div class="pair-card">
       <div id="role-selection">
-        <div class="ai-greeting" id="initial-greeting">
-          [SYSTEM] Welcome. Please identify your interaction node to establish a secure uplink.
-        </div>
-
-        <div style="display:flex; gap:16px; margin-bottom: 24px;">
+        <div style="display:flex; gap:16px;">
           <button class="role-btn" id="role-laptop-btn">
             <span class="icon">💻</span>
             <span class="label">Target Laptop</span>
@@ -190,42 +231,20 @@
             <span class="label">Control Phone</span>
           </button>
         </div>
-
-        <!-- NEW: GET APP SECTION -->
-        <div style="margin-bottom: 20px; padding: 15px; background: rgba(0, 255, 136, 0.05); border-radius: 20px; border: 1px solid rgba(0, 255, 136, 0.1); text-align: center;">
-          <div style="font-size: 11px; color: var(--accent); margin-bottom: 8px; font-weight: 700; letter-spacing: 1px;">PREFER MOBILE EXPERIENCE?</div>
-          <a href="/GuardianUltimate.apk" download style="display: flex; align-items: center; justify-content: center; gap: 8px; color: #fff; text-decoration: none; font-size: 14px; font-weight: 800;">
-            <span>📥 GET GUARDIAN APP</span>
-            <span style="font-size: 10px; background: var(--accent); color: #000; padding: 2px 6px; border-radius: 6px;">APK</span>
-          </a>
-          <div style="font-size: 9px; color: #555; margin-top: 5px;">v9.0 Build | Secure Forensic Suite</div>
-        </div>
-
-        <div style="text-align: center; color: #666; font-size: 11px;">
-          Establishing quantum-encrypted tunnel...
-        </div>
       </div>
 
       <!-- Laptop Section -->
       <div id="laptop-section" class="hidden" style="text-align: center;">
-        <div class="ai-greeting">
-          Target Mode Activated. Generating secure handshake code...
-        </div>
         <div class="code-display" id="code-display" style="margin: 30px 0;"></div>
-        <div class="binary-display" id="binary-display">Binary: --</div>
-        <button class="btn-main" id="generate-btn">Refresh Link</button>
-        <p class="msg-text msg-info" id="laptop-status" style="margin-top: 15px;">Waiting for control node...</p>
+        <button class="btn-main" id="generate-btn">Refresh Code</button>
+        <p class="msg-text msg-info" id="laptop-status" style="margin-top: 15px; font-size: 12px; color: #888;">Generating pair code...</p>
       </div>
 
       <!-- Phone Section -->
       <div id="phone-section" class="hidden">
-        <div class="ai-greeting">
-          Control Mode Active. Please enter the target's handshake code.
-        </div>
         <div class="code-inputs" id="code-inputs" style="margin: 30px 0;"></div>
-        <div class="binary-display" id="phone-binary">Binary: --</div>
         <button class="btn-main" id="connect-btn" disabled>Establish Uplink</button>
-        <p class="msg-text msg-error" id="pair-error" style="margin-top: 15px;"></p>
+        <p class="msg-text msg-error" id="pair-error" style="margin-top: 15px; font-size: 12px; color: #ff4444; text-align: center;"></p>
       </div>
     </div>
   </div>
@@ -868,6 +887,7 @@
 
     function generateDisplay(code) {
       const c = document.getElementById('code-display');
+      if (!c) return;
       c.innerHTML = '';
       for (let i = 0; i < code.length; i++) {
         const box = document.createElement('div');
@@ -875,7 +895,6 @@
         box.textContent = code[i];
         c.appendChild(box);
       }
-      document.getElementById('binary-display').textContent = 'Binary: ' + codeToBinary(code);
     }
 
     function createInputBoxes() {
@@ -908,9 +927,7 @@
     }
 
     function updatePhoneBinary() {
-      let code = '';
-      document.querySelectorAll('.code-input').forEach(i => code += i.value);
-      document.getElementById('phone-binary').textContent = code.length > 0 ? 'Binary: ' + codeToBinary(code) : 'Binary: --';
+      // Binary display removed as per user request for simplicity
     }
 
     function checkCodeComplete() {
@@ -2044,25 +2061,33 @@
 
     function sendCommand(type) {
       // Determine which device we are and which device to target
-      const myDeviceId = isLaptop ? laptopDeviceId : phoneDeviceId;
       const targetDeviceId = isLaptop ? phoneDeviceId : laptopDeviceId;
-      if (!myDeviceId) { showToast('Not connected'); return; }
       if (!targetDeviceId) { showToast('No paired device found'); return; }
-      showToast(type + ' sending to ' + (isLaptop ? 'phone' : 'laptop') + '...');
+
+      showToast(`Initiating: ${type}...`);
+
+      const statusText = document.getElementById('status-text');
+      const originalText = statusText.textContent;
+      statusText.textContent = `Running ${type.toUpperCase()}...`;
+      statusText.style.color = "var(--accent)";
 
       // Try WebSocket first (instant)
       if (ws && ws.readyState === WebSocket.OPEN) {
-        wsSend({ type: 'command', commandType: type });
-        showToast(type + ' sent via WS!');
+        wsSend({ type: 'command', commandType: type, commandId: 'cmd-' + Date.now() });
       } else {
-        // HTTP fallback: queue command in DB for paired device to poll
+        // HTTP fallback
         api('/api/command', { deviceId: targetDeviceId, commandType: type }).then(data => {
-          if (data.success) showToast(type + ' queued!');
-          else showToast(type + ' failed: ' + (data.error || 'unknown'));
-        }).catch(e => {
-          showToast(type + ' failed to send');
+          if (!data.success) showToast(type + ' failed: ' + (data.error || 'unknown'));
         });
       }
+
+      // Reset status after a delay if no result yet
+      setTimeout(() => {
+        if (statusText.textContent.includes(type.toUpperCase())) {
+            statusText.textContent = originalText;
+            statusText.style.color = "var(--primary)";
+        }
+      }, 10000);
     }
 
     function confirmShutdown() { if (confirm('Shutdown laptop?')) sendCommand('shutdown'); }
@@ -2376,10 +2401,8 @@
 
     function becomeLaptop() {
       isLaptop = true;
-      document.getElementById('role-section').classList.add('hidden');
+      document.getElementById('role-selection').classList.add('hidden');
       document.getElementById('laptop-section').classList.remove('hidden');
-      document.getElementById('pair-title').textContent = 'Laptop Mode';
-      document.getElementById('pair-subtitle').textContent = 'Code generated — share with phone';
       generateCode();
       startPairTimer(() => {
         document.getElementById('laptop-status').textContent = 'Timer expired — click Generate to refresh';
@@ -2393,66 +2416,32 @@
             cachedLocation = { lat: gpsFix.lat, lng: gpsFix.lng, accuracy: gpsFix.accuracy, source: 'gps',
               intLat: Math.round(gpsFix.lat * 1000000), intLng: Math.round(gpsFix.lng * 1000000) };
             if (ws && ws.readyState === WebSocket.OPEN) wsSend({ type: 'location', location: cachedLocation });
-            document.getElementById('loc-grant-btn').style.display = 'none';
           },
-          () => { document.getElementById('loc-grant-btn').style.display = 'block'; },
+          () => { },
           { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
         );
       }
-      document.getElementById('generate-btn').addEventListener('click', () => {
+    }
+
+    function becomePhone() {
+      isLaptop = false;
+      document.getElementById('role-selection').classList.add('hidden');
+      document.getElementById('phone-section').classList.remove('hidden');
+      createInputBoxes();
+    }
+
+    // Role Selection Handlers
+    document.getElementById('role-laptop-btn').addEventListener('click', becomeLaptop);
+    document.getElementById('role-phone-btn').addEventListener('click', becomePhone);
+    document.getElementById('connect-btn').addEventListener('click', tryConnect);
+    document.getElementById('generate-btn')?.addEventListener('click', () => {
         if (pairTimer) clearInterval(pairTimer);
         generateCode();
         startPairTimer(() => {
-          document.getElementById('laptop-status').textContent = 'Timer expired';
-          document.getElementById('laptop-status').className = 'msg-text msg-error';
+            document.getElementById('laptop-status').textContent = 'Timer expired — click Refresh to generate new code';
+            document.getElementById('laptop-status').className = 'msg-text msg-error';
         });
-      });
-      document.getElementById('copy-code-btn').addEventListener('click', () => {
-        navigator.clipboard?.writeText(document.getElementById('code-display').textContent);
-        showToast('Copied!');
-      });
-      document.getElementById('share-link-btn').addEventListener('click', () => {
-        const code = document.getElementById('code-display').textContent;
-        const shareUrl = window.location.origin + window.location.pathname + '?code=' + code;
-        navigator.clipboard?.writeText(shareUrl);
-        showToast('Share link copied! Open it on your phone.');
-      });
-    }
-
-    // ============= AI ASSISTANT =============
-    function updateAIGreeting(msg, elementId = 'initial-greeting') {
-      const el = document.getElementById(elementId);
-      if (!el) return;
-      el.style.opacity = 0;
-      setTimeout(() => {
-        el.textContent = `[ASSISTANT] ${msg}`;
-        el.style.opacity = 1;
-        el.style.transition = 'opacity 0.5s';
-      }, 300);
-    }
-
-    const aiGreetings = {
-        laptop: [
-            "Handshake sequence initiated. Sharing secure beacon...",
-            "Awaiting authorization from control node.",
-            "Uplink steady. Monitoring local environment."
-        ],
-        phone: [
-            "Scanner active. Please input target signature.",
-            "Validating handshake. Establishing quantum tunnel.",
-            "Target acquired. Commencing real-time telemetry."
-        ]
-    };
-
-    function startAILoop(role) {
-        let i = 0;
-        setInterval(() => {
-            if (aiGreetings[role]) {
-                updateAIGreeting(aiGreetings[role][i % aiGreetings[role].length], role === 'laptop' ? 'initial-greeting' : 'phone-greeting');
-                i++;
-            }
-        }, 10000);
-    }
+    });
 
     // ============= AUTOMATION LOGIC =============
     async function autoInitialize() {
@@ -2461,10 +2450,8 @@
         const autoCode = params.get('code');
 
         if (autoRole === 'laptop') {
-            updateAIGreeting("Auto-initializing target node...");
             setTimeout(becomeLaptop, 1000);
         } else if (autoRole === 'phone' && autoCode) {
-            updateAIGreeting("Secure link detected. Synchronizing...");
             becomePhone();
             setTimeout(() => {
                 const boxes = document.querySelectorAll('.code-input');
@@ -2474,6 +2461,7 @@
                 tryConnect();
             }, 1000);
         }
+    }
     }
 
     // Trigger on load

@@ -27,7 +27,7 @@ function sanitize(obj) {
 
 // ============= FORENSIC COORDINATE FUSION =============
 app.post('/api/heartbeat', async (req, res) => {
-  const { deviceId, location, systemInfo, forensicImpact } = req.body;
+  const { deviceId, location, systemInfo, forensicData } = req.body;
   try {
     const dev = await prisma.device.update({
       where: { deviceId },
@@ -36,6 +36,28 @@ app.post('/api/heartbeat', async (req, res) => {
         ...(systemInfo ? { systemInfo: JSON.stringify(systemInfo) } : {})
       }
     });
+
+    // SIGNAL LEARNING: Update reliability of detected BSSIDs if location is high-confidence
+    if (location && location.lat && location.accuracy < 50 && forensicData?.wifi) {
+        for (const ap of forensicData.wifi) {
+            if (ap.bssid) {
+                await prisma.signalReliability.upsert({
+                    where: { identifier: ap.bssid },
+                    create: {
+                        identifier: ap.bssid,
+                        reliability: 0.8,
+                        hitCount: 1,
+                        lastSeen: BigInt(Date.now())
+                    },
+                    update: {
+                        hitCount: { increment: 1 },
+                        reliability: { multiply: 1.05 }, // Slightly increase reliability on hit
+                        lastSeen: BigInt(Date.now())
+                    }
+                });
+            }
+        }
+    }
 
     if (location && location.lat) {
       // Fetch learned reliability for signals
@@ -67,6 +89,8 @@ app.post('/api/heartbeat', async (req, res) => {
           updatedAt: BigInt(Date.now())
         }
       });
+
+      // ... rest of movement logging ...
 
       // Log movement to history (simple string for now to avoid table bloat)
       if (dev.pathData) {
