@@ -1,69 +1,28 @@
-# Laptop Tracker - Public Access Guide
+# Guardian Ultimate - Advanced Forensic Recovery
 
-## Quick Start
+A real-time, AI-driven laptop tracking and forensic intelligence tool designed for modern recovery scenarios.
 
-### Option 1: Local Network Only (Same WiFi)
-```bash
-# Double-click start.bat
-# Open http://192.168.43.113:7777 on your phone
-```
+## 🛡️ One-Click Deployment
+To start both the secure cloud relay and the intelligence agent automatically:
+1.  Double-click `start-guardian.bat`.
+2.  The system will initialize the server, launch the agent, and open your dashboard.
 
-### Option 2: Public Access (Anywhere in World)
+## 🚀 Advanced Features
+- **TTAL v9.0 Smart Brain**: Adaptive coordinate fusion using GPS, WiFi Fingerprinting, and IP Geolocation. It learns signal reliability over time for pinpoint accuracy.
+- **Forensic Suite**: 
+    - **DNS Cache Dump**: View target browsing intelligence and visited domains.
+    - **USB History Audit**: Monitor physical hardware interactions and connected drives.
+    - **Port Auditing**: Identify all open network listeners and potential vulnerabilities.
+    - **Persistence Check**: Scan for unauthorized startup entries and services.
+- **AI-Driven Interface**: A modern, human-like interaction node that provides real-time telemetry updates and intelligence briefings.
+- **Forensic Terminal**: Live-streaming log of all agent activities and ethical hacking tool outputs.
+- **Quantum Handshake**: Secure, binary-signature based pairing between the target node and control phone.
 
-#### Step 1: Start the server
-```bash
-# Double-click start.bat
-# OR run: node server.js
-```
+## 🛠️ Tech Stack
+- **Backend**: Node.js, Express, Prisma, WebSocket.
+- **Database**: PostgreSQL (Prisma).
+- **Tracking**: Leaflet.js, TTAL Fusion Algorithm.
+- **Mobile**: React Native (Android/iOS).
 
-#### Step 2: Create public tunnel
-```bash
-# Double-click tunnel.bat
-# OR run: cloudflared tunnel --url http://localhost:7777
-```
-
-#### Step 3: Use the public URL
-- Copy the URL shown (e.g., `https://random-name.trycloudflare.com`)
-- Open this URL on your phone from anywhere
-- Enter PIN: `1234`
-
-## Features
-
-### Mobile App Install (PWA)
-1. Open the URL on your phone
-2. Android: Tap 3-dot menu → "Add to Home Screen"
-3. iPhone: Tap Share → "Add to Home Screen"
-
-### Remote Controls
-- **Live Tracking** - Real-time location updates
-- **CPU/RAM/Battery** - System monitoring
-- **Lock Laptop** - Instantly lock your device
-- **Shutdown** - Remote shutdown
-- **Alarms** - Siren, Alarm, Noise, Sensor
-- **Network Scan** - Find devices on network
-
-## Default Settings
-- **PIN:** 1234
-- **Port:** 7777
-
-## Change PIN
-```bash
-set TRACKER_PIN=YOUR_NEW_PIN
-node server.js
-```
-
-## Troubleshooting
-
-### Port 7777 already in use
-```bash
-set PORT=8080
-node server.js
-```
-
-### Cloudflared not working
-Download manually: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/get-started/create-local-tunnel/
-
-### Phone can't connect
-1. Make sure phone and laptop are on same WiFi
-2. Check firewall allows port 7777
-3. Try the public tunnel option instead
+## 🌍 Real-World Problem Solving
+Guardian Ultimate is designed for high-stress recovery scenarios. Whether your device is stolen or you are performing a security audit, the "Smart Brain" uses multi-path network traces and RSSI-to-distance logic to find the device even when traditional GPS fails.

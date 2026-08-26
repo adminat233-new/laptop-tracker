@@ -11,261 +11,300 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0a0a0f; color: #fff; min-height: 100vh; }
-    .screen { display: none; min-height: 100vh; }
+    :root {
+      --primary: #00f2ff;
+      --secondary: #7000ff;
+      --bg: #050508;
+      --card-bg: rgba(15, 15, 25, 0.7);
+      --text: #e0e0e0;
+      --accent: #00ff88;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+      background-image:
+        radial-gradient(circle at 10% 20%, rgba(0, 242, 255, 0.05) 0%, transparent 40%),
+        radial-gradient(circle at 90% 80%, rgba(112, 0, 255, 0.05) 0%, transparent 40%);
+    }
+
+    /* Modern Scrollbar */
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
+
+    .screen { display: none; min-height: 100vh; animation: fadeIn 0.5s ease-out; }
     .screen.active { display: flex; }
-    #pair-screen { flex-direction: column; align-items: center; justify-content: center; padding: 20px; background: linear-gradient(135deg, #0a0a1a, #1a0a2e, #0a1a2e); }
-    .pair-card { background: rgba(255,255,255,0.05); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.1); border-radius: 24px; padding: 40px 30px; width: 100%; max-width: 400px; text-align: center; }
-    .pair-icon { width: 90px; height: 90px; background: linear-gradient(135deg, #00d4ff, #7c3aed); border-radius: 24px; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px; font-size: 42px; }
-    .pair-card h1 { font-size: 22px; margin-bottom: 6px; }
-    .pair-card .subtitle { color: #888; font-size: 12px; margin-bottom: 20px; }
-    .binary-display { background: rgba(0,0,0,0.3); border: 1px solid rgba(0,212,255,0.3); border-radius: 12px; padding: 12px; margin-bottom: 16px; font-family: monospace; font-size: 10px; color: #00d4ff; word-break: break-all; max-height: 60px; overflow-y: auto; }
-    .code-display { display: flex; gap: 8px; justify-content: center; margin-bottom: 16px; flex-wrap: wrap; }
-    .code-box { width: 48px; height: 58px; background: rgba(0,212,255,0.15); border: 2px solid #00d4ff; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: 700; color: #00d4ff; animation: glow 2s ease-in-out infinite; }
-    @keyframes glow { 0%, 100% { box-shadow: 0 0 5px rgba(0,212,255,0.3); } 50% { box-shadow: 0 0 20px rgba(0,212,255,0.5); } }
-    .code-inputs { display: flex; gap: 6px; justify-content: center; margin-bottom: 16px; flex-wrap: wrap; }
-    .code-input { width: 42px; height: 52px; background: rgba(255,255,255,0.08); border: 2px solid rgba(255,255,255,0.15); border-radius: 10px; text-align: center; font-size: 22px; font-weight: 700; color: #fff; text-transform: uppercase; outline: none; transition: all 0.2s; }
-    .code-input:focus { border-color: #00d4ff; box-shadow: 0 0 15px rgba(0,212,255,0.3); }
-    @media (max-width: 400px) { .code-input { width: 36px; height: 46px; font-size: 18px; } }
-    .btn { width: 100%; padding: 16px; border: none; border-radius: 14px; font-size: 15px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
-    .btn-primary { background: linear-gradient(135deg, #00d4ff, #7c3aed); color: #fff; }
-    .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
-    .btn-secondary { background: rgba(255,255,255,0.1); color: #fff; margin-top: 10px; }
-    .msg-text { font-size: 12px; margin-top: 12px; min-height: 18px; }
-    .msg-error { color: #ff4444; }
-    .msg-success { color: #00ff88; }
-    .msg-info { color: #00d4ff; }
-    #verify-screen { flex-direction: column; align-items: center; justify-content: center; padding: 20px; background: linear-gradient(135deg, #0a0a1a, #1a0a2e, #0a1a2e); }
-    .verify-animation { width: 100px; height: 100px; border: 4px solid rgba(0,212,255,0.2); border-top-color: #00d4ff; border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 24px; }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    .verify-check { width: 100px; height: 100px; background: linear-gradient(135deg, #00ff88, #00cc66); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 24px; font-size: 48px; animation: pop 0.3s ease-out; }
-    @keyframes pop { 0% { transform: scale(0); } 80% { transform: scale(1.1); } 100% { transform: scale(1); } }
-    .verify-binary { background: rgba(0,255,136,0.1); border: 1px solid rgba(0,255,136,0.3); border-radius: 8px; padding: 10px; margin-top: 16px; font-family: monospace; font-size: 10px; color: #00ff88; word-break: break-all; }
-    #dashboard { flex-direction: column; min-height: 100vh; padding-bottom: 260px; }
-    .header { position: fixed; top: 0; left: 0; right: 0; background: rgba(10,10,15,0.95); backdrop-filter: blur(20px); border-bottom: 1px solid rgba(255,255,255,0.1); padding: 12px 16px; z-index: 100; }
-    .header-content { display: flex; align-items: center; justify-content: space-between; }
-    .device-info { display: flex; align-items: center; gap: 10px; }
-    .device-icon { width: 42px; height: 42px; background: linear-gradient(135deg, #00d4ff, #7c3aed); border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 22px; }
-    .device-name { font-size: 14px; font-weight: 600; }
-    .status-badge { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #888; }
-    .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #00ff88; animation: pulse 2s infinite; }
-    .status-dot.offline { background: #ff4444; animation: none; }
-    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
-    #map { position: fixed; top: 66px; left: 0; width: 100%; height: 35vh; z-index: 1; background: #111; }
-    .info-panel { position: relative; z-index: 10; margin-top: calc(35vh + 66px); padding: 12px 16px; }
-    .section-title { font-size: 10px; font-weight: 600; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
-    .location-exchange { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 16px; padding: 14px; margin-bottom: 12px; }
-    .location-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
-    .location-row:last-child { border-bottom: none; }
-    .location-icon { width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; }
-    .location-icon.laptop { background: rgba(0,212,255,0.2); }
-    .location-icon.phone { background: rgba(0,255,136,0.2); }
-    .location-details { flex: 1; }
-    .location-label { font-size: 11px; font-weight: 600; }
-    .location-text { font-size: 10px; color: #888; }
-    .location-coords { font-size: 9px; color: #00d4ff; font-family: monospace; }
-    .location-binary { font-size: 8px; color: #7c3aed; font-family: monospace; margin-top: 2px; word-break: break-all; }
-    .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
-    .stat-box { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 10px 6px; text-align: center; }
-    .stat-value { font-size: 18px; font-weight: 700; }
-    .stat-label { font-size: 8px; color: #888; margin-top: 2px; }
-    .controls { position: fixed; bottom: 0; left: 0; right: 0; background: rgba(10,10,15,0.95); backdrop-filter: blur(20px); border-top: 1px solid rgba(255,255,255,0.1); padding: 10px 16px 16px; border-radius: 20px 20px 0 0; z-index: 100; }
-    .controls-handle { width: 36px; height: 4px; background: rgba(255,255,255,0.2); border-radius: 2px; margin: 0 auto 10px; }
-    .alarm-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 8px; }
-    .alarm-btn { padding: 10px 4px; border: none; border-radius: 10px; font-size: 9px; font-weight: 600; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 3px; color: #fff; transition: all 0.2s; }
-    .alarm-btn:active { transform: scale(0.92); }
-    .alarm-btn .icon { font-size: 18px; }
-    .alarm-btn.siren { background: linear-gradient(135deg, #ff4444, #cc0000); }
-    .alarm-btn.alarm { background: linear-gradient(135deg, #ff8800, #cc6600); }
-    .alarm-btn.noise { background: linear-gradient(135deg, #ff00ff, #cc00cc); }
-    .alarm-btn.sensor { background: linear-gradient(135deg, #ffff00, #cccc00); color: #000; }
-    .action-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
-    .action-btn { padding: 10px 4px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); border-radius: 10px; color: #fff; font-size: 9px; font-weight: 500; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 3px; }
-    .action-btn:active { background: rgba(255,255,255,0.15); }
-    .action-btn .icon { font-size: 16px; }
-    .action-btn.danger { border-color: rgba(255,68,68,0.3); color: #ff4444; }
-    .toast { position: fixed; top: 80px; left: 50%; transform: translateX(-50%) translateY(-20px); background: rgba(0,212,255,0.95); color: #fff; padding: 10px 20px; border-radius: 10px; font-size: 12px; font-weight: 500; z-index: 2000; opacity: 0; transition: all 0.3s; pointer-events: none; }
-    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
-    .custom-marker { background: none; border: none; }
-    .marker-laptop { width: 24px; height: 24px; background: #00d4ff; border: 3px solid #fff; border-radius: 50%; box-shadow: 0 0 15px rgba(0,212,255,0.6); position: relative; }
-    .marker-phone { width: 24px; height: 24px; background: #00ff88; border: 3px solid #fff; border-radius: 50%; box-shadow: 0 0 15px rgba(0,255,136,0.6); position: relative; }
-    .marker-label { position: absolute; top: -22px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.85); color: #fff; padding: 2px 8px; border-radius: 6px; font-size: 10px; font-weight: 700; white-space: nowrap; pointer-events: none; border: 1px solid #ffffff33; }
-    .hidden { display: none !important; }
-    .signal-tool { background: linear-gradient(135deg, #0a0e1a, #1a1e3a) !important; border: 1px solid #00d4ff44 !important; color: #00d4ff !important; }
-    .signal-tool:hover { border-color: #00d4ff !important; box-shadow: 0 0 12px rgba(0,212,255,0.3); }
-    .signal-tool.active { background: linear-gradient(135deg, #00d4ff22, #00d4ff11) !important; border-color: #00d4ff !important; animation: toolPulse 1.5s infinite; }
-    @keyframes toolPulse { 0%,100% { box-shadow: 0 0 5px #00d4ff44; } 50% { box-shadow: 0 0 20px #00d4ff88; } }
-    @keyframes radarSweep { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-    @keyframes signalPing { 0% { transform: scale(0.3); opacity: 1; } 100% { transform: scale(3); opacity: 0; } }
-    @keyframes beaconPulse { 0%,100% { opacity: 0.4; transform: scale(1); } 50% { opacity: 1; transform: scale(1.5); } }
-    .radar-sweep { animation: radarSweep 3s linear infinite; transform-origin: center; }
-    .signal-ping { animation: signalPing 2s ease-out infinite; }
-    .beacon-dot { animation: beaconPulse 1.5s ease-in-out infinite; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+    #pair-screen { flex-direction: column; align-items: center; justify-content: center; padding: 20px; }
+
+    .hero-section { text-align: center; margin-bottom: 40px; }
+    .hero-section h1 {
+      font-size: 32px;
+      font-weight: 800;
+      letter-spacing: -1px;
+      background: linear-gradient(to right, #fff, #888);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 10px;
+    }
+    .hero-section p { color: #888; font-size: 14px; }
+
+    .pair-card {
+      background: var(--card-bg);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(255,255,255,0.05);
+      border-radius: 32px;
+      padding: 40px;
+      width: 100%;
+      max-width: 440px;
+      box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);
+    }
+
+    .role-btn {
+      flex: 1;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 20px;
+      padding: 24px;
+      cursor: pointer;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      color: #fff;
+    }
+    .role-btn:hover {
+      background: rgba(255,255,255,0.08);
+      transform: translateY(-5px);
+      border-color: var(--primary);
+    }
+    .role-btn .icon { font-size: 32px; }
+    .role-btn .label { font-size: 14px; font-weight: 600; }
+
+    .btn-main {
+      width: 100%;
+      padding: 18px;
+      border-radius: 18px;
+      border: none;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      background: linear-gradient(135deg, var(--primary), var(--secondary));
+      color: #fff;
+      transition: all 0.3s;
+      box-shadow: 0 10px 20px -5px rgba(0, 242, 255, 0.3);
+    }
+    .btn-main:hover { transform: scale(1.02); opacity: 0.9; }
+    .btn-main:disabled { opacity: 0.3; cursor: not-allowed; transform: none; }
+
+    #dashboard { padding-top: 80px; padding-bottom: 280px; }
+
+    .header {
+      position: fixed; top: 0; left: 0; right: 0;
+      background: rgba(5, 5, 8, 0.8);
+      backdrop-filter: blur(20px);
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+      padding: 15px 24px;
+      z-index: 1000;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+
+    .ai-greeting {
+      font-size: 12px;
+      color: var(--primary);
+      font-family: monospace;
+      margin-bottom: 15px;
+      padding: 10px;
+      background: rgba(0, 242, 255, 0.05);
+      border-radius: 10px;
+      border-left: 3px solid var(--primary);
+    }
+
+    .stat-card {
+      background: var(--card-bg);
+      border: 1px solid rgba(255,255,255,0.05);
+      border-radius: 20px;
+      padding: 15px;
+    }
+
+    .map-container {
+      width: calc(100% - 32px);
+      height: 40vh;
+      margin: 16px;
+      border-radius: 24px;
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,0.1);
+      box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+    }
+
+    .forensic-terminal {
+      background: #000;
+      border: 1px solid #1a1a2a;
+      border-radius: 20px;
+      padding: 20px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: #00ff88;
+      box-shadow: inset 0 0 20px rgba(0, 255, 136, 0.05);
+    }
+
+    .floating-controls {
+      position: fixed; bottom: 24px; left: 24px; right: 24px;
+      background: rgba(15, 15, 25, 0.9);
+      backdrop-filter: blur(30px);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 32px;
+      padding: 20px;
+      z-index: 1001;
+      box-shadow: 0 -20px 40px rgba(0,0,0,0.5);
+    }
   </style>
 </head>
 <body>
   <div id="pair-screen" class="screen active">
+    <div class="hero-section">
+      <h1>Guardian Ultimate</h1>
+      <p>Secure Intelligence & Location Recovery</p>
+    </div>
+
     <div class="pair-card">
-      <div class="pair-icon">&#128279;</div>
-      <h1 id="pair-title">Laptop Tracker</h1>
-      <p class="subtitle" id="pair-subtitle">Choose your role</p>
+      <div id="role-selection">
+        <div class="ai-greeting" id="initial-greeting">
+          [SYSTEM] Welcome. Please identify your interaction node to establish a secure uplink.
+        </div>
 
-      <div id="role-section">
-        <div style="display:flex;gap:10px;margin:16px 0;">
-          <button class="btn btn-primary" id="role-laptop-btn" style="flex:1;padding:16px;font-size:14px;">
-            <div style="font-size:24px;margin-bottom:4px;">&#128187;</div>
-            I'm the Laptop
+        <div style="display:flex; gap:16px; margin-bottom: 24px;">
+          <button class="role-btn" id="role-laptop-btn">
+            <span class="icon">💻</span>
+            <span class="label">Target Laptop</span>
           </button>
-          <button class="btn btn-secondary" id="role-phone-btn" style="flex:1;padding:16px;font-size:14px;">
-            <div style="font-size:24px;margin-bottom:4px;">&#128241;</div>
-            I'm the Phone
+          <button class="role-btn" id="role-phone-btn">
+            <span class="icon">📱</span>
+            <span class="label">Control Phone</span>
           </button>
         </div>
-        <p style="color:#888;font-size:10px;text-align:center;">Laptop generates code. Phone enters code.</p>
+
+        <div style="text-align: center; color: #666; font-size: 11px;">
+          Establishing quantum-encrypted tunnel...
+        </div>
       </div>
 
-      <div id="laptop-section" class="hidden">
-        <div id="timer-display" style="font-size:28px;font-weight:700;color:#00d4ff;margin:8px 0;display:none;">
-          <span id="timer-text">0:30</span>
-          <div style="font-size:10px;color:#888;font-weight:400;">Pair within this time</div>
+      <!-- Laptop Section -->
+      <div id="laptop-section" class="hidden" style="text-align: center;">
+        <div class="ai-greeting">
+          Target Mode Activated. Generating secure handshake code...
         </div>
-        <div class="code-display" id="code-display"></div>
+        <div class="code-display" id="code-display" style="margin: 30px 0;"></div>
         <div class="binary-display" id="binary-display">Binary: --</div>
-        <button class="btn btn-primary" id="generate-btn" style="margin-bottom:8px;">Generate New Code</button>
-        <button class="btn btn-secondary" id="copy-code-btn">Copy Code</button>
-        <button class="btn btn-secondary" id="share-link-btn" style="margin-top:4px;background:#00ff8822;color:#00ff88;border:1px solid #00ff8844;">Share Link (opens as phone)</button>
-        <p class="msg-text msg-info" id="laptop-status">Waiting for phone...</p>
+        <button class="btn-main" id="generate-btn">Refresh Link</button>
+        <p class="msg-text msg-info" id="laptop-status" style="margin-top: 15px;">Waiting for control node...</p>
       </div>
 
+      <!-- Phone Section -->
       <div id="phone-section" class="hidden">
-        <div id="phone-timer" style="font-size:28px;font-weight:700;color:#00d4ff;margin:8px 0;display:none;">
-          <span id="phone-timer-text">0:30</span>
-          <div style="font-size:10px;color:#888;font-weight:400;">Connecting...</div>
+        <div class="ai-greeting">
+          Control Mode Active. Please enter the target's handshake code.
         </div>
-        <div class="code-inputs" id="code-inputs"></div>
+        <div class="code-inputs" id="code-inputs" style="margin: 30px 0;"></div>
         <div class="binary-display" id="phone-binary">Binary: --</div>
-        <button class="btn btn-primary" id="connect-btn" disabled>Verify & Connect</button>
-        <p class="msg-text msg-info" id="phone-status">Enter code from laptop</p>
+        <button class="btn-main" id="connect-btn" disabled>Establish Uplink</button>
+        <p class="msg-text msg-error" id="pair-error" style="margin-top: 15px;"></p>
       </div>
-
-      <p class="msg-text msg-error" id="pair-error"></p>
     </div>
   </div>
 
   <div id="verify-screen" class="screen">
-    <div class="pair-card">
-      <div id="verify-icon" class="verify-animation"></div>
-      <h1 id="verify-title">Verifying...</h1>
-      <p class="subtitle" id="verify-subtitle">Comparing binary codes</p>
-      <div class="verify-binary" id="verify-binary"></div>
+    <div class="pair-card" style="text-align: center;">
+      <div class="verify-animation" id="verify-icon"></div>
+      <h1 id="verify-title" style="font-size: 24px; margin-bottom: 10px;">Syncing...</h1>
+      <div class="ai-greeting" id="verify-subtitle">Fusing signal arrays and validating binary signatures</div>
+      <div class="verify-binary" id="verify-binary" style="margin-top: 20px;"></div>
     </div>
   </div>
 
   <div id="dashboard" class="screen">
     <header class="header">
-      <div class="header-content">
-        <div class="device-info">
-          <div class="device-icon">&#128187;</div>
-          <div>
-            <div class="device-name" id="device-name">Laptop</div>
-            <div class="status-badge">
-              <div class="status-dot" id="status-dot"></div>
-              <span id="status-text">Connecting...</span>
-            </div>
+      <div style="display:flex; align-items: center; gap: 12px;">
+        <div style="width: 40px; height: 40px; background: linear-gradient(135deg, var(--primary), var(--secondary)); border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 20px;">🛡️</div>
+        <div>
+          <div style="font-size: 14px; font-weight: 700; color: #fff;" id="device-name">Guardian Node</div>
+          <div style="display:flex; align-items:center; gap:6px; font-size: 11px;">
+            <div class="status-dot" id="status-dot"></div>
+            <span id="status-text" style="color: var(--primary);">Secure Link Active</span>
           </div>
         </div>
-        <div style="font-size:10px; color:#888;" id="last-seen">--</div>
       </div>
+      <div id="last-seen" style="font-size: 11px; color: #666; font-family: monospace;">LATENCY: --ms</div>
     </header>
-    <div id="map"></div>
-    <div id="loc-warning" style="display:none;background:#ff6b0022;border:1px solid #ff6b00;color:#ff6b00;padding:8px 12px;margin:8px;border-radius:8px;font-size:11px;"></div>
-    <div id="loc-grant-btn" style="display:none;margin:8px;padding:10px;background:rgba(0,255,136,0.1);border:1px solid #00ff88;border-radius:12px;text-align:center;cursor:pointer;" onclick="forceGrantLocation()">
-      <div style="font-size:13px;font-weight:600;color:#00ff88;">📍 Grant Location Access</div>
-      <div style="font-size:10px;color:#888;margin-top:4px;">Click to enable GPS tracking for this device</div>
-    </div>
-    <div style="margin:8px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:10px;">
-      <div style="font-size:10px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Command Log</div>
-      <div id="command-log" style="max-height:120px;overflow-y:auto;"><div style="color:#666;">No commands yet</div></div>
-    </div>
-    <div id="signal-panel" style="display:none;background:#0a0e1a;border:1px solid #00d4ff33;margin:8px;padding:10px;border-radius:8px;font-size:11px;color:#00d4ff;">
-      <div style="font-weight:600;margin-bottom:6px;">Signal Intelligence</div>
-      <div id="signal-wifi-list" style="max-height:80px;overflow-y:auto;"></div>
-      <div id="signal-ble-list" style="max-height:60px;overflow-y:auto;margin-top:4px;"></div>
-    </div>
-    <div class="info-panel">
-      <div class="section-title">Location Exchange</div>
-      <div class="location-exchange">
-        <div class="location-row">
-          <div class="location-icon laptop">&#128187;</div>
-          <div class="location-details">
-            <div class="location-label">Laptop</div>
-            <div class="location-text" id="laptop-loc-text">Waiting...</div>
-            <div class="location-coords" id="laptop-loc-coords">--</div>
-            <div class="location-binary" id="laptop-loc-binary">Binary: --</div>
-          </div>
+
+    <div class="map-container" id="map"></div>
+
+    <div style="padding: 0 16px;">
+      <div class="ai-greeting" id="dashboard-ai-msg">
+        [INTEL] Signal fusion complete. Monitoring target trajectory in real-time.
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 16px;">
+        <div class="stat-card">
+          <div style="font-size: 10px; color: #666; margin-bottom: 5px;">ACCURACY</div>
+          <div style="font-size: 18px; font-weight: 800; color: var(--accent);" id="stat-accuracy">--</div>
         </div>
-        <div class="location-row">
-          <div class="location-icon phone">&#128241;</div>
-          <div class="location-details">
-            <div class="location-label">Phone</div>
-            <div class="location-text" id="phone-loc-text">Tracking...</div>
-            <div class="location-coords" id="phone-loc-coords">--</div>
-            <div class="location-binary" id="phone-loc-binary">Binary: --</div>
-          </div>
+        <div class="stat-card">
+          <div style="font-size: 10px; color: #666; margin-bottom: 5px;">CONFIDENCE</div>
+          <div style="font-size: 18px; font-weight: 800; color: var(--primary);" id="stat-confidence">--</div>
+        </div>
+        <div class="stat-card">
+          <div style="font-size: 10px; color: #666; margin-bottom: 5px;">UPTIME</div>
+          <div style="font-size: 18px; font-weight: 800; color: #fff;" id="stat-uptime">--</div>
         </div>
       </div>
-      <div class="section-title">System</div>
-      <div class="stats-grid">
-        <div class="stat-box"><div class="stat-value" id="stat-cpu">--</div><div class="stat-label">CPU</div></div>
-        <div class="stat-box"><div class="stat-value" id="stat-ram">--</div><div class="stat-label">RAM</div></div>
-        <div class="stat-box"><div class="stat-value" id="stat-uptime">--</div><div class="stat-label">Uptime</div></div>
+
+      <div class="forensic-terminal" id="log-panel">
+        <div style="display:flex; justify-content: space-between; margin-bottom: 10px; border-bottom: 1px solid rgba(0,255,136,0.1); padding-bottom: 5px;">
+          <span style="font-weight: 700; letter-spacing: 1px;">FORENSIC TERMINAL</span>
+          <span style="color: var(--accent); font-weight: 800; animation: pulse 1.5s infinite;">LIVE DATA</span>
+        </div>
+        <div id="forensic-log" style="max-height: 200px; overflow-y: auto;">
+          <div>Establishing secure telemetry bridge...</div>
+        </div>
       </div>
     </div>
-    <div class="controls">
-      <div class="controls-handle"></div>
-      <div class="section-title">Alarms</div>
-      <div class="alarm-grid">
-        <button class="alarm-btn siren" onclick="sendCommand('siren')"><span class="icon">&#128680;</span>Siren</button>
-        <button class="alarm-btn alarm" onclick="sendCommand('alarm')"><span class="icon">&#128276;</span>Alarm</button>
-        <button class="alarm-btn noise" onclick="sendCommand('noise')"><span class="icon">&#128266;</span>Noise</button>
-        <button class="alarm-btn sensor" onclick="sendCommand('sensor')"><span class="icon">&#9888;&#65039;</span>Sensor</button>
+
+    <div class="floating-controls">
+      <div style="font-size: 10px; font-weight: 800; color: #555; margin-bottom: 12px; letter-spacing: 2px; text-align: center;">COMMAND ARRAY</div>
+
+      <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px;">
+        <button class="alarm-btn siren" onclick="sendCommand('siren')" style="background: rgba(255,0,0,0.1); border: 1px solid rgba(255,0,0,0.2); border-radius: 12px; padding: 12px;">
+          <span style="font-size: 20px;">🚨</span>
+          <div style="font-size: 9px; margin-top: 5px;">SIREN</div>
+        </button>
+        <button class="alarm-btn" onclick="sendCommand('lock')" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 12px;">
+          <span style="font-size: 20px;">🔒</span>
+          <div style="font-size: 9px; margin-top: 5px;">LOCK</div>
+        </button>
+        <button class="alarm-btn" onclick="sendCommand('dns-dump')" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 12px;">
+          <span style="font-size: 20px;">🌐</span>
+          <div style="font-size: 9px; margin-top: 5px;">DNS</div>
+        </button>
+        <button class="alarm-btn" onclick="sendCommand('port-audit')" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 12px;">
+          <span style="font-size: 20px;">🔍</span>
+          <div style="font-size: 9px; margin-top: 5px;">PORT</div>
+        </button>
       </div>
-      <div class="section-title">Actions</div>
-      <div class="action-grid">
-        <button class="action-btn" onclick="sendCommand('lock')"><span class="icon">&#128274;</span>Lock</button>
-        <button class="action-btn" onclick="sendCommand('netscan')"><span class="icon">&#127760;</span>Scan</button>
-        <button class="action-btn" onclick="sendCommand('sysinfo')"><span class="icon">&#128202;</span>Info</button>
-        <button class="action-btn danger" onclick="confirmShutdown()"><span class="icon">&#9211;</span>Off</button>
-      </div>
-      <div class="section-title">Signal Tools & Forensics</div>
-      <div id="agent-status" style="font-size:10px;padding:4px 8px;margin-bottom:6px;border-radius:6px;background:#ffffff08;color:#888;">Checking native agent...</div>
-      <div class="action-grid" style="grid-template-columns: repeat(4, 1fr); margin-bottom: 6px;">
-        <button class="action-btn signal-tool" onclick="runTrilateration()"><span class="icon">&#128205;</span>Trilaterate</button>
-        <button class="action-btn signal-tool" onclick="runTriangulation()"><span class="icon">&#128208;</span>Triangulate</button>
-        <button class="action-btn signal-tool" onclick="runSignalScan()"><span class="icon">&#128225;</span>Signal Scan</button>
-        <button class="action-btn signal-tool" onclick="toggleLiveEffects()"><span class="icon">&#10024;</span>Live FX</button>
-      </div>
-      <div class="action-grid" style="grid-template-columns: repeat(4, 1fr);">
-        <button class="action-btn signal-tool" onclick="sendCommand('dns-dump')"><span class="icon">&#128221;</span>DNS</button>
-        <button class="action-btn signal-tool" onclick="sendCommand('port-audit')"><span class="icon">&#128269;</span>Ports</button>
-        <button class="action-btn signal-tool" onclick="sendCommand('usb-audit')"><span class="icon">&#128428;</span>USB</button>
-        <button class="action-btn signal-tool" onclick="sendCommand('persistence')"><span class="icon">&#128391;</span>Startup</button>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+        <button class="btn-main" onclick="runTrilateration()" style="font-size: 12px; padding: 12px;">SMART BRAIN SYNC</button>
+        <button class="btn-main" onclick="toggleLiveEffects()" style="font-size: 12px; padding: 12px; background: rgba(112,0,255,0.2);">VISUALIZE SIGNALS</button>
       </div>
     </div>
-    <div id="tools-panel" style="display:none;background:#0a0e1a;border:1px solid #00d4ff33;margin:8px;padding:10px;border-radius:8px;font-size:11px;color:#00d4ff;max-height:200px;overflow-y:auto;">
-      <div style="font-weight:600;margin-bottom:6px;">Smart Brain Forensics</div>
-      <div id="tools-output"></div>
-    </div>
-    <div id="log-panel" style="margin:8px;background:#000;border:1px solid #333;border-radius:12px;padding:10px;font-family:monospace;">
-      <div style="font-size:10px;font-weight:600;color:#00ff88;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;display:flex;justify-content:space-between;">
-        <span>Forensic Terminal</span>
-        <span id="live-indicator" style="color:#00ff88;animation:pulse 1s infinite;">● LIVE</span>
-      </div>
-      <div id="forensic-log" style="max-height:200px;overflow-y:auto;font-size:10px;color:#00ff88;">
-        <div style="color:#444;">Initializing forensic secure tunnel...</div>
-      </div>
-    </div>
+  </div>
     </div>
   </div>
 
@@ -563,10 +602,18 @@
         try {
           const msg = JSON.parse(event.data);
 
-          if (msg.type === 'forensic_log') {
+        if (msg.type === 'connected') {
+            updateAIGreeting("Secure uplink established. Syncing intelligence array.", 'dashboard-ai-msg');
+            addForensicLog("Uplink synchronized with cloud relay.", "SYS");
+        }
+
+        if (msg.type === 'forensic_log') {
             const l = msg.log;
             addForensicLog(l.output, l.tool, l.level);
-          }
+            // Dynamic AI feedback based on tool
+            if (l.tool === 'wifi-scan') updateAIGreeting(`Detected ${l.output.length || 0} local signals. Fusing arrays...`, 'dashboard-ai-msg');
+            if (l.tool === 'dns-dump') updateAIGreeting("Intelligence extracted from DNS cache. Analyzing patterns...", 'dashboard-ai-msg');
+        }
 
           if (msg.type === 'location' && msg.fromDeviceId) {
             const loc = msg.location;
@@ -1380,7 +1427,22 @@
       const lat = toNum(loc.lat);
       const lng = toNum(loc.lng);
       if (!lat || !lng) return;
-      if (Math.abs(lat) < 0.001 && Math.abs(lng) < 0.001) return; // Reject 0,0
+
+      const statusEl = document.getElementById('status-text');
+      if (loc.source.includes('TTAL')) {
+          statusEl.textContent = "Fusing High-Precision Signals";
+          statusEl.style.color = "var(--accent)";
+      } else if (loc.source.includes('gps')) {
+          statusEl.textContent = "GPS Lock Established";
+          statusEl.style.color = "#00ff88";
+      } else {
+          statusEl.textContent = "Interpolating IP/WiFi Fingerprint";
+          statusEl.style.color = "var(--primary)";
+      }
+
+      document.getElementById('stat-accuracy').textContent = (loc.accuracy < 1000 ? Math.round(loc.accuracy) + 'm' : (loc.accuracy/1000).toFixed(1) + 'km');
+      document.getElementById('stat-confidence').textContent = (loc.confidence || 0) + '%';
+
       const latlng = [lat, lng];
 
       laptopPath.push({ lat, lng, timestamp: Date.now() });
@@ -2347,38 +2409,65 @@
       });
     }
 
-    function becomePhone() {
-      isLaptop = false;
-      document.getElementById('role-section').classList.add('hidden');
-      document.getElementById('phone-section').classList.remove('hidden');
-      document.getElementById('pair-title').textContent = 'Phone Mode';
-      document.getElementById('pair-subtitle').textContent = 'Enter code from laptop';
-      createInputBoxes();
-      startPairTimer(() => {
-        document.getElementById('phone-status').textContent = 'Timer expired — go back and try again';
-        document.getElementById('phone-status').className = 'msg-text msg-error';
-      });
-      document.getElementById('connect-btn').addEventListener('click', tryConnect);
-    }
-
-    // Role selection buttons
-    document.getElementById('role-laptop-btn').addEventListener('click', becomeLaptop);
-    document.getElementById('role-phone-btn').addEventListener('click', becomePhone);
-
-    // Auto-detect from URL ?code= param
-    const urlParams = new URLSearchParams(window.location.search);
-    const urlCode = urlParams.get('code');
-    if (urlCode && urlCode.length >= 4) {
-      // Auto-select phone mode and fill code
-      becomePhone();
+    // ============= AI ASSISTANT =============
+    function updateAIGreeting(msg, elementId = 'initial-greeting') {
+      const el = document.getElementById(elementId);
+      if (!el) return;
+      el.style.opacity = 0;
       setTimeout(() => {
-        const boxes = document.querySelectorAll('.code-input');
-        for (let i = 0; i < Math.min(urlCode.length, boxes.length); i++) {
-          boxes[i].value = urlCode[i].toUpperCase();
-        }
-        setTimeout(() => tryConnect(), 500);
+        el.textContent = `[ASSISTANT] ${msg}`;
+        el.style.opacity = 1;
+        el.style.transition = 'opacity 0.5s';
       }, 300);
     }
+
+    const aiGreetings = {
+        laptop: [
+            "Handshake sequence initiated. Sharing secure beacon...",
+            "Awaiting authorization from control node.",
+            "Uplink steady. Monitoring local environment."
+        ],
+        phone: [
+            "Scanner active. Please input target signature.",
+            "Validating handshake. Establishing quantum tunnel.",
+            "Target acquired. Commencing real-time telemetry."
+        ]
+    };
+
+    function startAILoop(role) {
+        let i = 0;
+        setInterval(() => {
+            if (aiGreetings[role]) {
+                updateAIGreeting(aiGreetings[role][i % aiGreetings[role].length], role === 'laptop' ? 'initial-greeting' : 'phone-greeting');
+                i++;
+            }
+        }, 10000);
+    }
+
+    // ============= AUTOMATION LOGIC =============
+    async function autoInitialize() {
+        const params = new URLSearchParams(window.location.search);
+        const autoRole = params.get('auto');
+        const autoCode = params.get('code');
+
+        if (autoRole === 'laptop') {
+            updateAIGreeting("Auto-initializing target node...");
+            setTimeout(becomeLaptop, 1000);
+        } else if (autoRole === 'phone' && autoCode) {
+            updateAIGreeting("Secure link detected. Synchronizing...");
+            becomePhone();
+            setTimeout(() => {
+                const boxes = document.querySelectorAll('.code-input');
+                for (let i = 0; i < Math.min(autoCode.length, boxes.length); i++) {
+                    boxes[i].value = autoCode[i].toUpperCase();
+                }
+                tryConnect();
+            }, 1000);
+        }
+    }
+
+    // Trigger on load
+    window.addEventListener('load', autoInitialize);
   </script>
 </body>
 </html>
