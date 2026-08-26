@@ -78,16 +78,16 @@ export class LocationService {
   static async showAgreement(): Promise<boolean> {
     return new Promise((resolve) => {
       Alert.alert(
-        'Ethical Security & Forensic Agreement',
-        'This professional suite includes a "Self-Learning Fusion Brain" and Forensic Hacking Tools:\n\n' +
-        '• Network RTT Proximity Analysis\n' +
-        '• WiFi BSSID Fingerprinting\n' +
-        '• ARP Topology Mapping\n' +
-        '• Inertial Dead Reckoning\n\n' +
-        'Unauthorized tracking is illegal.',
+        'Guardian Ultimate - Secure Uplink Agreement',
+        'You are about to establish a secure telemetry uplink with the target node. This professional recovery suite includes:\n\n' +
+        '• TTAL v9.0 Multi-Path Signal Fusion\n' +
+        '• Advanced DNS & Network Forensics\n' +
+        '• Real-time Intelligence Streaming\n' +
+        '• Remote Hardware Lock & Control\n\n' +
+        'By proceeding, you confirm you are authorized to monitor this device.',
         [
           { text: 'Decline', style: 'cancel', onPress: () => resolve(false) },
-          { text: 'Accept', onPress: async () => {
+          { text: 'Accept Authorization', onPress: async () => {
               await AsyncStorage.setItem('user_agreement_accepted', 'true');
               resolve(true);
             }
@@ -167,9 +167,9 @@ export class LocationService {
       accuracy: Math.max(2, combinedAccuracy / weightSum),
       speed: inputs[0].speed || 0,
       heading: inputs[0].heading || 0,
-      source: 'forensic-fusion-v7',
+      source: 'TTAL-v9.0-Mobile',
       timestamp: now,
-      confidence: Math.min(100, Math.round(weightSum * 2000000))
+      confidence: Math.min(100, Math.round(weightSum * 1000000))
     };
 
     this.lastLocation = result;
