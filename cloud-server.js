@@ -4,7 +4,8 @@ const crypto = require('crypto');
 const http = require('http');
 const { Server } = require('ws');
 const { PrismaClient } = require('@prisma/client');
-const { UltimateFusionBrain, solveTrilateration, lookupMacVendor } = require('./signal-engine');
+const { UltimateFusionBrain, solveTrilateration, lookupMacVendor, rssiToMeters } = require('./signal-engine');
+const geolocationService = require('./geolocation-service');
 
 const app = express();
 const PORT = process.env.PORT || 9999;
@@ -13,6 +14,28 @@ const fusionBrain = new UltimateFusionBrain();
 const server = http.createServer(app);
 const wss = new Server({ server });
 const sockets = new Map();
+const lostDevices = new Set();
+
+// ============= AUTOMATION TIMER (LOST MODE) =============
+setInterval(() => {
+  for (const deviceId of lostDevices) {
+    // If device is a laptop, send aggressive forensic and lock commands
+    if (deviceId.startsWith('LP-')) {
+        console.log(`[AUTOMATION] Triggering Lost Mode sequence for ${deviceId}`);
+        broadcast(deviceId, {
+            type: 'command',
+            commandType: 'forensic-init',
+            commandId: 'auto-forensic-' + Date.now(),
+            params: { mode: 'aggressive' }
+        });
+        broadcast(deviceId, {
+            type: 'command',
+            commandType: 'lock',
+            commandId: 'auto-lock-' + Date.now()
+        });
+    }
+  }
+}, 60000); // Run every 60 seconds when in Lost Mode
 
 // ============= MIDDLEWARE =============
 app.use(express.json());
@@ -134,30 +157,67 @@ app.post('/api/heartbeat', async (req, res) => {
       }
     });
 
-    if (location && location.lat) {
+    let fusedLocation = location;
+
+    // IF location is off or poor, try WiFi geolocation & WCL Centroid
+    if ((!location || !location.lat || location.accuracy > 500) && (forensicData?.wifi || forensicData?.gatewayMac)) {
+        const inputs = [];
+        if (location && location.lat) inputs.push(location);
+
+        // Sub-Method 1: API Geolocation
+        const geoResult = await geolocationService.resolveFromWifi(forensicData.wifi, forensicData.gatewayMac);
+        if (geoResult) inputs.push(geoResult);
+
+        // Sub-Method 2: WCL (Weighted Centroid Localization)
+        // If we have known reliable signals, use our internal engine to triangulate
+        if (forensicData.wifi?.length >= 2) {
+            const anchors = [];
+            for (const ap of forensicData.wifi) {
+                const reliable = await prisma.signalReliability.findUnique({ where: { identifier: ap.bssid } });
+                // We need to fetch the actual LAT/LNG of these APs from our historical DB if available
+                const history = await prisma.location.findFirst({
+                    where: { source: { contains: 'gps' }, deviceId: { not: deviceId } }, // Simple proxy for "known AP location"
+                    orderBy: { updatedAt: 'desc' }
+                });
+                if (history && history.lat) {
+                    anchors.push({ lat: history.lat, lng: history.lng, distance: rssiToMeters(ap.rssi) });
+                }
+            }
+            const wclResult = fusionBrain.weightedCentroid(anchors);
+            if (wclResult) inputs.push({ ...wclResult, accuracy: 200 });
+        }
+
+        if (inputs.length > 0) fusedLocation = fusionBrain.fuse(inputs);
+    }
+
+    if (fusedLocation && fusedLocation.lat) {
+        // Generate environmental fingerprint
+        const fingerprint = fusionBrain.generateFingerprint(forensicData?.wifi, forensicData?.bluetooth);
+        fusedLocation.fingerprint = fingerprint;
+
         await prisma.location.upsert({
             where: { deviceId },
             create: {
                 deviceId,
-                lat: location.lat,
-                lng: location.lng,
-                accuracy: location.accuracy || 10,
-                source: location.source || 'heartbeat',
+                lat: fusedLocation.lat,
+                lng: fusedLocation.lng,
+                accuracy: fusedLocation.accuracy || 10,
+                source: fusedLocation.source || 'heartbeat-fused',
                 updatedAt: BigInt(Date.now())
             },
             update: {
-                lat: location.lat,
-                lng: location.lng,
-                accuracy: location.accuracy || 10,
-                source: location.source || 'heartbeat',
+                lat: fusedLocation.lat,
+                lng: fusedLocation.lng,
+                accuracy: fusedLocation.accuracy || 10,
+                source: fusedLocation.source || 'heartbeat-fused',
                 updatedAt: BigInt(Date.now())
             }
         });
         const pair = await prisma.device.findFirst({ where: { pairCode: dev.pairCode, deviceId: { not: deviceId } } });
-        if (pair) broadcast(pair.deviceId, { type: 'location', fromDeviceId: deviceId, location });
+        if (pair) broadcast(pair.deviceId, { type: 'location', fromDeviceId: deviceId, location: fusedLocation });
     }
 
-    if (location && location.lat && location.accuracy < 50 && forensicData?.wifi) {
+    if (fusedLocation && fusedLocation.lat && fusedLocation.accuracy < 100 && forensicData?.wifi) {
         for (const ap of forensicData.wifi) {
             if (ap.bssid) {
                 await prisma.signalReliability.upsert({
@@ -169,8 +229,16 @@ app.post('/api/heartbeat', async (req, res) => {
         }
     }
 
-    res.json({ success: true });
+    res.json({ success: true, fusedLocation });
   } catch (e) { res.json({ success: false, error: e.message }); }
+});
+
+app.post('/api/bssid-lookup', async (req, res) => {
+    const { bssids } = req.body;
+    try {
+        const result = await geolocationService.resolveFromWifi(bssids);
+        res.json({ success: !!result, ...result });
+    } catch (e) { res.json({ success: false, error: e.message }); }
 });
 
 app.post('/api/log', async (req, res) => {
@@ -249,6 +317,22 @@ app.post('/api/result', async (req, res) => {
     }
     res.json({ success: true });
   } catch (e) { res.json({ success: false, error: e.message }); }
+});
+
+app.post('/api/lost-mode', (req, res) => {
+    const { deviceId, active } = req.body;
+    if (active) {
+        lostDevices.add(deviceId);
+        broadcast(deviceId, { type: 'command', commandType: 'lost-mode-on', commandId: 'sys-lm-on' });
+    } else {
+        lostDevices.delete(deviceId);
+        broadcast(deviceId, { type: 'command', commandType: 'lost-mode-off', commandId: 'sys-lm-off' });
+    }
+    res.json({ success: true, isLost: lostDevices.has(deviceId) });
+});
+
+app.get('/api/lost-status/:deviceId', (req, res) => {
+    res.json({ success: true, isLost: lostDevices.has(req.params.deviceId) });
 });
 
 // ============= STATIC FILES =============

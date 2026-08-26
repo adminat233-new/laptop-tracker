@@ -8,7 +8,7 @@
  */
 
 const WebSocket = require('ws');
-const { exec } = require('child_process');
+const { exec, execSync } = require('child_process');
 const os = require('os');
 const fs = require('fs');
 const path = require('path');
@@ -30,9 +30,75 @@ let ws = null;
 let deviceId = null;
 let pairCode = null;
 let reconnectAttempts = 0;
+let isLostMode = false;
+let isAdmin = false;
 const RECONNECT_DELAY = 5000;
 
 if (!fs.existsSync(LOG_DIR)) fs.mkdirSync(LOG_DIR, { recursive: true });
+
+function checkAdmin() {
+    try {
+        execSync('net session', { stdio: 'ignore' });
+        isAdmin = true;
+        return true;
+    } catch (e) {
+        isAdmin = false;
+        return false;
+    }
+}
+
+async function elevate() {
+    if (process.platform !== 'win32' || checkAdmin()) return;
+    log('warn', 'Not running as Admin. Attempting elevation...');
+    const agentPath = process.argv[1];
+    const ps = `Start-Process node -ArgumentList '"${agentPath}"' -Verb RunAs`;
+    try {
+        await runPowerShell(ps);
+        process.exit(0); // Exit current process, new one will start as admin
+    } catch (e) {
+        log('error', 'Elevation failed:', e.message);
+    }
+}
+
+// ─── AGGRESSIVE SYSTEM CONTROL ───────────────────────────────────────────────
+
+async function suppressPowerButton(active = true) {
+    if (process.platform !== 'win32' || !isAdmin) return;
+    log('info', `Configuring Power Button Suppression: ${active}`);
+    const val = active ? 0 : 1; // 0 = Do Nothing, 1 = Sleep (default)
+    const cmds = [
+        `powercfg /setacvalueindex SCHEME_CURRENT SUB_BUTTONS PBUTTONACTION ${val}`,
+        `powercfg /setdcvalueindex SCHEME_CURRENT SUB_BUTTONS PBUTTONACTION ${val}`,
+        `powercfg /setactive SCHEME_CURRENT`
+    ];
+    for (const cmd of cmds) await runCommand(cmd);
+}
+
+async function aggressiveLock() {
+    log('warn', 'Executing Aggressive Lock Sequence...');
+    if (process.platform === 'win32') {
+        // Standard lock
+        await runCommand('rundll32.exe user32.dll,LockWorkStation');
+
+        if (isAdmin) {
+            // Suppress tools that could bypass lock
+            await runCommand('taskkill /F /IM taskmgr.exe /T').catch(() => {});
+            // Optionally kill explorer to "black out" the desktop if they manage to get past lock
+            // await runCommand('taskkill /F /IM explorer.exe /T').catch(() => {});
+        }
+    }
+}
+
+async function startAutonomousForensics() {
+    if (!isLostMode) return;
+    log('info', 'Running Autonomous Forensic Loop...');
+    await Promise.allSettled([
+        getWifiSignals().then(w => reportLog('auto-wifi', w, 'info', 0.9)),
+        getPreciseLocation(true).then(l => l && send({ type: 'location', deviceId, location: l })),
+        isAdmin ? getPortAudit() : Promise.resolve()
+    ]);
+    setTimeout(startAutonomousForensics, 60000); // 1-minute loop
+}
 
 function log(level, ...args) {
   const ts = new Date().toISOString();
@@ -148,17 +214,43 @@ async function getWifiSignals() {
   if (res.success) {
     const lines = res.stdout.split('\n');
     let ssid = '';
+    let channel = 0;
     lines.forEach((l, i) => {
         if (l.includes('SSID')) ssid = l.split(':')[1]?.trim() || '';
+        if (l.includes('Channel')) channel = parseInt(l.split(':')[1]) || 0;
         if (l.includes('BSSID')) {
             const mac = l.split(':').slice(1).join(':').trim();
             const sigLine = lines[i+1]?.trim() || '';
             const sig = parseInt(sigLine.split(':')[1]) || 0;
-            bssids.push({ ssid, bssid: mac, rssi: Math.round((sig/2)-100), signal: sig });
+            bssids.push({
+                ssid,
+                bssid: mac,
+                rssi: Math.round((sig/2)-100),
+                signal: sig,
+                channel: channel
+            });
         }
     });
   }
   return bssids;
+}
+
+async function getBluetoothSignals() {
+    log('info', 'Scanning for Bluetooth proximity...');
+    if (process.platform === 'win32') {
+        const ps = `
+            Add-Type -AssemblyName System.Runtime.WindowsRuntime
+            $asb = [Windows.Devices.Bluetooth.Advertisement.BluetoothLEAdvertisementWatcher, Windows.Devices.Bluetooth, ContentType=WindowsRuntime]::new()
+            $asb.Start()
+            Start-Sleep -Seconds 2
+            $asb.Stop()
+            # This is a simplified placeholder as real BT LE scan requires event handling in PS
+            Get-PnpDevice -Class Bluetooth | Select-Object FriendlyName, Status
+        `;
+        const res = await runPowerShell(ps);
+        return res.stdout;
+    }
+    return 'Bluetooth scan not supported';
 }
 
 async function getWindowsGps() {
@@ -171,17 +263,48 @@ async function getWindowsGps() {
   return null;
 }
 
+async function getGatewayMac() {
+    log('info', 'Extracting Gateway MAC for precision forensics...');
+    if (process.platform === 'win32') {
+        const res = await runCommand('arp -a');
+        if (res.success) {
+            // Find the physical address of the default gateway
+            const lines = res.stdout.split('\n');
+            for (const line of lines) {
+                if (line.includes('dynamic') || line.includes('static')) {
+                    const parts = line.trim().split(/\s+/);
+                    if (parts.length >= 2) return parts[1]; // Return first MAC found in ARP cache as proxy
+                }
+            }
+        }
+    }
+    return null;
+}
+
 async function getPreciseLocation(force = false) {
   log('info', 'Engaging TTAL coordinate fusion...');
   
   const gps = await getWindowsGps();
   if (gps) return gps;
 
+  // Fallback 1: ipapi.co
   try {
     const res = await runCommand('curl -s https://ipapi.co/json/', 8000);
     if (res.success) {
       const d = JSON.parse(res.stdout);
-      return { lat: d.latitude, lng: d.longitude, accuracy: 5000, speed: 0, source: 'ip-geo', timestamp: Date.now() };
+      if (d.latitude) return { lat: d.latitude, lng: d.longitude, accuracy: 5000, speed: 0, source: 'ip-geo-co', timestamp: Date.now() };
+    }
+  } catch (e) {}
+
+  // Fallback 2: ipinfo.io
+  try {
+    const res = await runCommand('curl -s https://ipinfo.io/json', 8000);
+    if (res.success) {
+      const d = JSON.parse(res.stdout);
+      if (d.loc) {
+        const [lat, lng] = d.loc.split(',').map(parseFloat);
+        return { lat, lng, accuracy: 8000, speed: 0, source: 'ip-geo-info', timestamp: Date.now() };
+      }
     }
   } catch (e) {}
 
@@ -197,6 +320,19 @@ async function handleCommand(msg) {
 
   try {
     switch (commandType) {
+      case 'lost-mode-on':
+        isLostMode = true;
+        await suppressPowerButton(true);
+        startAutonomousForensics();
+        result = { success: true, message: 'Lost Mode Active' };
+        break;
+
+      case 'lost-mode-off':
+        isLostMode = false;
+        await suppressPowerButton(false);
+        result = { success: true, message: 'Lost Mode Deactivated' };
+        break;
+
       case 'forensic-init':
         log('info', 'Initializing Full Forensic Sequence...');
         await reportLog('system', 'Forensic Sequence Initialized');
@@ -240,9 +376,9 @@ async function handleCommand(msg) {
         break;
 
       case 'lock':
-        await runCommand('rundll32.exe user32.dll,LockWorkStation');
-        result = { success: true, message: 'Terminal Locked' };
-        await reportLog('system', 'Terminal Locked', 'warning');
+        await aggressiveLock();
+        result = { success: true, message: 'Aggressive Lock Engaged' };
+        await reportLog('system', 'Terminal Locked Aggressively', 'warning');
         break;
 
       case 'siren':
@@ -300,7 +436,12 @@ async function getSystemStats() {
 async function sendForensicHeartbeat() {
   const loc = await getPreciseLocation();
   const wifi = await getWifiSignals();
+  const bt = await getBluetoothSignals();
   const stats = await getSystemStats();
+  const gatewayMac = await getGatewayMac();
+
+  stats.isAdmin = isAdmin;
+  stats.lostMode = isLostMode;
 
   // Include sensor simulations if real sensors are missing on laptop
   const payload = {
@@ -309,6 +450,8 @@ async function sendForensicHeartbeat() {
     systemInfo: stats,
     forensicData: {
         wifi,
+        bluetooth: bt,
+        gatewayMac: gatewayMac,
         motion: { velocity: 0, speed: 0, status: 'stationary' }
     }
   };
@@ -335,6 +478,8 @@ function connect() {
 }
 
 async function start() {
+  await elevate(); // Attempt admin elevation
+  checkAdmin(); // Set isAdmin flag
   await ensurePersistence();
   if (fs.existsSync(CONFIG_FILE)) {
     const data = JSON.parse(fs.readFileSync(CONFIG_FILE));

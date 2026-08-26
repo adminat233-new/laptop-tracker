@@ -25,7 +25,9 @@ export default function DashboardScreen({ deviceId, laptopDeviceId, serverServic
   const [modalType, setModalType] = useState<'image' | 'list' | 'text' | 'wifi' | 'network'>('text');
   const [pathHistory, setPathHistory] = useState<any[]>([]);
   const [brainStats, setBrainStats] = useState({ confidence: 0, motion: 'stationary', speed: 0 });
-  
+  const [isLostMode, setIsLostMode] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+
   const mapRef = useRef<MapView>(null);
 
   const [logs, setLogs] = useState<any[]>([]);
@@ -34,6 +36,9 @@ export default function DashboardScreen({ deviceId, laptopDeviceId, serverServic
     (async () => {
       const accepted = await LocationService.checkUserAgreement();
       if (!accepted) await LocationService.showAgreement();
+
+      const lostStatus = await apiGet(serverService.url, '/api/lost-status/' + laptopDeviceId);
+      if (lostStatus.success) setIsLostMode(lostStatus.isLost);
     })();
 
     const logPoll = setInterval(async () => {
@@ -41,6 +46,15 @@ export default function DashboardScreen({ deviceId, laptopDeviceId, serverServic
             try {
                 const data = await apiGet(serverService.url, '/api/logs/' + laptopDeviceId);
                 if (data.success && data.logs) setLogs(data.logs);
+
+                const status = await apiGet(serverService.url, '/api/status/' + laptopDeviceId);
+                if (status.success) {
+                    setLaptopOnline(status.isOnline);
+                    if (status.systemInfo) {
+                        setLaptopInfo(status.systemInfo);
+                        setIsAdmin(status.systemInfo.isAdmin);
+                    }
+                }
             } catch(e) {}
         }
     }, 5000);
@@ -89,7 +103,23 @@ export default function DashboardScreen({ deviceId, laptopDeviceId, serverServic
   const sendCommand = useCallback(async (type: string, params = {}) => {
     setLoading(true);
     serverService.send({ type: 'command', commandType: type, params });
+    setTimeout(() => setLoading(false), 5000); // Auto-clear loading
   }, [serverService]);
+
+  const toggleLostMode = async (active: boolean) => {
+    try {
+        const res = await fetch(`${serverService.url}/api/lost-mode`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ deviceId: laptopDeviceId, active })
+        });
+        const data = await res.json();
+        if (data.success) {
+            setIsLostMode(active);
+            Alert.alert('System Update', active ? 'Lost Mode Engaged - Automation Active' : 'Device Recovered');
+        }
+    } catch(e) { Alert.alert('Error', 'Failed to toggle mode'); }
+  };
 
   const renderLogItem = ({ item }: { item: any }) => {
     const ts = new Date(Number(item.createdAt)).toLocaleTimeString();
@@ -141,10 +171,18 @@ export default function DashboardScreen({ deviceId, laptopDeviceId, serverServic
             <View style={[styles.statusDot, laptopOnline ? styles.online : styles.offline]} />
             <Text style={styles.statusText}>{laptopOnline ? 'SECURE AGENT CONNECTED' : 'NODE DISCONNECTED'}</Text>
           </View>
+          {isAdmin && <Text style={styles.adminBadge}>🛡️ ADMIN PRIVILEGES ACTIVE</Text>}
         </View>
         <View style={styles.distBox}>
-          <Text style={styles.distanceValue}>{distance}</Text>
-          <Text style={styles.distanceLabel}>PROXIMITY</Text>
+          {!isLostMode ? (
+            <TouchableOpacity style={styles.lostBtn} onPress={() => toggleLostMode(true)}>
+                <Text style={styles.lostBtnText}>🚨 LOST</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity style={styles.foundBtn} onPress={() => toggleLostMode(false)}>
+                <Text style={styles.foundBtnText}>✅ FOUND</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
 
@@ -159,23 +197,29 @@ export default function DashboardScreen({ deviceId, laptopDeviceId, serverServic
           {laptopLocation && (
             <>
               <Marker coordinate={{ latitude: laptopLocation.lat, longitude: laptopLocation.lng }}>
-                <View style={styles.marker}><Text style={styles.markerIcon}>💻</Text></View>
+                <View style={[styles.marker, isLostMode && { borderColor: '#ef4444' }]}><Text style={styles.markerIcon}>💻</Text></View>
               </Marker>
               <Circle
                 center={{ latitude: laptopLocation.lat, longitude: laptopLocation.lng }}
                 radius={laptopLocation.accuracy || 50}
-                strokeColor="#00d4ff"
-                fillColor="#00d4ff11"
+                strokeColor={isLostMode ? "#ef4444" : "#00d4ff"}
+                fillColor={isLostMode ? "#ef444411" : "#00d4ff11"}
                 strokeWidth={2}
               />
               <Polyline coordinates={pathHistory} strokeColor="#00d4ff" strokeWidth={3} lineDashPattern={[5, 5]} />
             </>
           )}
         </MapView>
-        {loading && <View style={styles.loadingOverlay}><ActivityIndicator color="#00d4ff" /><Text style={styles.loadingMsg}>Engaging Forensic Logic...</Text></View>}
+        {loading && <View style={styles.loadingOverlay}><ActivityIndicator color="#d4ff3f" /><Text style={styles.loadingMsg}>Fusing Forensic Signals...</Text></View>}
       </View>
 
       <ScrollView style={styles.panel} showsVerticalScrollIndicator={false}>
+        {isLostMode && (
+            <View style={styles.alertBanner}>
+                <Text style={styles.alertText}>AUTOMATED TRACKING LOOPS ACTIVE</Text>
+            </View>
+        )}
+
         <View style={styles.brainCard}>
            <Text style={styles.secTitle}>TTAL Fusion Brain (v9.0)</Text>
            <View style={styles.brainGrid}>
@@ -264,15 +308,20 @@ const styles = StyleSheet.create({
   statusDot: { width: 8, height: 8, borderRadius: 4, marginRight: 8, shadowColor: '#00ff88', shadowRadius: 5, shadowOpacity: 1 },
   online: { backgroundColor: '#00ff88' },
   offline: { backgroundColor: '#ff4444' },
-  statusText: { fontSize: 10, color: '#00f2ff', fontWeight: '800', letterSpacing: 1 },
+  statusText: { fontSize: 10, color: '#d4ff3f', fontWeight: '800', letterSpacing: 1 },
+  adminBadge: { fontSize: 8, color: '#00ff88', fontWeight: 'bold', marginTop: 4 },
   distBox: { alignItems: 'flex-end', justifyContent: 'center' },
-  distanceValue: { fontSize: 22, fontWeight: '800', color: '#fff' },
-  distanceLabel: { fontSize: 8, color: '#444', fontWeight: 'bold', letterSpacing: 1 },
-  mapWrap: { height: 350, width: width - 32, margin: 16, borderRadius: 24, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
+  lostBtn: { backgroundColor: 'rgba(239, 68, 68, 0.1)', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(239, 68, 68, 0.3)' },
+  lostBtnText: { color: '#ef4444', fontWeight: '800', fontSize: 12 },
+  foundBtn: { backgroundColor: 'rgba(0, 255, 136, 0.1)', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(0, 255, 136, 0.3)' },
+  foundBtnText: { color: '#00ff88', fontWeight: '800', fontSize: 12 },
+  mapWrap: { height: 320, width: width - 32, margin: 16, borderRadius: 24, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
   map: { flex: 1 },
   loadingOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(5,5,8,0.8)', justifyContent: 'center', alignItems: 'center' },
-  loadingMsg: { color: '#00f2ff', marginTop: 10, fontSize: 11, fontWeight: '800', letterSpacing: 1 },
-  marker: { width: 44, height: 44, backgroundColor: '#00f2ff', borderRadius: 22, alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: '#fff', shadowColor: '#00f2ff', shadowRadius: 10, shadowOpacity: 0.5 },
+  loadingMsg: { color: '#d4ff3f', marginTop: 10, fontSize: 11, fontWeight: '800', letterSpacing: 1 },
+  alertBanner: { backgroundColor: '#ef4444', padding: 8, borderRadius: 10, marginBottom: 16, alignItems: 'center' },
+  alertText: { color: '#fff', fontSize: 10, fontWeight: '800', letterSpacing: 1 },
+  marker: { width: 44, height: 44, backgroundColor: '#000', borderRadius: 22, alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: '#d4ff3f', shadowColor: '#d4ff3f', shadowRadius: 10, shadowOpacity: 0.5 },
   markerIcon: { fontSize: 20 },
   panel: { paddingHorizontal: 16 },
   secTitle: { fontSize: 10, fontWeight: '800', color: '#555', textTransform: 'uppercase', letterSpacing: 2, marginBottom: 15, marginTop: 10 },
