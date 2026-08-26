@@ -206,6 +206,55 @@
     .code-input:focus { border-color: var(--primary); background: rgba(255,255,255,0.1); }
     .code-inputs { display: flex; gap: 4px; justify-content: center; }
 
+    .verify-binary {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      color: var(--primary);
+      word-break: break-all;
+      margin-top: 20px;
+      opacity: 0.6;
+      max-width: 100%;
+      text-align: center;
+    }
+
+    /* Mobile Responsiveness */
+    @media (max-width: 600px) {
+      body { padding: 10px; }
+      .hero-section { margin-bottom: 20px; }
+      .hero-section h1 { font-size: 26px; }
+      .hero-section p { font-size: 12px; }
+      .pair-card { padding: 25px 15px; border-radius: 24px; }
+      .role-btn { padding: 16px; gap: 8px; border-radius: 16px; }
+      .role-btn .icon { font-size: 24px; }
+      .role-btn .label { font-size: 11px; }
+
+      .code-display { gap: 4px; }
+      .code-box { width: 30px; height: 40px; font-size: 18px; border-radius: 8px; }
+
+      .code-inputs { gap: 3px; }
+      .code-input { width: 28px; height: 40px; font-size: 16px; border-radius: 6px; }
+
+      #dashboard { padding-top: 70px; padding-bottom: 300px; }
+      .header { padding: 10px 16px; }
+      #device-name { font-size: 12px; }
+      #last-seen { font-size: 9px; }
+
+      .map-container { height: 35vh; margin: 10px; width: calc(100% - 20px); border-radius: 16px; }
+
+      .stat-grid { grid-template-columns: 1fr 1fr 1fr !important; gap: 8px !important; }
+      .stat-card { padding: 10px; border-radius: 12px; }
+      .stat-card div:first-child { font-size: 8px !important; }
+      .stat-card div:last-child { font-size: 14px !important; }
+
+      .floating-controls { bottom: 12px; left: 12px; right: 12px; padding: 16px; border-radius: 24px; }
+      .command-grid { grid-template-columns: repeat(4, 1fr) !important; gap: 6px !important; }
+      .alarm-btn { padding: 10px !important; border-radius: 10px !important; }
+      .alarm-btn span { font-size: 16px !important; }
+      .alarm-btn div { font-size: 8px !important; }
+
+      .btn-main { padding: 14px; font-size: 14px; border-radius: 14px; }
+    }
+
   </style>
 </head>
 <body>
@@ -280,7 +329,7 @@
         [INTEL] Signal fusion complete. Monitoring target trajectory in real-time.
       </div>
 
-      <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 16px;">
+      <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 16px;" class="stat-grid">
         <div class="stat-card">
           <div style="font-size: 10px; color: #666; margin-bottom: 5px;">ACCURACY</div>
           <div style="font-size: 18px; font-weight: 800; color: var(--accent);" id="stat-accuracy">--</div>
@@ -309,7 +358,7 @@
     <div class="floating-controls">
       <div style="font-size: 10px; font-weight: 800; color: #555; margin-bottom: 12px; letter-spacing: 2px; text-align: center;">COMMAND ARRAY</div>
 
-      <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px;">
+      <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px;" class="command-grid">
         <button class="alarm-btn siren" onclick="sendCommand('siren')" style="background: rgba(255,0,0,0.1); border: 1px solid rgba(255,0,0,0.2); border-radius: 12px; padding: 12px;">
           <span style="font-size: 20px;">🚨</span>
           <div style="font-size: 9px; margin-top: 5px;">SIREN</div>
@@ -667,6 +716,14 @@
           const msg = JSON.parse(event.data);
 
         if (msg.type === 'connected') {
+            phoneDeviceId = msg.phoneDeviceId;
+            if (!dashboardShown) {
+                dashboardShown = true;
+                document.getElementById('laptop-status').textContent = 'Paired! Phone connected.';
+                document.getElementById('laptop-status').className = 'msg-text msg-success';
+                showScreen('dashboard');
+                setTimeout(() => { if (!map) initMap(); else map.invalidateSize(); }, 300);
+            }
             updateAIGreeting("Secure uplink established. Syncing intelligence array.", 'dashboard-ai-msg');
             addForensicLog("Uplink synchronized with cloud relay.", "SYS");
         }
@@ -1266,6 +1323,15 @@
     }
 
     // ============= FORENSIC LOG =============
+    function updateAIGreeting(text, elementId) {
+      const el = document.getElementById(elementId);
+      if (!el) return;
+      el.textContent = '[INTEL] ' + text;
+      el.style.animation = 'none';
+      el.offsetHeight; // trigger reflow
+      el.style.animation = null;
+    }
+
     function addForensicLog(msg, tool = 'sys', level = 'info') {
       const el = document.getElementById('forensic-log');
       if (!el) return;

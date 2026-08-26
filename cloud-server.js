@@ -113,7 +113,12 @@ app.get('/api/paired/:deviceId', async (req, res) => {
         const dev = await prisma.device.findUnique({ where: { deviceId: req.params.deviceId } });
         if (!dev) return res.json({ success: false });
         const pair = await prisma.device.findFirst({ where: { pairCode: dev.pairCode, deviceId: { not: dev.deviceId } } });
-        res.json({ success: true, paired: !!pair, pairedDeviceIds: pair ? [pair.deviceId] : [] });
+        res.json({
+            success: true,
+            paired: !!pair,
+            pairedCount: pair ? 1 : 0,
+            pairedDeviceIds: pair ? [pair.deviceId] : []
+        });
     } catch(e) { res.json({ success: false }); }
 });
 
