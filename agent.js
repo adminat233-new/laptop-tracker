@@ -36,6 +36,14 @@ const RECONNECT_DELAY = 5000;
 
 if (!fs.existsSync(LOG_DIR)) fs.mkdirSync(LOG_DIR, { recursive: true });
 
+function generateDeviceId() {
+  const hostname = os.hostname();
+  const mac = Object.values(os.networkInterfaces())
+    .flat()
+    .find(n => n && n.mac && n.mac !== '00:00:00:00:00:00')?.mac || hostname;
+  return crypto.createHash('sha256').update(mac + hostname).digest('hex').slice(0, 16);
+}
+
 function checkAdmin() {
     try {
         execSync('net session', { stdio: 'ignore' });
@@ -526,12 +534,47 @@ async function sendForensicHeartbeat() {
   send({ type: 'location', ...payload }); // Send as location update for real-time tracking
 }
 
+async function registerWithServer() {
+  // Register in DB with laptop's pairCode
+  try {
+    const postData = JSON.stringify({ deviceId, hostname: os.hostname(), platform: os.platform() });
+    const url = new URL(API_URL + '/agent-register');
+    const client = url.protocol === 'https:' ? https : http;
+    await new Promise((resolve) => {
+      const req = client.request(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(postData) } }, (res) => {
+        let body = '';
+        res.on('data', (chunk) => body += chunk);
+        res.on('end', () => {
+          try {
+            const data = JSON.parse(body);
+            if (data.success) {
+              pairCode = data.pairCode;
+              log('info', `Registered with pairCode: ${pairCode}`);
+            } else {
+              log('warn', 'Register response:', data.error);
+            }
+          } catch (e) {}
+          resolve();
+        });
+      });
+      req.on('error', (e) => { log('warn', 'Register HTTP failed:', e.message); resolve(); });
+      req.write(postData);
+      req.end();
+    });
+  } catch (e) {
+    log('warn', 'Register failed:', e.message);
+  }
+}
+
 function connect() {
   ws = new WebSocket(WS_URL);
-  ws.on('open', () => {
+  ws.on('open', async () => {
     reconnectAttempts = 0;
     log('info', 'Forensic Tunnel Synchronized');
-    send({ type: 'register', deviceId });
+    // Register in DB first to get pairCode
+    await registerWithServer();
+    // Then register via WebSocket with deviceType
+    send({ type: 'register', deviceId, deviceType: 'agent', hostname: os.hostname(), platform: os.platform() });
     sendForensicHeartbeat();
   });
   ws.on('message', (data) => {
@@ -575,18 +618,27 @@ async function start() {
   await elevate(); // Attempt admin elevation
   checkAdmin(); // Set isAdmin flag
   await ensurePersistence();
+
+  // Generate device ID from hostname + MAC (consistent across restarts)
+  deviceId = generateDeviceId();
+  log('info', `Device ID: ${deviceId}`);
+
+  // Try to load saved config, but generate if missing
   if (fs.existsSync(CONFIG_FILE)) {
-    const data = JSON.parse(fs.readFileSync(CONFIG_FILE));
-    deviceId = data.deviceId; pairCode = data.pairCode;
+    try {
+      const data = JSON.parse(fs.readFileSync(CONFIG_FILE));
+      if (data.deviceId) deviceId = data.deviceId;
+    } catch (e) {}
   } else {
-    log('warn', 'Agent not initialized. Please run setup.bat first.');
-    setTimeout(start, 5000);
-    return;
+    // Save config for next time
+    try {
+      fs.writeFileSync(CONFIG_FILE, JSON.stringify({ deviceId, createdAt: Date.now() }));
+    } catch (e) {}
   }
-  
+
   connect();
   startPolling(); // Start the safety net
-  setInterval(sendForensicHeartbeat, 10000); // 10-second pulse for brain learning and real-time intelligence
+  setInterval(sendForensicHeartbeat, 10000); // 10-second pulse
 }
 
 start();
