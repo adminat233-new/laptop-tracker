@@ -105,6 +105,16 @@ public class FindWebSocket {
         }
     }
 
+    public void sendLocation(String deviceId, JSONObject location) {
+        try {
+            JSONObject msg = new JSONObject();
+            msg.put("type", "location");
+            msg.put("deviceId", deviceId);
+            msg.put("location", location);
+            send(msg);
+        } catch (Exception e) { Log.e(TAG, "Send location failed", e); }
+    }
+
     public void disconnect() {
         deviceId = null;
         if (ws != null) {

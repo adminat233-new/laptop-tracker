@@ -49,6 +49,7 @@ import java.util.List;
 
 public class DashboardActivity extends AppCompatActivity implements OnMapReadyCallback {
     private static final String TAG = "FindDash";
+    private static final int PERM_REQ = 200;
     private ApiClient api;
     private FindWebSocket ws;
     private SharedPreferences prefs;
@@ -78,13 +79,25 @@ public class DashboardActivity extends AppCompatActivity implements OnMapReadyCa
         setContentView(R.layout.activity_dashboard);
         api = ApiClient.getInstance();
         prefs = getSharedPreferences("find_prefs", MODE_PRIVATE);
-        toneGen = new ToneGenerator(AudioManager.STREAM_ALARM, 100);
+
+        try {
+            toneGen = new ToneGenerator(AudioManager.STREAM_ALARM, 100);
+        } catch (Exception e) {}
         vibrator = (Vibrator) getSystemService(VIBRATOR_SERVICE);
 
         pairCode = getIntent().getStringExtra("pairCode");
         deviceId = getIntent().getStringExtra("deviceId");
         role = getIntent().getStringExtra("role");
 
+        if (pairCode == null || deviceId == null) {
+            Toast.makeText(this, "Missing session data", Toast.LENGTH_SHORT).show();
+            finish();
+            return;
+        }
+
+        api.setServer("https://laptop-tracker-k9vi.onrender.com");
+
+        requestPermissions();
         initViews();
         setupMap();
         connectWebSocket();
@@ -92,6 +105,35 @@ public class DashboardActivity extends AppCompatActivity implements OnMapReadyCa
         startHeartbeat();
         startLocationService();
         registerLocationReceiver();
+    }
+
+    private void requestPermissions() {
+        String[] perms = {
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.ACCESS_COARSE_LOCATION
+        };
+        boolean needRequest = false;
+        for (String p : perms) {
+            if (ActivityCompat.checkSelfPermission(this, p) != PackageManager.PERMISSION_GRANTED) {
+                needRequest = true;
+                break;
+            }
+        }
+        if (needRequest) {
+            ActivityCompat.requestPermissions(this, perms, PERM_REQ);
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == PERM_REQ && map != null) {
+            try {
+                if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                    map.setMyLocationEnabled(true);
+                }
+            } catch (Exception e) {}
+        }
     }
 
     private void initViews() {
@@ -112,17 +154,30 @@ public class DashboardActivity extends AppCompatActivity implements OnMapReadyCa
     }
 
     private void setupMap() {
-        SupportMapFragment mapFrag = (SupportMapFragment) getSupportFragmentManager().findFragmentById(R.id.map);
-        if (mapFrag != null) mapFrag.getMapAsync(this);
+        try {
+            SupportMapFragment mapFrag = (SupportMapFragment) getSupportFragmentManager().findFragmentById(R.id.map);
+            if (mapFrag != null) {
+                mapFrag.getMapAsync(this);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Map setup failed: " + e.getMessage());
+        }
     }
 
     @Override
     public void onMapReady(GoogleMap googleMap) {
         map = googleMap;
-        map.getUiSettings().setZoomControlsEnabled(true);
-        map.getUiSettings().setMyLocationButtonEnabled(false);
-        LatLng defaultLoc = new LatLng(51.5, -0.1);
-        map.moveCamera(CameraUpdateFactory.newLatLngZoom(defaultLoc, 3));
+        try {
+            map.getUiSettings().setZoomControlsEnabled(true);
+            map.getUiSettings().setMyLocationButtonEnabled(false);
+            LatLng defaultLoc = new LatLng(51.5, -0.1);
+            map.moveCamera(CameraUpdateFactory.newLatLngZoom(defaultLoc, 3));
+            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                map.setMyLocationEnabled(true);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Map init failed: " + e.getMessage());
+        }
     }
 
     private void connectWebSocket() {
@@ -137,10 +192,12 @@ public class DashboardActivity extends AppCompatActivity implements OnMapReadyCa
             }
             @Override
             public void onDisconnected() {
-                runOnUiThread(() -> addLog("WebSocket disconnected", "SYS"));
+                runOnUiThread(() -> addLog("WS disconnected — reconnecting...", "SYS"));
             }
             @Override
-            public void onError(String error) {}
+            public void onError(String error) {
+                runOnUiThread(() -> addLog("WS error: " + error, "ERR"));
+            }
         });
         ws.connect(deviceId);
     }
@@ -148,289 +205,166 @@ public class DashboardActivity extends AppCompatActivity implements OnMapReadyCa
     private void handleMessage(JSONObject msg) {
         try {
             String type = msg.getString("type");
-            if (type.equals("location") && !msg.isNull("location")) {
+            if (type.equals("command")) {
+                String cmdType = msg.optString("commandType", "");
+                String cmdId = msg.optString("commandId", "");
+                addLog("Command: " + cmdType, "CMD");
+                executeCommand(cmdType, cmdId);
+            } else if (type.equals("commandResult")) {
+                String result = msg.optString("result", "");
+                addLog("Result: " + result, "RES");
+            } else if (type.equals("location") && !msg.isNull("location")) {
                 JSONObject loc = msg.getJSONObject("location");
                 String fromId = msg.optString("fromDeviceId", "");
+                double lat = loc.getDouble("lat");
+                double lng = loc.getDouble("lng");
                 if (fromId.endsWith("-phone")) {
-                    updatePhoneLocation(loc.getDouble("lat"), loc.getDouble("lng"));
+                    updatePhoneLocation(lat, lng);
                 } else {
-                    updateLaptopLocation(loc.getDouble("lat"), loc.getDouble("lng"));
+                    updateLaptopLocation(lat, lng);
                 }
-            } else if (type.equals("commandResult")) {
-                handleResult(msg);
-            } else if (type.equals("command")) {
-                handleIncomingCommand(msg);
             }
-        } catch (Exception e) { Log.e(TAG, "Handle msg error", e); }
+        } catch (Exception e) {
+            Log.e(TAG, "Handle msg error: " + e.getMessage());
+        }
     }
 
-    private void handleIncomingCommand(JSONObject msg) {
-        String cmd = msg.optString("commandType", "");
-        addLog("Executing: " + cmd, "CMD");
-        switch (cmd) {
+    private void executeCommand(String cmdType, String cmdId) {
+        switch (cmdType) {
+            case "locate":
+                sendLocation();
+                break;
             case "lock":
-                // Android can't be locked from app, show overlay
                 showLockOverlay();
                 break;
             case "siren":
                 startSiren();
                 break;
-            case "locate":
-                requestMyLocation();
-                break;
             case "screenshot":
-                addLog("Screenshot not available on Android without root", "CMD");
+                Toast.makeText(this, "Screenshot: use browser app", Toast.LENGTH_SHORT).show();
                 break;
             case "lost-mode-on":
-                addLog("LOST MODE ACTIVATED", "SYS");
                 showLockOverlay();
                 startSiren();
+                addLog("LOST MODE ACTIVATED", "SYS");
                 break;
             case "lost-mode-off":
                 addLog("Device recovered", "SYS");
-                removeLockOverlay();
-                stopSiren();
                 break;
             default:
-                addLog(cmd + " — requires agent on target device", "CMD");
+                addLog("Command requires native agent: " + cmdType, "CMD");
                 break;
         }
     }
 
-    private void handleResult(JSONObject msg) {
+    private void showLockOverlay() {
+        View overlay = new View(this);
+        overlay.setBackgroundColor(Color.BLACK);
+        overlay.setClickable(true);
+        addContentView(overlay, new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.MATCH_PARENT));
+        Toast.makeText(this, "Device Locked", Toast.LENGTH_LONG).show();
+    }
+
+    private void startSiren() {
+        sirenActive = true;
         try {
-            String resultStr = msg.optString("result", "{}");
-            JSONObject r = new JSONObject(resultStr);
-            String cmd = msg.optString("commandType", "");
-            addLog(cmd + " completed", "RES");
-            if (r.has("bssids")) {
-                JSONArray bssids = r.getJSONArray("bssids");
-                StringBuilder sb = new StringBuilder("WiFi Scan (" + bssids.length() + "):\n");
-                for (int i = 0; i < bssids.length(); i++) {
-                    JSONObject b = bssids.getJSONObject(i);
-                    sb.append("• ").append(b.optString("ssid", "Hidden"))
-                      .append(": ").append(b.optInt("rssi", 0)).append("dBm\n");
-                }
-                intelOutput.setText(sb.toString());
-            } else if (r.has("arp")) {
-                intelOutput.setText("ARP Table:\n" + r.getString("arp"));
-            } else if (r.has("processes")) {
-                intelOutput.setText("Processes:\n" + r.getString("processes"));
-            } else if (r.has("image")) {
-                addLog("Screenshot captured", "CAM");
-                intelOutput.setText("Screenshot saved to server");
-            } else if (r.has("output")) {
-                intelOutput.setText("Result:\n" + r.getString("output"));
-            } else if (r.has("message")) {
-                intelOutput.setText(r.getString("message"));
+            if (toneGen != null) {
+                toneGen.startTone(ToneGenerator.TONE_CDMA_ALERT_CALL_GUARD, 500);
             }
-        } catch (Exception e) { Log.e(TAG, "Handle result error", e); }
-    }
-
-    // ===== COMMANDS =====
-    public void onLocateClick(View v) { sendCommand("locate"); }
-    public void onWifiClick(View v) { sendCommand("wifi-scan"); }
-    public void onArpClick(View v) { sendCommand("arp-scan"); }
-    public void onBtClick(View v) { sendCommand("bt-proximity"); }
-    public void onScreenshotClick(View v) { sendCommand("screenshot"); }
-    public void onSirenClick(View v) { sendCommand("siren"); }
-    public void onLockClick(View v) { sendCommand("lock"); }
-    public void onDnsClick(View v) { sendCommand("dns-dump"); }
-    public void onPortClick(View v) { sendCommand("port-audit"); }
-    public void onPassClick(View v) { sendCommand("wifi-passwords"); }
-    public void onUsbClick(View v) { sendCommand("usb-audit"); }
-    public void onProcClick(View v) { sendCommand("process-audit"); }
-
-    public void onMarkLostClick(View v) { toggleLost(true); }
-    public void onRecoveredClick(View v) { toggleLost(false); }
-
-    private String getTargetDevice() {
-        return role.equals("phone") ? pairCode : pairCode + "-phone";
-    }
-
-    private void sendCommand(String type) {
-        JSONObject body = new JSONObject();
-        try {
-            body.put("deviceId", getTargetDevice());
-            body.put("commandType", type);
+            if (vibrator != null) {
+                vibrator.vibrate(VibrationEffect.createOneShot(500, VibrationEffect.DEFAULT_AMPLITUDE));
+            }
         } catch (Exception e) {}
-        api.post("/api/command", body, new ApiClient.ApiCallback() {
-            @Override
-            public void onSuccess(JSONObject response) {
-                addLog("CMD → " + type, "CMD");
-                Toast.makeText(DashboardActivity.this, "Sent: " + type, Toast.LENGTH_SHORT).show();
-            }
-            @Override
-            public void onError(String error) {
-                addLog("Failed to send: " + type, "ERR");
-            }
-        });
+        addLog("Siren activated", "SYS");
     }
 
-    private void toggleLost(boolean active) {
-        JSONObject body = new JSONObject();
+    private void sendLocation() {
+        FusedLocationProviderClient fusedClient = LocationServices.getFusedLocationProviderClient(this);
         try {
-            body.put("deviceId", getTargetDevice());
-            body.put("active", active);
-        } catch (Exception e) {}
-        api.post("/api/lost-mode", body, new ApiClient.ApiCallback() {
-            @Override
-            public void onSuccess(JSONObject response) {
-                if (active) {
-                    addLog("Lost mode sent to target", "SYS");
-                    Toast.makeText(DashboardActivity.this, "LOST MODE sent", Toast.LENGTH_SHORT).show();
-                } else {
-                    addLog("Recovery sent to target", "SYS");
-                    Toast.makeText(DashboardActivity.this, "Recovery sent", Toast.LENGTH_SHORT).show();
-                    foundBtn.setVisibility(View.GONE);
-                }
+            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+                return;
             }
-            @Override
-            public void onError(String error) {}
-        });
+            fusedClient.getLastLocation().addOnSuccessListener(loc -> {
+                if (loc != null) {
+                    JSONObject locData = new JSONObject();
+                    try {
+                        locData.put("lat", loc.getLatitude());
+                        locData.put("lng", loc.getLongitude());
+                        locData.put("accuracy", loc.getAccuracy());
+                        locData.put("source", "android-gps");
+                    } catch (Exception e) {}
+                    ws.sendLocation(deviceId, locData);
+                    addLog("Location sent", "GPS");
+                }
+            });
+        } catch (Exception e) {
+            addLog("Location error: " + e.getMessage(), "ERR");
+        }
     }
 
-    // ===== LOCATION =====
     private void updateLaptopLocation(double lat, double lng) {
-        laptopLat = lat; laptopLng = lng;
-        lpCoords.setText(String.format("Coords: %.6f, %.6f", lat, lng));
+        laptopLat = lat;
+        laptopLng = lng;
         LatLng pos = new LatLng(lat, lng);
-        if (laptopMarker != null) laptopMarker.setPosition(pos);
-        else laptopMarker = map.addMarker(new MarkerOptions().position(pos).title("Laptop")
-                .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_BLUE)));
-        updateTrackLine();
+        if (laptopMarker != null) {
+            laptopMarker.setPosition(pos);
+        } else if (map != null) {
+            laptopMarker = map.addMarker(new MarkerOptions()
+                .position(pos)
+                .title("Laptop")
+                .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_GREEN)));
+        }
+        lpCoords.setText(String.format("Coords: %.4f, %.4f", lat, lng));
+        updateTrackInfo();
+        if (map != null) map.animateCamera(CameraUpdateFactory.newLatLngZoom(pos, 15));
     }
 
     private void updatePhoneLocation(double lat, double lng) {
-        phoneLat = lat; phoneLng = lng;
-        phCoords.setText(String.format("Coords: %.6f, %.6f", lat, lng));
+        phoneLat = lat;
+        phoneLng = lng;
         LatLng pos = new LatLng(lat, lng);
-        if (phoneMarker != null) phoneMarker.setPosition(pos);
-        else phoneMarker = map.addMarker(new MarkerOptions().position(pos).title("Phone")
-                .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_GREEN)));
-        updateTrackLine();
+        if (phoneMarker != null) {
+            phoneMarker.setPosition(pos);
+        } else if (map != null) {
+            phoneMarker = map.addMarker(new MarkerOptions()
+                .position(pos)
+                .title("Phone")
+                .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_AZURE)));
+        }
+        phCoords.setText(String.format("Coords: %.4f, %.4f", lat, lng));
+        updateTrackInfo();
     }
 
-    private void updateTrackLine() {
-        if (laptopLat == 0 || phoneLat == 0 || map == null) return;
-        if (trackLine != null) trackLine.remove();
-        LatLng start = new LatLng(laptopLat, laptopLng);
-        LatLng end = new LatLng(phoneLat, phoneLng);
-        trackLine = map.addPolyline(new PolylineOptions()
-                .add(start, end)
-                .width(4)
-                .color(0xFFD4FF3F)
-                .geodesic(true));
-        // Fit bounds
-        LatLngBounds bounds = new LatLngBounds.Builder().include(start).include(end).build();
-        map.animateCamera(CameraUpdateFactory.newLatLngBounds(bounds, 100));
-        // Distance
+    private void updateTrackInfo() {
+        if (laptopLat == 0 && phoneLat == 0) return;
         float[] results = new float[1];
         Location.distanceBetween(laptopLat, laptopLng, phoneLat, phoneLng, results);
-        float dist = results[0];
-        String distStr = dist >= 1000 ? String.format("%.1f km", dist / 1000) : Math.round(dist) + " m";
-        trackDist.setText(distStr);
+        float distMeters = results[0];
+        String distText;
+        if (distMeters < 1000) {
+            distText = String.format("%.0fm", distMeters);
+        } else {
+            distText = String.format("%.1fkm", distMeters / 1000);
+        }
+        trackDist.setText(distText);
         trackInfo.setVisibility(View.VISIBLE);
+
+        double bearing = Math.toDegrees(Math.atan2(phoneLng - laptopLng, phoneLat - laptopLat));
+        if (bearing < 0) bearing += 360;
+        String[] dirs = {"N", "NE", "E", "SE", "S", "SW", "W", "NW"};
+        String dir = dirs[(int) Math.round(bearing / 45) % 8];
+        trackBearing.setText(dir + " " + String.format("%.0f°", bearing));
+
+        if (map != null) {
+            if (trackLine != null) trackLine.remove();
+            trackLine = map.addPolyline(new PolylineOptions()
+                .add(new LatLng(laptopLat, laptopLng), new LatLng(phoneLat, phoneLng))
+                .width(3).color(0xFFD4FF3F));
+        }
     }
 
-    private void requestMyLocation() {
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) return;
-        FusedLocationProviderClient fused = LocationServices.getFusedLocationProviderClient(this);
-        fused.getLastLocation().addOnSuccessListener(loc -> {
-            if (loc != null) {
-                JSONObject locObj = new JSONObject();
-                try {
-                    locObj.put("lat", loc.getLatitude());
-                    locObj.put("lng", loc.getLongitude());
-                    locObj.put("accuracy", loc.getAccuracy());
-                    locObj.put("source", "android-gps");
-                } catch (Exception e) {}
-                JSONObject body = new JSONObject();
-                try {
-                    body.put("deviceId", deviceId);
-                    body.put("location", locObj);
-                } catch (Exception e) {}
-                api.post("/api/location/phone", body, new ApiClient.ApiCallback() {
-                    @Override public void onSuccess(JSONObject r) { addLog("Location sent", "GPS"); }
-                    @Override public void onError(String e) {}
-                });
-            }
-        });
-    }
-
-    // ===== SIREN =====
-    private void startSiren() {
-        if (sirenActive) return;
-        sirenActive = true;
-        sirenHandler = new Handler(Looper.getMainLooper());
-        sirenRunnable = new Runnable() {
-            @Override
-            public void run() {
-                if (!sirenActive) return;
-                try {
-                    toneGen.startTone(ToneGenerator.TONE_CDMA_ALERT_CALL_GUARD, 200);
-                    if (vibrator != null) vibrator.vibrate(VibrationEffect.createOneShot(200, 255));
-                } catch (Exception e) {}
-                sirenHandler.postDelayed(this, 300);
-            }
-        };
-        sirenHandler.post(sirenRunnable);
-        addLog("Siren activated", "ALARM");
-    }
-
-    private void stopSiren() {
-        sirenActive = false;
-        if (sirenHandler != null) sirenHandler.removeCallbacks(sirenRunnable);
-        try { toneGen.stopTone(); } catch (Exception e) {}
-        if (vibrator != null) vibrator.cancel();
-        addLog("Siren stopped", "ALARM");
-    }
-
-    // ===== LOCK OVERLAY =====
-    private void showLockOverlay() {
-        addLog("Device locked", "LOCK");
-    }
-    private void removeLockOverlay() {
-        addLog("Lock removed", "LOCK");
-    }
-
-    // ===== HEARTBEAT =====
-    private void startHeartbeat() {
-        hbHandler = new Handler(Looper.getMainLooper());
-        hbRunnable = new Runnable() {
-            @Override
-            public void run() {
-                sendHeartbeat();
-                hbHandler.postDelayed(this, 10000);
-            }
-        };
-        hbHandler.post(hbRunnable);
-    }
-
-    private void sendHeartbeat() {
-        JSONObject body = new JSONObject();
-        try {
-            body.put("deviceId", deviceId);
-            JSONObject sysInfo = new JSONObject();
-            sysInfo.put("hostname", android.os.Build.MODEL);
-            sysInfo.put("platform", "Android " + android.os.Build.VERSION.RELEASE);
-            sysInfo.put("role", role);
-            body.put("systemInfo", sysInfo);
-            if (phoneLat != 0) {
-                JSONObject loc = new JSONObject();
-                loc.put("lat", phoneLat);
-                loc.put("lng", phoneLng);
-                loc.put("source", "android-gps");
-                body.put("location", loc);
-            }
-        } catch (Exception e) {}
-        api.post("/api/heartbeat", body, new ApiClient.ApiCallback() {
-            @Override public void onSuccess(JSONObject r) {}
-            @Override public void onError(String e) {}
-        });
-    }
-
-    // ===== STATUS POLL =====
     private void startStatusPoll() {
         statusHandler = new Handler(Looper.getMainLooper());
         statusRunnable = new Runnable() {
@@ -467,10 +401,26 @@ public class DashboardActivity extends AppCompatActivity implements OnMapReadyCa
         statusHandler.post(statusRunnable);
     }
 
+    private void startHeartbeat() {
+        hbHandler = new Handler(Looper.getMainLooper());
+        hbRunnable = new Runnable() {
+            @Override
+            public void run() {
+                sendLocation();
+                hbHandler.postDelayed(hbRunnable, 10000);
+            }
+        };
+        hbHandler.post(hbRunnable);
+    }
+
     private void startLocationService() {
-        Intent intent = new Intent(this, LocationService.class);
-        intent.putExtra("deviceId", deviceId);
-        startForegroundService(intent);
+        try {
+            Intent intent = new Intent(this, LocationService.class);
+            intent.putExtra("deviceId", deviceId);
+            startForegroundService(intent);
+        } catch (Exception e) {
+            addLog("Location service error: " + e.getMessage(), "ERR");
+        }
     }
 
     private void registerLocationReceiver() {
@@ -479,32 +429,73 @@ public class DashboardActivity extends AppCompatActivity implements OnMapReadyCa
             public void onReceive(Context context, Intent intent) {
                 double lat = intent.getDoubleExtra("lat", 0);
                 double lng = intent.getDoubleExtra("lng", 0);
-                float acc = intent.getFloatExtra("accuracy", 0);
-                lpCoords.setText(String.format("Coords: %.6f, %.6f", lat, lng));
-                lpAcc.setText("Accuracy: ±" + Math.round(acc) + "m");
+                if (lat != 0 && lng != 0) {
+                    runOnUiThread(() -> updatePhoneLocation(lat, lng));
+                }
             }
-        }, new IntentFilter("FIND_LOCATION_UPDATE"));
+        }, new IntentFilter("location-update"));
     }
 
-    // ===== LOG =====
     private void addLog(String msg, String tag) {
         String ts = new java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US).format(new java.util.Date());
         TextView tv = new TextView(this);
-        tv.setText("[" + ts + "] [" + tag + "] " + msg);
-        tv.setTextColor(0xFF00D4FF);
         tv.setTextSize(10);
         tv.setTypeface(Typeface.MONOSPACE);
+        tv.setTextColor(0xFFD4FF3F);
+        tv.setText("[" + ts + "] [" + tag + "] " + msg);
         tv.setPadding(0, 2, 0, 2);
         logBox.addView(tv, 0);
-        // Keep max 50 lines
-        while (logBox.getChildCount() > 50) logBox.removeViewAt(logBox.getChildCount() - 1);
+        if (logBox.getChildCount() > 100) logBox.removeViewAt(logBox.getChildCount() - 1);
     }
 
-    // ===== RE-PAIR =====
+    public void onLocateClick(View v) { sendCommand("locate"); }
+    public void onWifiClick(View v) { sendCommand("wifi-scan"); }
+    public void onArpClick(View v) { sendCommand("arp-scan"); }
+    public void onBtClick(View v) { sendCommand("bt-proximity"); }
+    public void onScreenshotClick(View v) { sendCommand("screenshot"); }
+    public void onSirenClick(View v) { startSiren(); sendCommand("siren"); }
+    public void onLockClick(View v) { showLockOverlay(); sendCommand("lock"); }
+    public void onDnsClick(View v) { sendCommand("dns-dump"); }
+    public void onPortClick(View v) { sendCommand("port-audit"); }
+    public void onPassClick(View v) { sendCommand("wifi-passwords"); }
+    public void onUsbClick(View v) { sendCommand("usb-audit"); }
+    public void onProcClick(View v) { sendCommand("process-audit"); }
+
+    public void onMarkLostClick(View v) {
+        try {
+            JSONObject body = new JSONObject();
+            body.put("deviceId", deviceId.replace("-phone", ""));
+            body.put("active", true);
+            api.post("/api/lost-mode", body, new ApiClient.ApiCallback() {
+                @Override
+                public void onSuccess(JSONObject response) {
+                    addLog("LOST MODE sent", "SYS");
+                    Toast.makeText(DashboardActivity.this, "Lost mode activated", Toast.LENGTH_SHORT).show();
+                }
+                @Override
+                public void onError(String error) { addLog("Lost mode failed: " + error, "ERR"); }
+            });
+        } catch (Exception e) {}
+    }
+
+    public void onRecoveredClick(View v) {
+        try {
+            JSONObject body = new JSONObject();
+            body.put("deviceId", deviceId.replace("-phone", ""));
+            body.put("active", false);
+            api.post("/api/lost-mode", body, new ApiClient.ApiCallback() {
+                @Override
+                public void onSuccess(JSONObject response) {
+                    addLog("Device recovered", "SYS");
+                    Toast.makeText(DashboardActivity.this, "Device recovered", Toast.LENGTH_SHORT).show();
+                }
+                @Override
+                public void onError(String error) { addLog("Recover failed: " + error, "ERR"); }
+            });
+        } catch (Exception e) {}
+    }
+
     public void onRePairClick(View v) {
-        if (ws != null) ws.disconnect();
-        if (statusHandler != null) statusHandler.removeCallbacks(statusRunnable);
-        if (hbHandler != null) hbHandler.removeCallbacks(hbRunnable);
         prefs.edit().clear().apply();
         Intent intent = new Intent(this, MainActivity.class);
         intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
@@ -512,13 +503,30 @@ public class DashboardActivity extends AppCompatActivity implements OnMapReadyCa
         finish();
     }
 
+    private void sendCommand(String type) {
+        JSONObject body = new JSONObject();
+        try {
+            String targetId = role.equals("phone") ? pairCode : pairCode + "-phone";
+            body.put("deviceId", targetId);
+            body.put("commandType", type);
+        } catch (Exception e) {}
+        api.post("/api/command", body, new ApiClient.ApiCallback() {
+            @Override
+            public void onSuccess(JSONObject response) {
+                addLog("Sent: " + type, "CMD");
+                Toast.makeText(DashboardActivity.this, "Sent: " + type, Toast.LENGTH_SHORT).show();
+            }
+            @Override
+            public void onError(String error) { addLog("Send failed: " + error, "ERR"); }
+        });
+    }
+
     @Override
     protected void onDestroy() {
         super.onDestroy();
         if (ws != null) ws.disconnect();
-        if (statusHandler != null) statusHandler.removeCallbacks(statusRunnable);
-        if (hbHandler != null) hbHandler.removeCallbacks(hbRunnable);
-        stopSiren();
-        stopService(new Intent(this, LocationService.class));
+        if (statusHandler != null && statusRunnable != null) statusHandler.removeCallbacks(statusRunnable);
+        if (hbHandler != null && hbRunnable != null) hbHandler.removeCallbacks(hbRunnable);
+        if (toneGen != null) toneGen.release();
     }
 }
