@@ -120,17 +120,21 @@ public class DashboardActivity extends AppCompatActivity {
             }
         }
         if (needRequest) {
-            new AlertDialog.Builder(this)
-                .setTitle("Location Permission")
-                .setMessage("FIND needs access to your location to track this device. Please allow location access.")
-                .setPositiveButton("Allow", (d, w) -> {
-                    ActivityCompat.requestPermissions(this, perms, PERM_REQ);
-                })
-                .setNegativeButton("Deny", (d, w) -> {
-                    Toast.makeText(this, "Location access denied — tracking limited", Toast.LENGTH_LONG).show();
-                })
-                .setCancelable(false)
-                .show();
+            try {
+                new androidx.appcompat.app.AlertDialog.Builder(this)
+                    .setTitle("Location Permission")
+                    .setMessage("FIND needs access to your location to track this device. Please allow location access.")
+                    .setPositiveButton("Allow", (d, w) -> {
+                        ActivityCompat.requestPermissions(this, perms, PERM_REQ);
+                    })
+                    .setNegativeButton("Deny", (d, w) -> {
+                        Toast.makeText(this, "Location access denied — tracking limited", Toast.LENGTH_LONG).show();
+                    })
+                    .setCancelable(true)
+                    .show();
+            } catch (Exception e) {
+                ActivityCompat.requestPermissions(this, perms, PERM_REQ);
+            }
         }
     }
 
@@ -202,6 +206,8 @@ public class DashboardActivity extends AppCompatActivity {
         ws.setDomStorageEnabled(true);
         ws.setAllowFileAccess(true);
         ws.setAllowContentAccess(true);
+        ws.setAllowFileAccessFromFileURLs(true);
+        ws.setAllowUniversalAccessFromFileURLs(true);
         ws.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
         ws.setUseWideViewPort(true);
         ws.setLoadWithOverviewMode(true);
@@ -214,48 +220,6 @@ public class DashboardActivity extends AppCompatActivity {
         });
         mapView.setWebChromeClient(new WebChromeClient());
 
-        String mapHtml = "<!DOCTYPE html><html><head><meta charset='UTF-8'>"
-            + "<meta name='viewport' content='width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no'>"
-            + "<link rel='stylesheet' href='file:///android_asset/leaflet.css'/>"
-            + "<script src='file:///android_asset/leaflet.js'></script>"
-            + "<style>html,body,#map{width:100%;height:100%;margin:0;padding:0;background:#0a0a0a}"
-            + ".marker-lp{width:28px;height:28px;background:#000;border:3px solid #d4ff3f;border-radius:50%;box-shadow:0 0 12px rgba(212,255,63,0.6);position:relative}"
-            + ".marker-lp::after{content:'';width:8px;height:8px;background:#d4ff3f;border-radius:50%;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%)}"
-            + ".marker-ph{width:28px;height:28px;background:#000;border:3px solid #00d4ff;border-radius:50%;box-shadow:0 0 12px rgba(0,212,255,0.6);position:relative}"
-            + ".marker-ph::after{content:'';width:8px;height:8px;background:#00d4ff;border-radius:50%;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%)}"
-            + ".pulse{position:absolute;width:100%;height:100%;border-radius:50%;animation:pulse 2s infinite}"
-            + ".pulse.lp{background:rgba(212,255,63,0.3)}.pulse.ph{background:rgba(0,212,255,0.3)}"
-            + "@keyframes pulse{0%{transform:scale(1);opacity:0.8}100%{transform:scale(3);opacity:0}}"
-            + ".lbl{position:absolute;top:-22px;left:50%;transform:translateX(-50%);white-space:nowrap;font-size:10px;font-weight:800;padding:2px 8px;border-radius:4px;background:rgba(0,0,0,0.85);pointer-events:none;text-transform:uppercase}"
-            + ".lbl.lp{color:#d4ff3f;border:1px solid rgba(212,255,63,0.3)}"
-            + ".lbl.ph{color:#00d4ff;border:1px solid rgba(0,212,255,0.3)}"
-            + "</style></head><body><div id='map'></div>"
-            + "<script>"
-            + "var map=L.map('map',{zoomControl:false,attributionControl:false}).setView([0,0],2);"
-            + "var street=L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{maxZoom:19,subdomains:'abcd'});"
-            + "var sat=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:18});"
-            + "var terrain=L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',{maxZoom:17,subdomains:'abc'});"
-            + "street.addTo(map);"
-            + "var lpM=null,phM=null,lpLL=null,phLL=null,trackLine=null;"
-            + "function updateLp(lat,lng){lpLL=[lat,lng];if(lpM){lpM.setLatLng([lat,lng])}else{"
-            + "lpM=L.marker([lat,lng],{icon:L.divIcon({className:'',html:'<div class=\"marker-lp\"><div class=\"pulse lp\"></div></div><div class=\"lbl lp\">LAPTOP</div>',iconSize:[28,28],iconAnchor:[14,14]})}).addTo(map);"
-            + "if(!phM)map.setView([lat,lng],16)}updateTrack()}"
-            + "function updatePh(lat,lng){phLL=[lat,lng];if(phM){phM.setLatLng([lat,lng])}else{"
-            + "phM=L.marker([lat,lng],{icon:L.divIcon({className:'',html:'<div class=\"marker-ph\"><div class=\"pulse ph\"></div></div><div class=\"lbl ph\">PHONE</div>',iconSize:[28,28],iconAnchor:[14,14]})}).addTo(map)}updateTrack()}"
-            + "function updateTrack(){if(!lpLL||!phLL)return;if(trackLine)map.removeLayer(trackLine);"
-            + "trackLine=L.polyline([lpLL,phLL],{color:'#d4ff3f',weight:3,opacity:0.7,dashArray:'8,6'}).addTo(map);"
-            + "var R=6371e3,p=Math.PI/180;"
-            + "var dLat=(phLL[0]-lpLL[0])*p,dLng=(phLL[1]-lpLL[1])*p;"
-            + "var a=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(lpLL[0]*p)*Math.cos(phLL[0]*p)*Math.sin(dLng/2)*Math.sin(dLng/2);"
-            + "var dist=R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));"
-            + "var txt=dist>=1000?(dist/1000).toFixed(1)+'km':Math.round(dist)+'m';"
-            + "try{window.AndroidBridge.trackUpdate(txt)}catch(e){}}"
-            + "function setMapType(type){map.removeLayer(street);map.removeLayer(sat);map.removeLayer(terrain);"
-            + "if(type==='street')street.addTo(map);else if(type==='sat')sat.addTo(map);else terrain.addTo(map)}"
-            + "function setCenter(lat,lng,z){map.setView([lat,lng],z||16)}"
-            + "</script></body></html>";
-
-        mapView.loadDataWithBaseURL("file:///android_asset/", mapHtml, "text/html", "UTF-8", null);
         mapView.addJavascriptInterface(new Object() {
             @JavascriptInterface
             public void trackUpdate(String txt) {
@@ -266,12 +230,20 @@ public class DashboardActivity extends AppCompatActivity {
             }
         }, "AndroidBridge");
 
-        new Handler(Looper.getMainLooper()).postDelayed(() -> { mapReady = true; }, 3000);
+        mapView.loadUrl("file:///android_asset/map.html");
+        new Handler(Looper.getMainLooper()).postDelayed(() -> { mapReady = true; }, 4000);
     }
 
     private void runMapCommand(String js) {
         if (mapView != null && mapReady) {
             runOnUiThread(() -> mapView.evaluateJavascript(js, null));
+        } else if (mapView != null) {
+            // Queue command for when map is ready
+            new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                if (mapView != null) {
+                    runOnUiThread(() -> mapView.evaluateJavascript(js, null));
+                }
+            }, 5000);
         }
     }
 
