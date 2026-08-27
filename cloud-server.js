@@ -13,6 +13,7 @@ const server = http.createServer(app);
 const wss = new Server({ server, pingInterval: 30000, pingTimeout: 10000 });
 const agentSockets = new Map(); // deviceId -> ws (agent connection)
 const browserSockets = new Map(); // deviceId -> ws (browser connection)
+const APP_VERSION = '2.0.0';
 const lostDevices = new Set();
 
 app.use(express.json({ limit: '1mb' }));
@@ -331,6 +332,16 @@ app.get('/FIND.apk', (req, res) => {
   } else {
     res.status(404).send('APK not found');
   }
+});
+
+// ============= VERSION CHECK =============
+app.get('/api/version', (req, res) => {
+  res.json({
+    version: APP_VERSION,
+    apkUrl: '/FIND.apk',
+    windowsUrl: '/FIND-Windows.zip',
+    releaseNotes: 'Bug fixes and improvements'
+  });
 });
 
 // ============= STATIC =============

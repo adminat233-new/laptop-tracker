@@ -13,6 +13,7 @@ let pairCode = '', deviceId = '';
 let isAgentMode = false;
 let heartbeatInterval;
 const SERVER = 'https://laptop-tracker-k9vi.onrender.com';
+const APP_VERSION = '2.0.0';
 const CONFIG_PATH = path.join(app.getPath('userData'), 'find-config.json');
 
 function loadConfig() {
@@ -74,6 +75,35 @@ function createTray() {
         { label: 'Quit', click: () => { isAgentMode = false; app.quit(); } }
     ]));
     tray.on('double-click', () => mainWindow.show());
+}
+
+function checkForUpdate() {
+    https.get(SERVER + '/api/version', (res) => {
+        let data = '';
+        res.on('data', (c) => data += c);
+        res.on('end', () => {
+            try {
+                const info = JSON.parse(data);
+                if (info.version && info.version !== APP_VERSION) {
+                    const choice = require('electron').dialog.showMessageBoxSync(mainWindow, {
+                        type: 'info',
+                        title: 'Update Available',
+                        message: 'A new version (v' + info.version + ') is available.\n\n' + (info.releaseNotes || 'Bug fixes and improvements') + '\n\nDownload now?',
+                        buttons: ['Download', 'Later'],
+                        defaultId: 0
+                    });
+                    if (choice === 0) {
+                        require('electron').shell.openExternal(SERVER + info.windowsUrl);
+                        require('electron').dialog.showMessageBox(mainWindow, {
+                            type: 'info',
+                            title: 'Downloading',
+                            message: 'The download page will open. Extract the new ZIP and replace this app.'
+                        });
+                    }
+                }
+            } catch (e) {}
+        });
+    }).on('error', () => {});
 }
 
 function startAgent() {
@@ -176,5 +206,5 @@ ipcMain.handle('sys-info', () => ({
     free: (os.freemem() / 1073741824).toFixed(1) + ' GB'
 }));
 
-app.whenReady().then(() => { loadConfig(); createWindow(); createTray(); if (isAgentMode && pairCode) startAgent(); });
+app.whenReady().then(() => { loadConfig(); createWindow(); createTray(); if (isAgentMode && pairCode) startAgent(); setTimeout(checkForUpdate, 3000); });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });

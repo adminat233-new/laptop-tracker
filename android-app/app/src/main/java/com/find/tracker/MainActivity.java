@@ -1,12 +1,15 @@
 package com.find.tracker;
 
 import android.Manifest;
+import android.app.DownloadManager;
+import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.net.Uri;
 import android.os.Bundle;
+import android.os.Environment;
 import android.os.Handler;
-import android.os.Looper;
 import android.os.Looper;
 import android.text.Editable;
 import android.text.TextWatcher;
@@ -70,6 +73,56 @@ public class MainActivity extends AppCompatActivity {
 
         // Request permissions after a short delay so UI loads first
         new Handler(Looper.getMainLooper()).postDelayed(this::requestPermissions, 500);
+        // Check for app updates
+        new Handler(Looper.getMainLooper()).postDelayed(this::checkForUpdate, 1500);
+    }
+
+    private void checkForUpdate() {
+        try {
+            int currentVersion = getPackageManager().getPackageInfo(getPackageName(), 0).versionCode;
+            api.get("/api/version", new ApiClient.ApiCallback() {
+                @Override
+                public void onSuccess(JSONObject response) {
+                    try {
+                        if (response.has("version")) {
+                            String serverVersion = response.getString("version");
+                            // Parse version like "2.0.0" to int code
+                            String[] parts = serverVersion.split("\\.");
+                            int serverCode = Integer.parseInt(parts[0]) * 10000 + Integer.parseInt(parts[1]) * 100 + Integer.parseInt(parts.length > 2 ? parts[2] : "0");
+                            if (serverCode > currentVersion) {
+                                String apkUrl = response.optString("apkUrl", "");
+                                String notes = response.optString("releaseNotes", "Bug fixes and improvements");
+                                showUpdateDialog(serverVersion, notes, apkUrl);
+                            }
+                        }
+                    } catch (Exception e) {}
+                }
+                @Override
+                public void onError(String error) {}
+            });
+        } catch (Exception e) {}
+    }
+
+    private void showUpdateDialog(String version, String notes, String apkUrl) {
+        new androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Update Available (v" + version + ")")
+            .setMessage("A new version is available:\n\n" + notes + "\n\nWould you like to download and install it?")
+            .setPositiveButton("Update", (d, w) -> {
+                String fullUrl = SERVER_URL + apkUrl;
+                DownloadManager.Request request = new DownloadManager.Request(Uri.parse(fullUrl));
+                request.setTitle("Downloading FIND v" + version);
+                request.setDescription("Updating to latest version...");
+                request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+                request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "FIND-update.apk");
+                request.setAllowedOverMetered(true);
+                request.setAllowedOverRoaming(true);
+                DownloadManager manager = (DownloadManager) getSystemService(Context.DOWNLOAD_SERVICE);
+                manager.enqueue(request);
+                Toast.makeText(this, "Downloading update... Install when ready", Toast.LENGTH_LONG).show();
+            })
+            .setNegativeButton("Later", null)
+            .setCancelable(true)
+            .show();
     }
 
     private void requestPermissions() {
