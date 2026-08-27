@@ -3,6 +3,7 @@ WORKDIR /app
 COPY package*.json ./
 COPY prisma ./prisma/
 RUN npm ci --only=production
+RUN npx prisma generate
 COPY . .
 EXPOSE 9999
-CMD ["node", "cloud-server.js"]
+CMD ["sh", "-c", "npx prisma db push --skip-generate && node cloud-server.js"]

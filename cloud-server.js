@@ -47,11 +47,13 @@ app.post('/api/generate', async (req, res) => {
     });
 
     // Create initial location so /api/pair-info has something
-    await prisma.location.upsert({
-      where: { deviceId: laptopId },
-      create: { deviceId: laptopId, lat: null, lng: null, accuracy: null, source: 'init', updatedAt: now() },
-      update: { updatedAt: now() }
-    });
+    try {
+      await prisma.location.upsert({
+        where: { deviceId: laptopId },
+        create: { deviceId: laptopId, lat: null, lng: null, source: 'init', updatedAt: now() },
+        update: { updatedAt: now() }
+      });
+    } catch(e) { console.log('Location upsert skipped:', e.message.substring(0,80)); }
 
     console.log(`Generated pair code: ${pairCode} for laptop: ${laptopId}`);
     res.json({ success: true, pairCode, deviceId: laptopId });
@@ -82,11 +84,13 @@ app.post('/api/verify', async (req, res) => {
     });
 
     // Create phone location record
-    await prisma.location.upsert({
-      where: { deviceId: phoneId },
-      create: { deviceId: phoneId, lat: null, lng: null, accuracy: null, source: 'init', updatedAt: now() },
-      update: { updatedAt: now() }
-    });
+    try {
+      await prisma.location.upsert({
+        where: { deviceId: phoneId },
+        create: { deviceId: phoneId, lat: null, lng: null, source: 'init', updatedAt: now() },
+        update: { updatedAt: now() }
+      });
+    } catch(e) { console.log('Phone location upsert skipped:', e.message.substring(0,80)); }
 
     console.log(`Phone ${phoneId} paired with laptop ${laptopId}`);
 
@@ -112,8 +116,8 @@ app.get('/api/pair-info/:pairCode', async (req, res) => {
     const phone = devices.find(d => d.deviceType === 'phone');
 
     let laptopLocation = null, phoneLocation = null;
-    if (laptop) laptopLocation = await prisma.location.findUnique({ where: { deviceId: laptop.deviceId } });
-    if (phone) phoneLocation = await prisma.location.findUnique({ where: { deviceId: phone.deviceId } });
+    if (laptop) { try { laptopLocation = await prisma.location.findUnique({ where: { deviceId: laptop.deviceId } }); } catch(e) { /* column missing */ } }
+    if (phone) { try { phoneLocation = await prisma.location.findUnique({ where: { deviceId: phone.deviceId } }); } catch(e) { /* column missing */ } }
 
     const laptopOnline = laptop ? (Date.now() - Number(laptop.lastSeen) < 60000) : false;
     const phoneOnline = phone ? (Date.now() - Number(phone.lastSeen) < 60000) : false;
@@ -144,11 +148,13 @@ app.post('/api/heartbeat', async (req, res) => {
 
     // Update location if provided
     if (location && location.lat != null) {
-      await prisma.location.upsert({
-        where: { deviceId },
-        create: { deviceId, lat: location.lat, lng: location.lng, accuracy: location.accuracy || 10, source: location.source || 'heartbeat', updatedAt: now() },
-        update: { lat: location.lat, lng: location.lng, accuracy: location.accuracy || 10, source: location.source || 'heartbeat', updatedAt: now() }
-      });
+      try {
+        await prisma.location.upsert({
+          where: { deviceId },
+          create: { deviceId, lat: location.lat, lng: location.lng, source: location.source || 'heartbeat', updatedAt: now() },
+          update: { lat: location.lat, lng: location.lng, source: location.source || 'heartbeat', updatedAt: now() }
+        });
+      } catch(e) { console.log('Heartbeat location upsert error:', e.message.substring(0,80)); }
 
       // Broadcast location to paired device
       const dev = await prisma.device.findUnique({ where: { deviceId } });
@@ -171,11 +177,13 @@ app.post('/api/location/phone', async (req, res) => {
   try {
     if (location && location.lat != null) {
       await prisma.device.update({ where: { deviceId }, data: { lastSeen: now() } });
-      await prisma.location.upsert({
-        where: { deviceId },
-        create: { deviceId, lat: location.lat, lng: location.lng, accuracy: location.accuracy || 10, source: location.source || 'phone-gps', updatedAt: now() },
-        update: { lat: location.lat, lng: location.lng, accuracy: location.accuracy || 10, source: location.source || 'phone-gps', updatedAt: now() }
-      });
+      try {
+        await prisma.location.upsert({
+          where: { deviceId },
+          create: { deviceId, lat: location.lat, lng: location.lng, source: location.source || 'phone-gps', updatedAt: now() },
+          update: { lat: location.lat, lng: location.lng, source: location.source || 'phone-gps', updatedAt: now() }
+        });
+      } catch(e) { console.log('Phone location upsert error:', e.message.substring(0,80)); }
       const dev = await prisma.device.findUnique({ where: { deviceId } });
       if (dev) {
         const pair = await prisma.device.findFirst({ where: { pairCode: dev.pairCode, deviceId: { not: deviceId } } });
