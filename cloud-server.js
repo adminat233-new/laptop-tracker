@@ -125,8 +125,8 @@ app.get('/api/pair-info/:pairCode', async (req, res) => {
     res.json(sanitize({
       success: true,
       pairCode: pc,
-      laptop: laptop ? { deviceId: laptop.deviceId, systemInfo: laptop.systemInfo ? JSON.parse(laptop.systemInfo) : null, online: laptopOnline, lastSeen: laptop.lastSeen } : null,
-      phone: phone ? { deviceId: phone.deviceId, online: phoneOnline, lastSeen: phone.lastSeen } : null,
+      laptop: laptop ? { deviceId: laptop.deviceId, systemInfo: laptop.systemInfo ? JSON.parse(laptop.systemInfo) : null, online: laptopOnline, lastSeen: laptop.lastSeen, isLost: lostDevices.has(laptop.deviceId) } : null,
+      phone: phone ? { deviceId: phone.deviceId, online: phoneOnline, lastSeen: phone.lastSeen, isLost: lostDevices.has(phone.deviceId) } : null,
       laptopLocation: laptopLocation && laptopLocation.lat != null ? laptopLocation : null,
       phoneLocation: phoneLocation && phoneLocation.lat != null ? phoneLocation : null
     }));

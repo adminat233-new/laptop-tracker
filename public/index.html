@@ -318,6 +318,20 @@ function connectWS(id){
       else renderLp(msg.location);
     }
     if(msg.type==='commandResult')handleResult(msg);
+    if(msg.type==='command'){
+      if(msg.commandType==='lost-mode-on'){
+        log('🚨 LOST MODE ACTIVATED — this device is marked stolen','SYS');
+        toast('🚨 LOST MODE — Device has been marked stolen');
+        browserLock();
+        browserSiren();
+      }
+      if(msg.commandType==='lost-mode-off'){
+        log('✅ Lost mode deactivated — device recovered','SYS');
+        toast('✅ Device Recovered');
+        const el=document.getElementById('browser-lock');if(el)el.remove();
+        stopSiren();
+      }
+    }
   };
 }
 
@@ -397,29 +411,141 @@ async function fetchIPCountry(){
 }
 
 // ===== COMMANDS =====
+let cmdTimer=null,cmdWaiting=null;
 async function cmd(type){
   if(!PC)return toast('Not paired');
+  // Browser-side commands (work without agent)
+  if(type==='lock'){browserLock();return}
+  if(type==='siren'){browserSiren();return}
   try{
     const r=await apiP('/api/command',{deviceId:PC,commandType:type});
-    if(r.success){toast('Sent: '+type);log('CMD → '+type,'CMD')}
-    else toast('Failed');
+    if(r.success){
+      toast('Sent: '+type);log('CMD → '+type,'CMD');
+      // Wait for result with timeout
+      cmdWaiting=type;
+      if(cmdTimer)clearTimeout(cmdTimer);
+      cmdTimer=setTimeout(()=>{if(cmdWaiting===type){cmdWaiting=null;log('⏰ Timeout: '+type+' — no agent response','ERR');showIntel('⏳ '+type+': No response. Is the agent running on the laptop?')}},15000);
+    }
+    else toast('Failed: '+(r.error||'Unknown'));
   }catch(e){toast('Network error')}
 }
 
 function handleResult(msg){
   try{
+    cmdWaiting=null;if(cmdTimer)clearTimeout(cmdTimer);
     const r=typeof msg.result==='string'?JSON.parse(msg.result):msg.result;
-    if(r.bssids){log('WiFi: '+r.bssids.length+' networks','SCAN');showIntel('📡 WiFi ('+r.bssids.length+'):\n'+r.bssids.map(n=>`• ${n.ssid||'?'}: ${n.rssi||'?'}dBm`).join('\n'))}
-    else if(r.arp){log('ARP done','SCAN');showIntel('🔍 ARP:\n'+r.arp)}
-    else if(r.devices){log('BT: '+r.devices.length,'BT');showIntel('🔵 BT:\n'+r.devices.map(d=>`• ${d.address||d.name||'?'}`).join('\n'))}
-    else if(r.processes){log('Processes','PROC');showIntel('⚙️:\n'+JSON.stringify(r.processes,null,1).substring(0,3000))}
-    else if(r.image){const m=document.getElementById('modal');const img=document.createElement('img');img.src='data:image/png;base64,'+r.image;img.style.cssText='max-width:100%;max-height:80vh;border-radius:16px';m.appendChild(img);m.style.display='flex';log('Screenshot','CAM')}
-    else if(r.output){log(r.output.substring(0,100),msg.commandType||'RES');showIntel(r.output)}
-    else if(r.message)log(r.message,'RES');
-  }catch(e){}
+    const cmd=msg.commandType||'';
+    log('✅ '+cmd+' completed','RES');
+    if(r.bssids){
+      const lines=r.bssids.map(n=>`• ${n.ssid||'Hidden'}: ${n.rssi||'?'}dBm, Ch${n.channel||'?'}${n.bssids?' MAC:'+n.bssid:''}`);
+      showIntel('📡 WiFi Scan ('+r.bssids.length+' networks):\n'+lines.join('\n'));
+    }
+    else if(r.arp) showIntel('🔍 ARP Table:\n'+r.arp);
+    else if(r.devices) showIntel('🔵 Bluetooth ('+r.devices.length+' devices):\n'+r.devices.map(d=>`• ${d.address||d.name||'?'} ${d.rssi?d.rssi+'dBm':''}`).join('\n'));
+    else if(r.processes) showIntel('⚙️ Process Audit ('+r.processes.length+'):\n'+JSON.stringify(r.processes,null,1).substring(0,4000));
+    else if(r.image){const m=document.getElementById('modal');const img=document.createElement('img');img.src='data:image/png;base64,'+r.image;img.style.cssText='max-width:100%;max-height:80vh;border-radius:16px';m.appendChild(img);m.style.display='flex'}
+    else if(r.output) showIntel('📋 '+cmd+':\n'+r.output);
+    else if(r.message) showIntel('💬 '+r.message);
+    else if(r.data) showIntel('📋 '+cmd+':\n'+(typeof r.data==='string'?r.data:JSON.stringify(r.data,null,1)));
+    else showIntel('📋 '+cmd+':\n'+JSON.stringify(r,null,1));
+  }catch(e){log('Parse error: '+e.message,'ERR')}
 }
 
 function showIntel(t){document.getElementById('intel-output').textContent=t}
+
+// ===== BROWSER LOCK =====
+function browserLock(){
+  // Create full-screen lock overlay
+  const overlay=document.createElement('div');
+  overlay.id='browser-lock';
+  overlay.style.cssText='position:fixed;top:0;left:0;width:100vw;height:100vh;background:#000;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;font-family:Inter,sans-serif;';
+  overlay.innerHTML=`
+    <div style="text-align:center;">
+      <div style="font-size:64px;margin-bottom:24px;">🔒</div>
+      <h1 style="font-size:28px;font-weight:800;margin-bottom:8px;color:#ff4444;">DEVICE LOCKED</h1>
+      <p style="font-size:14px;color:#888;margin-bottom:32px;">This device has been locked by FIND</p>
+      <p style="font-size:12px;color:#555;margin-bottom:40px;">Enter passcode to unlock</p>
+      <input id="lock-pass" type="password" placeholder="Passcode" style="width:200px;padding:12px;border:1px solid #333;border-radius:8px;background:#111;color:#fff;text-align:center;font-size:16px;outline:none;" />
+      <br><br>
+      <button onclick="tryUnlock()" style="padding:12px 32px;background:#ff4444;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer;font-size:14px;">Unlock</button>
+    </div>`;
+  document.body.appendChild(overlay);
+  document.getElementById('lock-pass').focus();
+  // Also send lock command to agent for real OS lock
+  apiP('/api/command',{deviceId:PC,commandType:'lock'}).catch(()=>{});
+  log('🔒 Device locked','LOCK');
+  toast('Device Locked');
+}
+
+function tryUnlock(){
+  const pass=document.getElementById('lock-pass').value;
+  if(pass==='find1234'||pass==='admin'){
+    const el=document.getElementById('browser-lock');
+    if(el)el.remove();
+    log('🔓 Device unlocked','LOCK');
+    toast('Unlocked');
+  } else {
+    document.getElementById('lock-pass').style.borderColor='#ff4444';
+    document.getElementById('lock-pass').value='';
+    toast('Wrong passcode');
+  }
+}
+
+// ===== BROWSER SIREN =====
+let sirenInterval=null,sirenOsc=null,sirenGain=null;
+function browserSiren(){
+  if(sirenInterval){stopSiren();return}
+  try{
+    const ctx=new(window.AudioContext||window.webkitAudioContext)();
+    sirenGain=ctx.createGain();sirenGain.gain.value=0.8;sirenGain.connect(ctx.destination);
+    let freq=800,dir=1;
+    sirenInterval=setInterval(()=>{
+      if(sirenOsc)sirenOsc.stop();
+      sirenOsc=ctx.createOscillator();
+      sirenOsc.type='square';
+      sirenOsc.frequency.value=freq;
+      sirenOsc.connect(sirenGain);
+      sirenOsc.start();
+      freq+=dir*50;
+      if(freq>=2000)dir=-1;
+      if(freq<=600)dir=1;
+    },100);
+    log('🚨 Siren activated','ALARM');
+    toast('🚨 SIREN ON — click again to stop');
+    // Also send to agent
+    apiP('/api/command',{deviceId:PC,commandType:'siren'}).catch(()=>{});
+  }catch(e){log('Siren error: '+e.message,'ERR')}
+}
+
+function stopSiren(){
+  if(sirenInterval){clearInterval(sirenInterval);sirenInterval=null}
+  if(sirenOsc){try{sirenOsc.stop()}catch(e){}sirenOsc=null}
+  log('🔇 Siren stopped','ALARM');
+  toast('Siren Off');
+}
+
+// ===== MARK AS LOST =====
+async function toggleLost(active){
+  if(!PC)return toast('Not paired');
+  // Phone marks laptop as lost, laptop marks phone as lost
+  const targetDevice=ROLE==='phone'?PC:PC+'-phone';
+  try{
+    const r=await apiP('/api/lost-mode',{deviceId:targetDevice,active});
+    if(r.success){
+      if(active){
+        toast('🚨 LOST MODE ACTIVATED');
+        log('🚨 Lost mode activated on '+(ROLE==='phone'?'laptop':'phone'),'SYS');
+        // Also play siren on local device
+        browserSiren();
+      }else{
+        toast('✅ Device Recovered');
+        log('✅ Lost mode deactivated','SYS');
+        stopSiren();
+      }
+      document.getElementById('found-btn').classList.toggle('hidden',!active);
+    }
+  }catch(e){toast('Network error')}
+}
 
 // ===== STATUS POLL =====
 function startPoll(){
@@ -434,9 +560,15 @@ function startPoll(){
       const lpOn=d.laptop&&d.laptop.online;
       const phOn=d.phone&&d.phone.online;
       dot.className=lpOn?'status-dot on':'status-dot off';
-      st.textContent=lpOn?(phOn?'Both Online':'Laptop Online'):(phOn?'Phone Online':'Offline');
+      let statusText=lpOn?(phOn?'Both Online':'Laptop Online'):(phOn?'Phone Online':'Offline');
+      if(d.laptop&&d.laptop.isLost)statusText+=' — 🚨 LAPTOP LOST';
+      if(d.phone&&d.phone.isLost)statusText+=' — 🚨 PHONE LOST';
+      st.textContent=statusText;
       setBadge('lp',lpOn);
       setBadge('ph',phOn);
+      // Show found button if any device is lost
+      const anyLost=(d.laptop&&d.laptop.isLost)||(d.phone&&d.phone.isLost);
+      document.getElementById('found-btn').classList.toggle('hidden',!anyLost);
       if(d.laptop&&d.laptop.systemInfo){
         document.getElementById('lp-name').textContent='💻 '+(d.laptop.systemInfo.hostname||'Laptop');
         document.getElementById('lp-os').textContent='OS: '+(d.laptop.systemInfo.platform||'--');
