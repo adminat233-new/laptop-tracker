@@ -11,10 +11,9 @@ const PORT = process.env.PORT || 9999;
 const prisma = new PrismaClient();
 const server = http.createServer(app);
 const wss = new Server({ server });
-const sockets = new Map();
-const lostDevices = new Set();
 const agentSockets = new Map(); // deviceId -> ws (agent connection)
 const browserSockets = new Map(); // deviceId -> ws (browser connection)
+const lostDevices = new Set();
 
 app.use(express.json());
 app.use((req, res, next) => {
@@ -287,19 +286,12 @@ app.get('*', (req, res) => { if (!req.url.startsWith('/api/')) res.sendFile(path
 // ============= WEBSOCKET =============
 function broadcast(targetId, data, preferAgent=true) {
   const msg = JSON.stringify(data);
-  // For commands, prefer agent WS (it can execute OS commands)
   if (preferAgent && agentSockets.has(targetId)) {
     try { agentSockets.get(targetId).send(msg); } catch(e) {}
     return true;
   }
-  // Fallback to browser WS
   if (browserSockets.has(targetId)) {
     try { browserSockets.get(targetId).send(msg); } catch(e) {}
-    return true;
-  }
-  // Last resort: generic sockets map
-  if (sockets.has(targetId)) {
-    try { sockets.get(targetId).send(msg); } catch(e) {}
     return true;
   }
   return false;
@@ -326,9 +318,17 @@ wss.on('connection', (ws) => {
         myId = msg.deviceId;
         myType = msg.deviceType || 'browser';
         if (myType === 'agent') {
+          // Close old agent connection if exists
+          if (agentSockets.has(myId)) {
+            try { agentSockets.get(myId).close(); } catch(e) {}
+          }
           agentSockets.set(myId, ws);
           console.log(`WS Registered AGENT: ${myId}`);
         } else {
+          // Close old browser connection if exists
+          if (browserSockets.has(myId)) {
+            try { browserSockets.get(myId).close(); } catch(e) {}
+          }
           browserSockets.set(myId, ws);
           console.log(`WS Registered BROWSER: ${myId}`);
         }
@@ -347,7 +347,6 @@ wss.on('connection', (ws) => {
   });
   ws.on('close', () => {
     if (myId) {
-      if (sockets.get(myId) === ws) sockets.delete(myId);
       if (agentSockets.get(myId) === ws) agentSockets.delete(myId);
       if (browserSockets.get(myId) === ws) browserSockets.delete(myId);
     }

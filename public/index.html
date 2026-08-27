@@ -366,12 +366,27 @@ async function connectDevices(){
 }
 
 // ===== WEBSOCKET =====
+let wsConnecting=false;
 function connectWS(id){
-  if(ws)ws.close();
+  if(wsConnecting)return;
+  if(ws){
+    try{ws.onclose=null;ws.close()}catch(e){}
+    ws=null;
+  }
+  wsConnecting=true;
   const p=location.protocol==='https:'?'wss:':'ws:';
   ws=new WebSocket(p+'//'+location.host);
-  ws.onopen=()=>{ws.send(JSON.stringify({type:'register',deviceId:id}));log('System','WebSocket connected')};
-  ws.onclose=()=>{if(document.getElementById('dashboard').classList.contains('active'))setTimeout(()=>connectWS(id),5000)};
+  ws.onopen=()=>{
+    wsConnecting=false;
+    ws.send(JSON.stringify({type:'register',deviceId:id}));
+    log('System','WebSocket connected');
+  };
+  ws.onclose=()=>{
+    ws=null;
+    if(document.getElementById('dashboard').classList.contains('active')){
+      setTimeout(()=>{wsConnecting=false;connectWS(id)},5000);
+    }
+  };
   ws.onerror=()=>{};
   ws.onmessage=(e)=>{
     const msg=JSON.parse(e.data);
