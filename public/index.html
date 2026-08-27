@@ -168,7 +168,7 @@
       <div class="nav-btn active">📊</div>
       <div class="nav-btn">🗺️</div>
       <div class="nav-btn">📡</div>
-      <div class="nav-btn" onclick="localStorage.clear(); location.reload();">🔄</div>
+      <div class="nav-btn" onclick="rePairDevice()">🔄</div>
     </nav>
 
     <main class="app-main">
@@ -636,6 +636,12 @@
         document.getElementById('intel-pulse').style.background = '#d4ff3f';
         setTimeout(() => document.getElementById('intel-pulse').style.background = '#444', 500);
     }
+    function rePairDevice() {
+        if (ws) ws.close();
+        if (statusInterval) clearInterval(statusInterval);
+        localStorage.clear();
+        location.reload();
+    }
     async function apiPost(u, d) { return (await fetch(u, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(d) })).json(); }
     async function apiGet(u) { return (await fetch(u)).json(); }
 
@@ -643,7 +649,25 @@
         const r = localStorage.getItem('haulix_role');
         const lid = localStorage.getItem('haulix_lpId');
         const pid = localStorage.getItem('haulix_phId');
-        if (r && lid) { isLaptop = r === 'laptop'; lpId = lid; phId = pid; if (isLaptop || phId) enterApp(); }
+        if (r && lid) {
+            isLaptop = r === 'laptop';
+            lpId = lid;
+            phId = pid;
+            // Only auto-enter dashboard if both devices are paired
+            if (phId) {
+                enterApp();
+            } else if (isLaptop) {
+                // Laptop waiting for phone — show pairing screen with code
+                document.getElementById('role-select').classList.add('hidden');
+                document.getElementById('laptop-view').classList.remove('hidden');
+                generatePairCode();
+            } else {
+                // Phone with no laptop paired — show code entry
+                document.getElementById('role-select').classList.add('hidden');
+                document.getElementById('phone-view').classList.remove('hidden');
+                createHandshakeGrid();
+            }
+        }
     });
   </script>
 </body>
