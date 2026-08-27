@@ -307,10 +307,11 @@ function broadcast(targetId, data, preferAgent=true) {
 
 // Broadcast to ALL connections for a deviceId (agent + browser)
 function broadcastAll(targetId, data) {
+  const sent = new Set();
   const msg = JSON.stringify(data);
-  [agentSockets, browserSockets, sockets].forEach(map => {
-    if (map.has(targetId)) {
-      try { map.get(targetId).send(msg); } catch(e) {}
+  [agentSockets, browserSockets].forEach(map => {
+    if (map.has(targetId) && !sent.has(targetId)) {
+      try { map.get(targetId).send(msg); sent.add(targetId); } catch(e) {}
     }
   });
 }
@@ -324,7 +325,6 @@ wss.on('connection', (ws) => {
       if (msg.type === 'register') {
         myId = msg.deviceId;
         myType = msg.deviceType || 'browser';
-        sockets.set(myId, ws);
         if (myType === 'agent') {
           agentSockets.set(myId, ws);
           console.log(`WS Registered AGENT: ${myId}`);

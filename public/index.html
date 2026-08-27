@@ -630,13 +630,13 @@ function removeBrowserLock(){
 // ===== BROWSER SIREN =====
 let sirenInterval=null,sirenOsc=null,sirenGain=null;
 function browserSiren(){
-  if(sirenInterval){stopSiren();return}
+  if(sirenInterval)return; // Already playing, don't restart
   try{
     const ctx=new(window.AudioContext||window.webkitAudioContext)();
     sirenGain=ctx.createGain();sirenGain.gain.value=0.8;sirenGain.connect(ctx.destination);
     let freq=800,dir=1;
     sirenInterval=setInterval(()=>{
-      if(sirenOsc)sirenOsc.stop();
+      if(sirenOsc)try{sirenOsc.stop()}catch(e){}
       sirenOsc=ctx.createOscillator();
       sirenOsc.type='square';
       sirenOsc.frequency.value=freq;
@@ -647,9 +647,7 @@ function browserSiren(){
       if(freq<=600)dir=1;
     },100);
     log('🚨 Siren activated','ALARM');
-    toast('🚨 SIREN ON — click again to stop');
-    // Also send to agent
-    apiP('/api/command',{deviceId:PC,commandType:'siren'}).catch(()=>{});
+    toast('🚨 SIREN ON');
   }catch(e){log('Siren error: '+e.message,'ERR')}
 }
 
@@ -772,24 +770,42 @@ function bearingToArrow(b){
   return dirs[Math.round(b/45)%8];
 }
 
-function updateTrackLine(){
+async function updateTrackLine(){
   if(!lpLatLng||!phLatLng||!map)return;
   if(trackLine)map.removeLayer(trackLine);
   if(trackLabel)map.removeLayer(trackLabel);
-  trackLine=L.polyline([lpLatLng,phLatLng],{color:'#d4ff3f',weight:2,dashArray:'8,8',opacity:0.7}).addTo(map);
+  // Try to get road-following route from OSRM
+  let routeCoords=null;
+  try{
+    const url=`https://router.project-osrm.org/route/v1/driving/${lpLatLng[1]},${lpLatLng[0]};${phLatLng[1]},${phLatLng[0]}?overview=full&geometries=geojson`;
+    const r=await fetch(url);
+    const d=await r.json();
+    if(d.code==='Ok'&&d.routes&&d.routes[0]){
+      routeCoords=d.routes[0].geometry.coordinates.map(c=>[c[1],c[0]]);
+    }
+  }catch(e){}
+  // Fallback to straight line if routing fails
+  if(!routeCoords)routeCoords=[lpLatLng,phLatLng];
+  trackLine=L.polyline(routeCoords,{color:'#d4ff3f',weight:3,opacity:0.8}).addTo(map);
   const mid=[(lpLatLng[0]+phLatLng[0])/2,(lpLatLng[1]+phLatLng[1])/2];
   trackLabel=L.marker(mid,{icon:L.divIcon({className:'',html:'<div style="background:rgba(18,18,18,0.85);border:1px solid var(--p);border-radius:8px;padding:4px 8px;font-size:10px;font-weight:700;color:var(--p);white-space:nowrap;font-family:JetBrains Mono,monospace" id="track-mid-label"></div>',iconSize:[0,0],iconAnchor:[0,-10]})}).addTo(map);
-  // Distance
-  const d=haversine(lpLatLng[0],lpLatLng[1],phLatLng[0],phLatLng[1]);
+  // Use road distance from OSRM if available
+  let dist=haversine(lpLatLng[0],lpLatLng[1],phLatLng[0],phLatLng[1]);
+  let roadDist=dist;
+  try{
+    const url=`https://router.project-osrm.org/route/v1/driving/${lpLatLng[1]},${lpLatLng[0]};${phLatLng[1]},${phLatLng[0]}?overview=false`;
+    const r=await fetch(url);
+    const d=await r.json();
+    if(d.code==='Ok'&&d.routes&&d.routes[0])roadDist=d.routes[0].distance;
+  }catch(e){}
   const b=bearing(lpLatLng[0],lpLatLng[1],phLatLng[0],phLatLng[1]);
   const arrow=bearingToArrow(b);
   const distEl=document.getElementById('track-dist');
   const bearEl=document.getElementById('track-bearing');
-  if(distEl)distEl.textContent=d>=1000?(d/1000).toFixed(1)+' km':Math.round(d)+' m';
+  if(distEl)distEl.textContent=(roadDist>=1000?(roadDist/1000).toFixed(1)+' km':Math.round(roadDist)+' m')+' 🛣️';
   if(bearEl)bearEl.textContent=arrow+' '+Math.round(b)+'°';
   document.getElementById('track-info').classList.add('show');
-  // Update mid label on map
-  setTimeout(()=>{const el=document.getElementById('track-mid-label');if(el)el.textContent=(d>=1000?(d/1000).toFixed(1)+' km':Math.round(d)+' m')+' →';},100);
+  setTimeout(()=>{const el=document.getElementById('track-mid-label');if(el)el.textContent=(roadDist>=1000?(roadDist/1000).toFixed(1)+' km':Math.round(roadDist)+' m')+' →';},200);
 }
 
 function renderLp(loc){
