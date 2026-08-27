@@ -11,134 +11,114 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
   <style>
-    :root { --primary: #d4ff3f; --bg: #0a0a0a; --panel: #121212; --text: #fff; --muted: #888; --border: rgba(255,255,255,0.08); --blue: #00d4ff; --red: #ff4444; --green: #00ff88; }
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); height: 100vh; overflow: hidden; }
-    .screen { display: none; width: 100vw; height: 100vh; }
-    .screen.active { display: flex; }
+    :root{--p:#d4ff3f;--bg:#0a0a0a;--pn:#121212;--tx:#fff;--mu:#888;--bd:rgba(255,255,255,0.08);--bl:#00d4ff;--rd:#ff4444;--gn:#00ff88}
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--tx);height:100vh;overflow:hidden}
+    .screen{display:none;width:100vw;height:100vh}.screen.active{display:flex}
 
-    #pair-screen { align-items: center; justify-content: center; background: var(--bg); }
-    .pair-box { width: 440px; padding: 48px; background: var(--panel); border: 1px solid var(--border); border-radius: 32px; text-align: center; }
-    .pair-box h2 { font-size: 32px; font-weight: 800; margin-bottom: 8px; }
-    .pair-box p { color: var(--muted); margin-bottom: 32px; font-size: 14px; }
-    .role-options { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-    .role-card { background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 20px; padding: 32px 20px; cursor: pointer; transition: 0.2s; display: flex; flex-direction: column; align-items: center; gap: 16px; }
-    .role-card:hover { border-color: var(--primary); background: rgba(255,255,255,0.06); }
-    .role-icon { font-size: 32px; }
-    .role-label { font-weight: 700; }
-    .code-view { display: flex; gap: 10px; justify-content: center; margin: 32px 0; }
-    .code-digit { width: 44px; height: 56px; background: rgba(255,255,255,0.04); border: 1px solid var(--border); border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: 800; color: var(--primary); }
-    .code-inputs { display: flex; gap: 8px; justify-content: center; margin: 32px 0; }
-    .digit-input { width: 40px; height: 50px; background: #000; border: 1px solid var(--border); border-radius: 10px; text-align: center; font-size: 20px; font-weight: 800; color: #fff; outline: none; }
-    .digit-input:focus { border-color: var(--primary); }
-    .action-btn { width: 100%; padding: 16px; background: var(--primary); color: #000; border: none; border-radius: 16px; font-weight: 800; font-size: 16px; cursor: pointer; margin-top: 16px; }
-    .action-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-    .hidden { display: none !important; }
-    .error-msg { margin-top: 16px; color: var(--red); font-size: 13px; }
-    .status-msg { margin-top: 24px; font-size: 13px; color: var(--muted); }
-    .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid var(--muted); border-top-color: var(--primary); border-radius: 50%; animation: spin 0.8s linear infinite; margin-right: 8px; vertical-align: middle; }
-    @keyframes spin { to { transform: rotate(360deg); } }
+    #pair-screen{align-items:center;justify-content:center}
+    .pair-box{width:440px;padding:48px;background:var(--pn);border:1px solid var(--bd);border-radius:32px;text-align:center}
+    .pair-box h2{font-size:32px;font-weight:800;margin-bottom:8px}
+    .pair-box p{color:var(--mu);margin-bottom:32px;font-size:14px}
+    .role-options{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+    .role-card{background:rgba(255,255,255,0.03);border:1px solid var(--bd);border-radius:20px;padding:32px 20px;cursor:pointer;transition:0.2s;display:flex;flex-direction:column;align-items:center;gap:16px}
+    .role-card:hover{border-color:var(--p);background:rgba(255,255,255,0.06)}
+    .role-icon{font-size:32px}.role-label{font-weight:700}
+    .code-view{display:flex;gap:10px;justify-content:center;margin:32px 0}
+    .code-digit{width:44px;height:56px;background:rgba(255,255,255,0.04);border:1px solid var(--bd);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:800;color:var(--p)}
+    .code-inputs{display:flex;gap:8px;justify-content:center;margin:32px 0}
+    .digit-input{width:40px;height:50px;background:#000;border:1px solid var(--bd);border-radius:10px;text-align:center;font-size:20px;font-weight:800;color:#fff;outline:none}
+    .digit-input:focus{border-color:var(--p)}
+    .action-btn{width:100%;padding:16px;background:var(--p);color:#000;border:none;border-radius:16px;font-weight:800;font-size:16px;cursor:pointer;margin-top:16px}
+    .action-btn:disabled{opacity:0.5;cursor:not-allowed}
+    .hidden{display:none!important}
+    .error-msg{margin-top:16px;color:var(--rd);font-size:13px}
+    .status-msg{margin-top:24px;font-size:13px;color:var(--mu)}
 
-    #dashboard { flex-direction: row; }
-    .sidebar { width: 380px; background: var(--panel); border-right: 1px solid var(--border); display: flex; flex-direction: column; transition: width 0.3s, margin 0.3s; overflow: hidden; flex-shrink: 0; }
-    .sidebar.collapsed { width: 0; margin-left: -1px; }
-    .sidebar-header { padding: 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
-    .sidebar-header h3 { font-size: 16px; font-weight: 700; }
-    .toggle-btn { width: 36px; height: 36px; border-radius: 10px; border: 1px solid var(--border); background: rgba(255,255,255,0.05); color: var(--text); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 16px; transition: 0.2s; }
-    .toggle-btn:hover { background: rgba(255,255,255,0.1); border-color: var(--primary); }
-    .sidebar-toggle { position: fixed; top: 16px; left: 16px; z-index: 1100; }
-    .sidebar-content { flex: 1; overflow-y: auto; padding: 20px; }
-    .sidebar-content::-webkit-scrollbar { width: 4px; }
-    .sidebar-content::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
+    #dashboard{flex-direction:row}
+    .sidebar{width:380px;background:var(--pn);border-right:1px solid var(--bd);display:flex;flex-direction:column;transition:width 0.3s,margin 0.3s;overflow:hidden;flex-shrink:0}
+    .sidebar.collapsed{width:0;margin-left:-1px}
+    .sidebar-header{padding:20px;border-bottom:1px solid var(--bd);display:flex;align-items:center;justify-content:space-between}
+    .sidebar-header h3{font-size:16px;font-weight:700}
+    .tb{width:36px;height:36px;border-radius:10px;border:1px solid var(--bd);background:rgba(255,255,255,0.05);color:var(--tx);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;transition:0.2s}
+    .tb:hover{background:rgba(255,255,255,0.1);border-color:var(--p)}
+    .sidebar-toggle{position:fixed;top:16px;left:16px;z-index:1100}
+    .sidebar-content{flex:1;overflow-y:auto;padding:20px}
+    .sidebar-content::-webkit-scrollbar{width:4px}
+    .sidebar-content::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.1);border-radius:4px}
 
-    .device-card { background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 16px; padding: 16px; margin-bottom: 12px; }
-    .device-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
-    .device-name { font-size: 14px; font-weight: 700; }
-    .device-badge { font-size: 10px; font-weight: 800; text-transform: uppercase; padding: 4px 10px; border-radius: 6px; }
-    .device-badge.online { color: var(--green); background: rgba(0,255,136,0.1); }
-    .device-badge.offline { color: var(--red); background: rgba(255,68,68,0.1); }
-    .device-meta { font-size: 11px; color: var(--muted); font-family: 'JetBrains Mono'; }
+    .device-card{background:rgba(255,255,255,0.03);border:1px solid var(--bd);border-radius:16px;padding:16px;margin-bottom:12px}
+    .device-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+    .device-name{font-size:14px;font-weight:700}
+    .device-badge{font-size:10px;font-weight:800;text-transform:uppercase;padding:4px 10px;border-radius:6px}
+    .device-badge.on{color:var(--gn);background:rgba(0,255,136,0.1)}
+    .device-badge.off{color:var(--rd);background:rgba(255,68,68,0.1)}
+    .device-meta{font-size:11px;color:var(--mu);font-family:'JetBrains Mono'}
 
-    .tool-section { margin-top: 16px; }
-    .tool-section-title { font-size: 11px; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; }
-    .tool-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-    .tool-btn { background: rgba(255,255,255,0.04); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; color: #fff; font-size: 11px; font-weight: 600; cursor: pointer; text-align: left; display: flex; align-items: center; gap: 6px; transition: 0.2s; }
-    .tool-btn:hover { background: rgba(255,255,255,0.08); border-color: var(--primary); }
-    .tool-btn.primary { background: var(--primary); color: #000; border: none; font-weight: 800; }
-    .tool-btn.danger { color: var(--red); border-color: rgba(255,68,68,0.3); }
-    .tool-btn.full { grid-column: span 2; justify-content: center; }
+    .tool-section{margin-top:16px}
+    .tool-section-title{font-size:11px;font-weight:800;color:var(--mu);text-transform:uppercase;letter-spacing:1px;margin-bottom:12px}
+    .tool-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+    .tool-btn{background:rgba(255,255,255,0.04);border:1px solid var(--bd);border-radius:10px;padding:10px 12px;color:#fff;font-size:11px;font-weight:600;cursor:pointer;text-align:left;display:flex;align-items:center;gap:6px;transition:0.2s}
+    .tool-btn:hover{background:rgba(255,255,255,0.08);border-color:var(--p)}
+    .tool-btn.primary{background:var(--p);color:#000;border:none;font-weight:800}
+    .tool-btn.danger{color:var(--rd);border-color:rgba(255,68,68,0.3)}
+    .tool-btn.full{grid-column:span 2;justify-content:center}
 
-    .log-panel { margin-top: 16px; }
-    .log-box { height: 160px; overflow-y: auto; font-family: 'JetBrains Mono'; font-size: 10px; color: var(--primary); background: rgba(0,0,0,0.3); padding: 10px; border-radius: 8px; }
-    .log-box::-webkit-scrollbar { width: 3px; }
-    .log-box::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); }
-    .log-line { margin-bottom: 3px; line-height: 1.4; }
+    .log-box{height:160px;overflow-y:auto;font-family:'JetBrains Mono';font-size:10px;color:var(--p);background:rgba(0,0,0,0.3);padding:10px;border-radius:8px;margin-top:12px}
 
-    .main-area { flex: 1; display: flex; flex-direction: column; position: relative; overflow: hidden; }
-    .top-bar { height: 56px; padding: 0 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; background: var(--bg); z-index: 100; }
-    .top-bar h1 { font-size: 18px; font-weight: 700; }
-    .top-bar-right { display: flex; align-items: center; gap: 16px; }
-    .status-pill { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; }
-    .status-dot { width: 8px; height: 8px; border-radius: 50%; }
-    .status-dot.on { background: var(--green); box-shadow: 0 0 8px var(--green); }
-    .status-dot.off { background: var(--red); }
+    .main-area{flex:1;display:flex;flex-direction:column;position:relative;overflow:hidden}
+    .top-bar{height:56px;padding:0 20px;border-bottom:1px solid var(--bd);display:flex;align-items:center;justify-content:space-between;background:var(--bg);z-index:100}
+    .top-bar h1{font-size:18px;font-weight:700}
+    .status-pill{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600}
+    .status-dot{width:8px;height:8px;border-radius:50%}
+    .status-dot.on{background:var(--gn);box-shadow:0 0 8px var(--gn)}
+    .status-dot.off{background:var(--rd)}
 
-    #map { flex: 1; z-index: 1; }
-    .panel-toggle-bar { position: absolute; top: 72px; right: 20px; z-index: 950; display: flex; gap: 6px; }
-    .panel-toggle-btn { width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--border); background: rgba(18,18,18,0.9); color: var(--muted); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 14px; transition: 0.2s; }
-    .panel-toggle-btn:hover { border-color: var(--primary); color: var(--text); }
-    .panel-toggle-btn.active { border-color: var(--primary); color: var(--primary); background: rgba(212,255,63,0.1); }
-    .panels-overlay { position: absolute; top: 72px; right: 20px; z-index: 900; display: flex; flex-direction: column; gap: 12px; max-width: 320px; }
-    .panel { background: rgba(18,18,18,0.92); backdrop-filter: blur(20px); border: 1px solid var(--border); border-radius: 14px; padding: 16px; box-shadow: 0 20px 40px rgba(0,0,0,0.5); }
-    .panel.hidden-panel { display: none; }
-    .panel-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-    .panel-title { font-size: 11px; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
-    .panel-close { width: 24px; height: 24px; border-radius: 6px; border: none; background: rgba(255,255,255,0.05); color: var(--muted); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 14px; }
-    .panel-close:hover { background: rgba(255,68,68,0.2); color: var(--red); }
-    .panel-body { font-size: 12px; }
-    .panel-body pre { font-family: 'JetBrains Mono'; font-size: 10px; background: rgba(0,0,0,0.3); padding: 8px; border-radius: 6px; max-height: 200px; overflow: auto; white-space: pre-wrap; word-break: break-all; }
-    .panel-body pre::-webkit-scrollbar { width: 3px; }
-    .panel-body pre::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); }
+    #map{flex:1;z-index:1}
+    .panel-toggle-bar{position:absolute;top:72px;right:20px;z-index:950;display:flex;gap:6px}
+    .ptb{width:32px;height:32px;border-radius:8px;border:1px solid var(--bd);background:rgba(18,18,18,0.9);color:var(--mu);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;transition:0.2s}
+    .ptb:hover{border-color:var(--p);color:var(--tx)}
+    .ptb.active{border-color:var(--p);color:var(--p);background:rgba(212,255,63,0.1)}
+    .panels-overlay{position:absolute;top:72px;right:20px;z-index:900;display:flex;flex-direction:column;gap:12px;max-width:320px}
+    .panel{background:rgba(18,18,18,0.92);backdrop-filter:blur(20px);border:1px solid var(--bd);border-radius:14px;padding:16px;box-shadow:0 20px 40px rgba(0,0,0,0.5)}
+    .panel.hidden-panel{display:none}
+    .panel-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+    .panel-title{font-size:11px;font-weight:800;color:var(--mu);text-transform:uppercase;letter-spacing:0.5px}
+    .panel-close{width:24px;height:24px;border-radius:6px;border:none;background:rgba(255,255,255,0.05);color:var(--mu);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px}
+    .panel-close:hover{background:rgba(255,68,68,0.2);color:var(--rd)}
+    .panel-body pre{font-family:'JetBrains Mono';font-size:10px;background:rgba(0,0,0,0.3);padding:8px;border-radius:6px;max-height:200px;overflow:auto;white-space:pre-wrap;word-break:break-all}
 
-    .marker-lp { width: 28px; height: 28px; background: #000; border: 3px solid var(--primary); border-radius: 50%; box-shadow: 0 0 15px rgba(212,255,63,0.5); position: relative; }
-    .marker-lp::after { content: ''; width: 8px; height: 8px; background: var(--primary); border-radius: 50%; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); }
-    .marker-ph { width: 28px; height: 28px; background: #000; border: 3px solid var(--blue); border-radius: 50%; box-shadow: 0 0 15px rgba(0,212,255,0.5); position: relative; }
-    .marker-ph::after { content: ''; width: 8px; height: 8px; background: var(--blue); border-radius: 50%; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); }
-    .marker-pulse { position: absolute; width: 100%; height: 100%; border-radius: 50%; animation: pulse 2s infinite; }
-    .marker-pulse.lp { background: rgba(212,255,63,0.3); }
-    .marker-pulse.ph { background: rgba(0,212,255,0.3); }
-    @keyframes pulse { 0% { transform: scale(1); opacity: 0.8; } 100% { transform: scale(3); opacity: 0; } }
-    .marker-label { position: absolute; top: -24px; left: 50%; transform: translateX(-50%); white-space: nowrap; font-size: 10px; font-weight: 800; padding: 3px 8px; border-radius: 6px; background: rgba(0,0,0,0.85); pointer-events: none; text-transform: uppercase; letter-spacing: 0.5px; }
-    .marker-label.lp { color: var(--primary); border: 1px solid rgba(212,255,63,0.3); }
-    .marker-label.ph { color: var(--blue); border: 1px solid rgba(0,212,255,0.3); }
+    .marker-lp{width:28px;height:28px;background:#000;border:3px solid var(--p);border-radius:50%;box-shadow:0 0 15px rgba(212,255,63,0.5);position:relative}
+    .marker-lp::after{content:'';width:8px;height:8px;background:var(--p);border-radius:50%;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%)}
+    .marker-ph{width:28px;height:28px;background:#000;border:3px solid var(--bl);border-radius:50%;box-shadow:0 0 15px rgba(0,212,255,0.5);position:relative}
+    .marker-ph::after{content:'';width:8px;height:8px;background:var(--bl);border-radius:50%;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%)}
+    .mp{position:absolute;width:100%;height:100%;border-radius:50%;animation:pulse 2s infinite}
+    .mp.lp{background:rgba(212,255,63,0.3)}.mp.ph{background:rgba(0,212,255,0.3)}
+    @keyframes pulse{0%{transform:scale(1);opacity:0.8}100%{transform:scale(3);opacity:0}}
+    .ml{position:absolute;top:-24px;left:50%;transform:translateX(-50%);white-space:nowrap;font-size:10px;font-weight:800;padding:3px 8px;border-radius:6px;background:rgba(0,0,0,0.85);pointer-events:none;text-transform:uppercase;letter-spacing:0.5px}
+    .ml.lp{color:var(--p);border:1px solid rgba(212,255,63,0.3)}
+    .ml.ph{color:var(--bl);border:1px solid rgba(0,212,255,0.3)}
 
-    .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(80px); background: #1a1a1a; border: 1px solid var(--primary); color: #fff; padding: 10px 20px; border-radius: 40px; font-size: 13px; font-weight: 600; z-index: 10000; transition: 0.3s cubic-bezier(0.18, 0.89, 0.32, 1.28); }
-    .toast.show { transform: translateX(-50%) translateY(0); }
-    #modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 10000; display: none; align-items: center; justify-content: center; flex-direction: column; padding: 40px; }
-    #modal .close { position: absolute; top: 20px; right: 20px; cursor: pointer; font-size: 24px; color: #fff; }
+    .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(80px);background:#1a1a1a;border:1px solid var(--p);color:#fff;padding:10px 20px;border-radius:40px;font-size:13px;font-weight:600;z-index:10000;transition:0.3s cubic-bezier(0.18,0.89,0.32,1.28)}
+    .toast.show{transform:translateX(-50%) translateY(0)}
+    #modal{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.9);z-index:10000;display:none;align-items:center;justify-content:center;flex-direction:column;padding:40px}
+    #modal .close{position:absolute;top:20px;right:20px;cursor:pointer;font-size:24px;color:#fff}
   </style>
 </head>
 <body>
-
   <div id="pair-screen" class="screen active">
     <div class="pair-box">
-      <div style="width:42px;height:42px;background:var(--primary);border-radius:12px;display:flex;align-items:center;justify-content:center;font-weight:900;color:#000;font-size:22px;margin:0 auto 24px;">F</div>
+      <div style="width:42px;height:42px;background:var(--p);border-radius:12px;display:flex;align-items:center;justify-content:center;font-weight:900;color:#000;font-size:22px;margin:0 auto 24px">F</div>
       <h2>FIND</h2>
-      <p>Secure global fleet tracking and recovery.</p>
+      <p>Secure global tracking and recovery.</p>
       <div id="role-select" class="role-options">
-        <div class="role-card" onclick="setupDevice('laptop')">
-          <span class="role-icon">💻</span>
-          <span class="role-label">Target Laptop</span>
-        </div>
-        <div class="role-card" onclick="setupDevice('phone')">
-          <span class="role-icon">📱</span>
-          <span class="role-label">Control Hub</span>
-        </div>
+        <div class="role-card" onclick="setupDevice('laptop')"><span class="role-icon">💻</span><span class="role-label">Target Laptop</span></div>
+        <div class="role-card" onclick="setupDevice('phone')"><span class="role-icon">📱</span><span class="role-label">Control Hub</span></div>
       </div>
       <div id="laptop-view" class="hidden">
         <div class="code-view" id="laptop-code"></div>
         <button class="action-btn" onclick="generateCode()">Refresh Code</button>
-        <div class="status-msg" id="pair-status"><span class="spinner"></span>Waiting for Control Hub...</div>
+        <div class="status-msg" id="pair-status">Show this code to your phone</div>
       </div>
       <div id="phone-view" class="hidden">
         <div class="code-inputs" id="phone-inputs"></div>
@@ -149,36 +129,27 @@
   </div>
 
   <div id="dashboard" class="screen">
-    <button class="toggle-btn sidebar-toggle" onclick="toggleSidebar()">☰</button>
+    <button class="tb sidebar-toggle" onclick="toggleSidebar()">☰</button>
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-header">
         <h3>FIND</h3>
-        <div style="display:flex;gap:6px;">
-          <button class="toggle-btn" onclick="rePair()" title="Re-pair">🔄</button>
-        </div>
+        <button class="tb" onclick="rePair()" title="Re-pair">🔄</button>
       </div>
       <div class="sidebar-content">
         <div class="device-card" id="laptop-card">
           <div class="device-header">
-            <div>
-              <div class="device-name" id="lp-name">💻 Laptop</div>
-              <div class="device-meta" id="lp-os">OS: --</div>
-            </div>
-            <div class="device-badge offline" id="lp-badge">Offline</div>
+            <div><div class="device-name" id="lp-name">💻 Laptop</div><div class="device-meta" id="lp-os">OS: --</div></div>
+            <div class="device-badge off" id="lp-badge">Offline</div>
           </div>
           <div class="device-meta" id="lp-coords">Coords: --</div>
-          <div class="device-meta" id="lp-accuracy">Accuracy: --</div>
+          <div class="device-meta" id="lp-acc">Accuracy: --</div>
         </div>
         <div class="device-card" id="phone-card">
           <div class="device-header">
-            <div>
-              <div class="device-name" id="ph-name">📱 Phone</div>
-              <div class="device-meta" id="ph-coords">Coords: --</div>
-            </div>
-            <div class="device-badge offline" id="ph-badge">Offline</div>
+            <div><div class="device-name" id="ph-name">📱 Phone</div><div class="device-meta" id="ph-coords">Coords: --</div></div>
+            <div class="device-badge off" id="ph-badge">Offline</div>
           </div>
         </div>
-
         <div class="tool-section">
           <div class="tool-section-title">Recovery Arsenal</div>
           <div class="tool-grid">
@@ -195,58 +166,43 @@
             <button class="tool-btn" onclick="cmd('usb-audit')">💾 USB</button>
             <button class="tool-btn" onclick="cmd('process-audit')">⚙️ Procs</button>
             <button class="tool-btn danger full" onclick="toggleLost(true)">🚨 MARK LOST</button>
-            <button class="tool-btn danger full hidden" id="found-btn" onclick="toggleLost(false)" style="color:var(--green);border-color:var(--green);">✅ RECOVERED</button>
+            <button class="tool-btn danger full hidden" id="found-btn" onclick="toggleLost(false)" style="color:var(--gn);border-color:var(--gn)">✅ RECOVERED</button>
           </div>
         </div>
-
-        <div class="log-panel">
+        <div class="tool-section">
           <div class="tool-section-title">Intel Stream</div>
           <div class="log-box" id="log-box"></div>
         </div>
       </div>
     </aside>
-
     <div class="main-area">
       <div class="top-bar">
-        <h1>FIND — Operations</h1>
-        <div class="top-bar-right">
-          <div class="status-pill">
-            <div class="status-dot off" id="main-dot"></div>
-            <span id="main-status">Offline</span>
-          </div>
-        </div>
+        <h1>FIND</h1>
+        <div class="status-pill"><div class="status-dot off" id="main-dot"></div><span id="main-status">Offline</span></div>
       </div>
       <div id="map"></div>
-      <div class="panel-toggle-bar" id="panel-toggles">
-        <button class="panel-toggle-btn active" onclick="togglePanel('cmd')" title="Commands">⚡</button>
-        <button class="panel-toggle-btn active" onclick="togglePanel('intel')" title="Intel">📊</button>
+      <div class="panel-toggle-bar">
+        <button class="ptb active" onclick="togglePanel('cmd')">⚡</button>
+        <button class="ptb active" onclick="togglePanel('intel')">📊</button>
       </div>
-      <div class="panels-overlay" id="panels">
+      <div class="panels-overlay">
         <div class="panel" id="cmd-panel">
-          <div class="panel-header">
-            <span class="panel-title">Command Array</span>
-            <button class="panel-close" onclick="togglePanel('cmd')">✕</button>
-          </div>
-          <div class="panel-body">
-            <div class="tool-grid">
-              <button class="tool-btn" onclick="cmd('wifi-scan')">📶 WiFi Scan</button>
-              <button class="tool-btn" onclick="cmd('arp-scan')">🔍 ARP Scan</button>
-              <button class="tool-btn" onclick="cmd('bt-proximity')">🔵 BT Detect</button>
-              <button class="tool-btn" onclick="cmd('screenshot')">📸 Screenshot</button>
-              <button class="tool-btn" onclick="cmd('dns-dump')">🌐 DNS Audit</button>
-              <button class="tool-btn" onclick="cmd('port-audit')">🔍 Port Scan</button>
-              <button class="tool-btn" onclick="cmd('wifi-passwords')">🔑 WiFi Pass</button>
-              <button class="tool-btn" onclick="cmd('usb-audit')">💾 USB History</button>
-              <button class="tool-btn" onclick="cmd('process-audit')">⚙️ Process Audit</button>
-              <button class="tool-btn primary" onclick="cmd('locate')">📍 Locate</button>
-            </div>
-          </div>
+          <div class="panel-header"><span class="panel-title">Commands</span><button class="panel-close" onclick="togglePanel('cmd')">✕</button></div>
+          <div class="panel-body"><div class="tool-grid">
+            <button class="tool-btn" onclick="cmd('wifi-scan')">📶 WiFi</button>
+            <button class="tool-btn" onclick="cmd('arp-scan')">🔍 ARP</button>
+            <button class="tool-btn" onclick="cmd('bt-proximity')">🔵 BT</button>
+            <button class="tool-btn" onclick="cmd('screenshot')">📸 Screen</button>
+            <button class="tool-btn" onclick="cmd('dns-dump')">🌐 DNS</button>
+            <button class="tool-btn" onclick="cmd('port-audit')">🔍 Ports</button>
+            <button class="tool-btn" onclick="cmd('wifi-passwords')">🔑 Pass</button>
+            <button class="tool-btn" onclick="cmd('usb-audit')">💾 USB</button>
+            <button class="tool-btn" onclick="cmd('process-audit')">⚙️ Procs</button>
+            <button class="tool-btn primary" onclick="cmd('locate')">📍 Locate</button>
+          </div></div>
         </div>
         <div class="panel" id="intel-panel">
-          <div class="panel-header">
-            <span class="panel-title">Intelligence</span>
-            <button class="panel-close" onclick="togglePanel('intel')">✕</button>
-          </div>
+          <div class="panel-header"><span class="panel-title">Intel</span><button class="panel-close" onclick="togglePanel('intel')">✕</button></div>
           <div class="panel-body"><pre id="intel-output">Waiting for data...</pre></div>
         </div>
       </div>
@@ -256,266 +212,235 @@
   <div id="modal"><div class="close" onclick="this.parentElement.style.display='none'">✕</div></div>
   <div class="toast" id="toast"></div>
 
-  <script>
-    let pairCode = null, myId = null, myRole = null, ws = null;
-    let map = null, lpMarker = null, phMarker = null;
-    let statusTimer = null, heartbeatTimer = null;
-    let sidebarOpen = true, panelsVisible = { cmd: true, intel: true };
+<script>
+let PC=null,MY=null,ROLE=null,ws=null,map=null,lpM=null,phM=null,statusT=null,hbT=null,sbOpen=true,pVis={cmd:true,intel:true};
 
-    function toast(m) { const t = document.getElementById('toast'); t.textContent = m; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 3000); }
-    function show(id) { document.querySelectorAll('.screen').forEach(s => s.classList.remove('active')); document.getElementById(id).classList.add('active'); if (id === 'dashboard') initMap(); }
-    async function apiPost(url, data) { const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }); return r.json(); }
-    async function apiGet(url) { return (await fetch(url)).json(); }
+function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),3000)}
+function show(s){document.querySelectorAll('.screen').forEach(x=>x.classList.remove('active'));document.getElementById(s).classList.add('active');if(s==='dashboard')initMap()}
+async function apiP(u,d){const r=await fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)});return r.json()}
+async function apiG(u){return(await fetch(u)).json()}
 
-    // ============= PAIRING =============
-    function setupDevice(role) {
-      myRole = role;
-      document.getElementById('role-select').classList.add('hidden');
-      if (role === 'laptop') {
-        document.getElementById('laptop-view').classList.remove('hidden');
-        generateCode();
-      } else {
-        document.getElementById('phone-view').classList.remove('hidden');
-        createInputs();
-      }
+// ===== PAIRING =====
+function setupDevice(role){
+  ROLE=role;
+  document.getElementById('role-select').classList.add('hidden');
+  if(role==='laptop'){document.getElementById('laptop-view').classList.remove('hidden');generateCode()}
+  else{document.getElementById('phone-view').classList.remove('hidden');createInputs()}
+}
+
+async function generateCode(){
+  const d=await apiP('/api/generate',{platform:navigator.platform});
+  if(d.success){
+    PC=d.pairCode;MY=d.deviceId;ROLE='laptop';
+    localStorage.setItem('pc',PC);localStorage.setItem('my',MY);localStorage.setItem('role','laptop');
+    showCode(PC);
+    // ENTER DASHBOARD IMMEDIATELY — don't wait for phone
+    show('dashboard');
+    connectWS(MY);
+    startPoll();
+    startHB();
+    log('System','Code: '+PC+' — waiting for phone to connect');
+  } else { toast('Error: '+(d.error||'Failed')) }
+}
+
+function showCode(code){
+  const el=document.getElementById('laptop-code');el.innerHTML='';
+  code.split('').forEach(c=>{const d=document.createElement('div');d.className='code-digit';d.textContent=c;el.appendChild(d)});
+}
+
+function createInputs(){
+  const el=document.getElementById('phone-inputs');el.innerHTML='';
+  for(let i=0;i<8;i++){
+    const inp=document.createElement('input');inp.className='digit-input';inp.maxLength=1;
+    inp.oninput=()=>{if(inp.value&&i<7)el.children[i+1].focus();document.getElementById('connect-btn').disabled=!Array.from(el.children).every(c=>c.value)};
+    el.appendChild(inp);
+  }
+}
+
+async function connectDevices(){
+  const code=Array.from(document.getElementById('phone-inputs').children).map(c=>c.value).join('').toUpperCase();
+  const d=await apiP('/api/verify',{pairCode:code});
+  if(d.success){
+    PC=d.pairCode;MY=d.phoneId;ROLE='phone';
+    localStorage.setItem('pc',PC);localStorage.setItem('my',MY);localStorage.setItem('role','phone');
+    show('dashboard');
+    connectWS(MY);
+    startPoll();
+    startHB();
+    startPhoneGPS();
+    log('System','Connected to laptop: '+d.laptopId);
+  } else {
+    document.getElementById('pair-error').textContent=d.error||'Invalid code';
+  }
+}
+
+// ===== WEBSOCKET =====
+function connectWS(id){
+  if(ws)ws.close();
+  const p=location.protocol==='https:'?'wss:':'ws:';
+  ws=new WebSocket(p+'//'+location.host);
+  ws.onopen=()=>{ws.send(JSON.stringify({type:'register',deviceId:id}));log('System','WebSocket connected')};
+  ws.onclose=()=>{if(document.getElementById('dashboard').classList.contains('active'))setTimeout(()=>connectWS(id),5000)};
+  ws.onerror=()=>{};
+  ws.onmessage=(e)=>{
+    const msg=JSON.parse(e.data);
+    if(msg.type==='paired'){toast('Phone connected!');log('System','Phone paired: '+msg.phoneId)}
+    if(msg.type==='location'&&msg.location){
+      if(msg.fromDeviceId&&msg.fromDeviceId.endsWith('-phone'))renderPh(msg.location);
+      else renderLp(msg.location);
     }
+    if(msg.type==='commandResult')handleResult(msg);
+  };
+}
 
-    async function generateCode() {
-      const data = await apiPost('/api/generate', { platform: navigator.platform });
-      if (data.success) {
-        pairCode = data.pairCode;
-        myId = data.deviceId;
-        myRole = 'laptop';
-        localStorage.setItem('pairCode', pairCode);
-        localStorage.setItem('myId', myId);
-        localStorage.setItem('role', 'laptop');
-        const el = document.getElementById('laptop-code');
-        el.innerHTML = '';
-        pairCode.split('').forEach(c => { const d = document.createElement('div'); d.className = 'code-digit'; d.textContent = c; el.appendChild(d); });
-        connectWS(myId);
-        startPairWatch();
-      }
-    }
+// ===== HEARTBEAT =====
+function startHB(){
+  if(hbT)clearInterval(hbT);
+  doHB();
+  hbT=setInterval(doHB,10000);
+}
 
-    function createInputs() {
-      const el = document.getElementById('phone-inputs');
-      el.innerHTML = '';
-      for (let i = 0; i < 8; i++) {
-        const inp = document.createElement('input');
-        inp.className = 'digit-input';
-        inp.maxLength = 1;
-        inp.oninput = () => { if (inp.value && i < 7) el.children[i + 1].focus(); document.getElementById('connect-btn').disabled = !Array.from(el.children).every(c => c.value); };
-        el.appendChild(inp);
-      }
-    }
+async function doHB(){
+  if(!MY)return;
+  let loc=null;
+  try{
+    const p=await new Promise((ok,no)=>navigator.geolocation.getCurrentPosition(ok,no,{enableHighAccuracy:true,timeout:8000}));
+    loc={lat:p.coords.latitude,lng:p.coords.longitude,accuracy:p.coords.accuracy,source:ROLE==='phone'?'phone-gps':'browser-gps'};
+    if(ROLE==='phone')renderPh(loc);else renderLp(loc);
+  }catch(e){/* GPS denied, send heartbeat without location */}
 
-    async function connectDevices() {
-      const code = Array.from(document.getElementById('phone-inputs').children).map(c => c.value).join('').toUpperCase();
-      const data = await apiPost('/api/verify', { pairCode: code });
-      if (data.success) {
-        pairCode = data.pairCode;
-        myId = data.phoneId;
-        myRole = 'phone';
-        localStorage.setItem('pairCode', pairCode);
-        localStorage.setItem('myId', myId);
-        localStorage.setItem('role', 'phone');
-        enterDashboard();
-      } else {
-        document.getElementById('pair-error').textContent = data.error || 'Invalid code';
-      }
-    }
-
-    function startPairWatch() {
-      const timer = setInterval(async () => {
-        if (document.getElementById('dashboard').classList.contains('active')) { clearInterval(timer); return; }
-        try {
-          const data = await apiGet('/api/pair-info/' + pairCode);
-          if (data.success && data.phone) {
-            clearInterval(timer);
-            document.getElementById('pair-status').innerHTML = '✅ Paired! Entering dashboard...';
-            setTimeout(() => enterDashboard(), 500);
-          }
-        } catch (e) {}
-      }, 2000);
-    }
-
-    function enterDashboard() {
-      show('dashboard');
-      connectWS(myId);
-      startStatusPoll();
-      startHeartbeat();
-      if (myRole === 'phone') startPhoneGPS();
-      setTimeout(() => cmd('locate'), 2000);
-    }
-
-    // ============= WEBSOCKET =============
-    function connectWS(id) {
-      if (ws) ws.close();
-      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-      ws = new WebSocket(proto + '//' + location.host);
-      ws.onopen = () => { ws.send(JSON.stringify({ type: 'register', deviceId: id })); };
-      ws.onclose = () => { if (document.getElementById('dashboard').classList.contains('active')) setTimeout(() => connectWS(id), 5000); };
-      ws.onmessage = (e) => {
-        const msg = JSON.parse(e.data);
-        if (msg.type === 'paired') { toast('Devices Paired!'); setTimeout(() => cmd('locate'), 1000); }
-        if (msg.type === 'location' && msg.location) {
-          if (msg.fromDeviceId && msg.fromDeviceId.endsWith('-phone')) renderPhone(msg.location);
-          else renderLaptop(msg.location);
-        }
-        if (msg.type === 'commandResult') handleResult(msg);
-        if (msg.type === 'forensic_log' && msg.log) addLog(msg.log.output, msg.log.tool);
-      };
-    }
-
-    // ============= HEARTBEAT =============
-    function startHeartbeat() {
-      if (heartbeatTimer) clearInterval(heartbeatTimer);
-      sendHeartbeat();
-      heartbeatTimer = setInterval(sendHeartbeat, 15000);
-    }
-
-    async function sendHeartbeat() {
-      if (!myId) return;
-      let loc = null;
-      try {
-        const pos = await new Promise((resolve, reject) => navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 5000 }));
-        loc = { lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy, source: 'browser-gps' };
-        if (myRole === 'phone') renderPhone(loc);
-        else renderLaptop(loc);
-      } catch (e) {}
-
-      try {
-        await apiPost('/api/heartbeat', {
-          deviceId: myId,
-          location: loc,
-          systemInfo: {
-            hostname: myRole === 'laptop' ? (navigator.platform || 'Laptop') : (navigator.platform || 'Phone'),
-            platform: navigator.platform,
-            userAgent: navigator.userAgent.substring(0, 100),
-            role: myRole
-          }
-        });
-      } catch (e) {}
-    }
-
-    // ============= PHONE GPS =============
-    function startPhoneGPS() {
-      if (!navigator.geolocation) return;
-      navigator.geolocation.watchPosition(p => {
-        const loc = { lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy, source: 'phone-gps' };
-        apiPost('/api/location/phone', { deviceId: myId, location: loc }).catch(() => {});
-        renderPhone(loc);
-      }, null, { enableHighAccuracy: true, maximumAge: 5000 });
-    }
-
-    // ============= COMMANDS =============
-    async function cmd(type) {
-      if (!pairCode) return toast('Not paired');
-      try {
-        const res = await apiPost('/api/command', { deviceId: pairCode, commandType: type });
-        if (res.success) { toast('Sent: ' + type); addLog('CMD → ' + type, 'CMD'); }
-        else toast('Failed: ' + (res.error || 'No agent'));
-      } catch (e) { toast('Network error'); }
-    }
-
-    function handleResult(msg) {
-      try {
-        const res = typeof msg.result === 'string' ? JSON.parse(msg.result) : msg.result;
-        if (res.bssids) { addLog('WiFi: ' + res.bssids.length + ' networks', 'SCAN'); showIntel('📡 WiFi (' + res.bssids.length + '):\n' + res.bssids.map(n => `• ${n.ssid || 'Hidden'}: ${n.rssi||'?'}dBm`).join('\n')); }
-        else if (res.arp) { addLog('ARP done', 'SCAN'); showIntel('🔍 ARP:\n' + res.arp); }
-        else if (res.devices) { addLog('BT: ' + res.devices.length, 'BT'); showIntel('🔵 BT (' + res.devices.length + '):\n' + res.devices.map(d => `• ${d.address||d.name||'?'}`).join('\n')); }
-        else if (res.processes) { addLog('Processes done', 'PROC'); showIntel('⚙️ Processes:\n' + JSON.stringify(res.processes, null, 1).substring(0, 3000)); }
-        else if (res.image) { const m = document.getElementById('modal'); const img = document.createElement('img'); img.src = 'data:image/png;base64,' + res.image; img.style.cssText = 'max-width:100%;max-height:80vh;border-radius:16px'; m.appendChild(img); m.style.display = 'flex'; addLog('Screenshot', 'CAM'); }
-        else if (res.output) { addLog(res.output.substring(0, 150), msg.commandType||'RES'); showIntel('Result:\n' + res.output); }
-        else if (res.message) addLog(res.message, 'RES');
-      } catch (e) {}
-    }
-
-    function showIntel(text) { document.getElementById('intel-output').textContent = text; }
-
-    // ============= STATUS POLL =============
-    function startStatusPoll() {
-      if (statusTimer) clearInterval(statusTimer);
-      statusTimer = setInterval(async () => {
-        if (!pairCode) return;
-        try {
-          const d = await apiGet('/api/pair-info/' + pairCode);
-          if (!d.success) return;
-          const dot = document.getElementById('main-dot');
-          const status = document.getElementById('main-status');
-          const lpBadge = document.getElementById('lp-badge');
-          const phBadge = document.getElementById('ph-badge');
-          const lpOn = d.laptop && d.laptop.online;
-          const phOn = d.phone && d.phone.online;
-          dot.className = lpOn ? 'status-dot on' : 'status-dot off';
-          status.textContent = lpOn ? 'Secured' : 'Offline';
-          lpBadge.textContent = lpOn ? 'Online' : 'Offline';
-          lpBadge.className = 'device-badge ' + (lpOn ? 'online' : 'offline');
-          phBadge.textContent = phOn ? 'Online' : 'Offline';
-          phBadge.className = 'device-badge ' + (phOn ? 'online' : 'offline');
-          if (d.laptop && d.laptop.systemInfo) {
-            document.getElementById('lp-name').textContent = '💻 ' + (d.laptop.systemInfo.hostname || 'Laptop');
-            document.getElementById('lp-os').textContent = 'OS: ' + (d.laptop.systemInfo.platform || '--');
-          }
-          if (d.laptopLocation && d.laptopLocation.lat) renderLaptop(d.laptopLocation);
-          if (d.phoneLocation && d.phoneLocation.lat) renderPhone(d.phoneLocation);
-        } catch (e) {}
-      }, 3000);
-    }
-
-    // ============= MAP =============
-    function initMap() {
-      if (map) return;
-      map = L.map('map', { center: [51.5, -0.1], zoom: 3, zoomControl: false, attributionControl: false });
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
-    }
-
-    function renderLaptop(loc) {
-      if (!loc || !map || loc.lat == null) return;
-      const pos = [loc.lat, loc.lng];
-      if (pos[0] === 0 && pos[1] === 0) return;
-      document.getElementById('lp-coords').textContent = `Coords: ${pos[0].toFixed(6)}, ${pos[1].toFixed(6)}`;
-      document.getElementById('lp-accuracy').textContent = `Accuracy: ±${Math.round(loc.accuracy||0)}m`;
-      if (lpMarker) lpMarker.setLatLng(pos);
-      else { lpMarker = L.marker(pos, { icon: L.divIcon({ className: '', html: '<div class="marker-lp"><div class="marker-pulse lp"></div></div><div class="marker-label lp">💻 LAPTOP</div>', iconSize: [28, 28], iconAnchor: [14, 14] }) }).addTo(map); }
-      if (!phMarker) map.setView(pos, 16);
-    }
-
-    function renderPhone(loc) {
-      if (!loc || !map || loc.lat == null) return;
-      const pos = [loc.lat, loc.lng];
-      if (pos[0] === 0 && pos[1] === 0) return;
-      document.getElementById('ph-coords').textContent = `Coords: ${pos[0].toFixed(6)}, ${pos[1].toFixed(6)}`;
-      if (phMarker) phMarker.setLatLng(pos);
-      else { phMarker = L.marker(pos, { icon: L.divIcon({ className: '', html: '<div class="marker-ph"><div class="marker-pulse ph"></div></div><div class="marker-label ph">📱 PHONE</div>', iconSize: [28, 28], iconAnchor: [14, 14] }) }).addTo(map); }
-    }
-
-    // ============= UI =============
-    function toggleSidebar() { const s = document.getElementById('sidebar'); sidebarOpen = !sidebarOpen; s.classList.toggle('collapsed', !sidebarOpen); setTimeout(() => map && map.invalidateSize(), 350); }
-    function togglePanel(id) { const p = document.getElementById(id + '-panel'); const btn = document.querySelector(`[onclick="togglePanel('${id}')"]`); panelsVisible[id] = !panelsVisible[id]; p.classList.toggle('hidden-panel', !panelsVisible[id]); btn.classList.toggle('active', panelsVisible[id]); }
-    function addLog(msg, tag) { const el = document.getElementById('log-box'); const ts = new Date().toLocaleTimeString('en-US', { hour12: false }); el.innerHTML = `<div class="log-line"><span style="color:#555">[${ts}]</span> <span style="color:var(--blue)">[${tag}]</span> ${msg}</div>` + el.innerHTML; }
-    async function toggleLost(active) { const res = await apiPost('/api/lost-mode', { deviceId: pairCode, active }); if (res.success) { toast(active ? 'LOST MODE' : 'RECOVERED'); document.getElementById('found-btn').classList.toggle('hidden', !active); } }
-    function rePair() { if (ws) ws.close(); if (statusTimer) clearInterval(statusTimer); if (heartbeatTimer) clearInterval(heartbeatTimer); localStorage.clear(); location.reload(); }
-
-    // ============= AUTO-LOGIN =============
-    window.addEventListener('load', () => {
-      const role = localStorage.getItem('role');
-      const pc = localStorage.getItem('pairCode');
-      const mid = localStorage.getItem('myId');
-      if (role && pc && mid) {
-        pairCode = pc; myId = mid; myRole = role;
-        if (role === 'laptop') {
-          document.getElementById('role-select').classList.add('hidden');
-          document.getElementById('laptop-view').classList.remove('hidden');
-          const el = document.getElementById('laptop-code');
-          el.innerHTML = '';
-          pc.split('').forEach(c => { const d = document.createElement('div'); d.className = 'code-digit'; d.textContent = c; el.appendChild(d); });
-          startPairWatch();
-        } else {
-          enterDashboard();
-        }
-      }
+  try{
+    await apiP('/api/heartbeat',{
+      deviceId:MY,
+      location:loc,
+      systemInfo:{hostname:navigator.platform,platform:navigator.platform,role:ROLE,ua:navigator.userAgent.substring(0,80)}
     });
-  </script>
+  }catch(e){}
+}
+
+function startPhoneGPS(){
+  if(!navigator.geolocation)return;
+  navigator.geolocation.watchPosition(p=>{
+    const loc={lat:p.coords.latitude,lng:p.coords.longitude,accuracy:p.coords.accuracy,source:'phone-gps'};
+    apiP('/api/location/phone',{deviceId:MY,location:loc}).catch(()=>{});
+    renderPh(loc);
+  },null,{enableHighAccuracy:true,maximumAge:5000});
+}
+
+// ===== COMMANDS =====
+async function cmd(type){
+  if(!PC)return toast('Not paired');
+  try{
+    const r=await apiP('/api/command',{deviceId:PC,commandType:type});
+    if(r.success){toast('Sent: '+type);log('CMD → '+type,'CMD')}
+    else toast('Failed');
+  }catch(e){toast('Network error')}
+}
+
+function handleResult(msg){
+  try{
+    const r=typeof msg.result==='string'?JSON.parse(msg.result):msg.result;
+    if(r.bssids){log('WiFi: '+r.bssids.length+' networks','SCAN');showIntel('📡 WiFi ('+r.bssids.length+'):\n'+r.bssids.map(n=>`• ${n.ssid||'?'}: ${n.rssi||'?'}dBm`).join('\n'))}
+    else if(r.arp){log('ARP done','SCAN');showIntel('🔍 ARP:\n'+r.arp)}
+    else if(r.devices){log('BT: '+r.devices.length,'BT');showIntel('🔵 BT:\n'+r.devices.map(d=>`• ${d.address||d.name||'?'}`).join('\n'))}
+    else if(r.processes){log('Processes','PROC');showIntel('⚙️:\n'+JSON.stringify(r.processes,null,1).substring(0,3000))}
+    else if(r.image){const m=document.getElementById('modal');const img=document.createElement('img');img.src='data:image/png;base64,'+r.image;img.style.cssText='max-width:100%;max-height:80vh;border-radius:16px';m.appendChild(img);m.style.display='flex';log('Screenshot','CAM')}
+    else if(r.output){log(r.output.substring(0,100),msg.commandType||'RES');showIntel(r.output)}
+    else if(r.message)log(r.message,'RES');
+  }catch(e){}
+}
+
+function showIntel(t){document.getElementById('intel-output').textContent=t}
+
+// ===== STATUS POLL =====
+function startPoll(){
+  if(statusT)clearInterval(statusT);
+  statusT=setInterval(async()=>{
+    if(!PC)return;
+    try{
+      const d=await apiG('/api/pair-info/'+PC);
+      if(!d.success)return;
+      const dot=document.getElementById('main-dot');
+      const st=document.getElementById('main-status');
+      const lpOn=d.laptop&&d.laptop.online;
+      const phOn=d.phone&&d.phone.online;
+      dot.className=lpOn?'status-dot on':'status-dot off';
+      st.textContent=lpOn?(phOn?'Both Online':'Laptop Online'):(phOn?'Phone Online':'Offline');
+      setBadge('lp',lpOn);
+      setBadge('ph',phOn);
+      if(d.laptop&&d.laptop.systemInfo){
+        document.getElementById('lp-name').textContent='💻 '+(d.laptop.systemInfo.hostname||'Laptop');
+        document.getElementById('lp-os').textContent='OS: '+(d.laptop.systemInfo.platform||'--');
+      }
+      if(d.laptopLocation)renderLp(d.laptopLocation);
+      if(d.phoneLocation)renderPh(d.phoneLocation);
+    }catch(e){}
+  },3000);
+}
+
+function setBadge(prefix,online){
+  const b=document.getElementById(prefix+'-badge');
+  b.textContent=online?'Online':'Offline';
+  b.className='device-badge '+(online?'on':'off');
+}
+
+// ===== MAP =====
+function initMap(){
+  if(map)return;
+  map=L.map('map',{center:[51.5,-0.1],zoom:3,zoomControl:false,attributionControl:false});
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(map);
+}
+
+function renderLp(loc){
+  if(!loc||!map||loc.lat==null)return;
+  const p=[loc.lat,loc.lng];if(p[0]===0&&p[1]===0)return;
+  document.getElementById('lp-coords').textContent=`Coords: ${p[0].toFixed(6)}, ${p[1].toFixed(6)}`;
+  document.getElementById('lp-acc').textContent='Accuracy: ±'+Math.round(loc.accuracy||0)+'m';
+  if(lpM)lpM.setLatLng(p);
+  else{lpM=L.marker(p,{icon:L.divIcon({className:'',html:'<div class="marker-lp"><div class="mp lp"></div></div><div class="ml lp">💻 LAPTOP</div>',iconSize:[28,28],iconAnchor:[14,14]})}).addTo(map)}
+  if(!phM)map.setView(p,16);
+}
+
+function renderPh(loc){
+  if(!loc||!map||loc.lat==null)return;
+  const p=[loc.lat,loc.lng];if(p[0]===0&&p[1]===0)return;
+  document.getElementById('ph-coords').textContent=`Coords: ${p[0].toFixed(6)}, ${p[1].toFixed(6)}`;
+  if(phM)phM.setLatLng(p);
+  else{phM=L.marker(p,{icon:L.divIcon({className:'',html:'<div class="marker-ph"><div class="mp ph"></div></div><div class="ml ph">📱 PHONE</div>',iconSize:[28,28],iconAnchor:[14,14]})}).addTo(map)}
+}
+
+// ===== UI =====
+function toggleSidebar(){const s=document.getElementById('sidebar');sbOpen=!sbOpen;s.classList.toggle('collapsed',!sbOpen);setTimeout(()=>map&&map.invalidateSize(),350)}
+function togglePanel(id){const p=document.getElementById(id+'-panel');const b=document.querySelector(`[onclick="togglePanel('${id}')"]`);pVis[id]=!pVis[id];p.classList.toggle('hidden-panel',!pVis[id]);b.classList.toggle('active',pVis[id])}
+function log(msg,tag){const el=document.getElementById('log-box');const ts=new Date().toLocaleTimeString('en-US',{hour12:false});el.innerHTML=`<div class="log-line"><span style="color:#555">[${ts}]</span> <span style="color:var(--bl)">[${tag||'SYS'}]</span> ${msg}</div>`+el.innerHTML}
+async function toggleLost(a){const r=await apiP('/api/lost-mode',{deviceId:PC,active:a});if(r.success){toast(a?'LOST MODE':'RECOVERED');document.getElementById('found-btn').classList.toggle('hidden',!a)}}
+function rePair(){if(ws)ws.close();if(statusT)clearInterval(statusT);if(hbT)clearInterval(hbT);localStorage.clear();location.reload()}
+
+// ===== AUTO-LOGIN =====
+window.addEventListener('load',()=>{
+  const role=localStorage.getItem('role');
+  const pc=localStorage.getItem('pc');
+  const my=localStorage.getItem('my');
+  if(role&&pc&&my){
+    PC=pc;MY=my;ROLE=role;
+    if(role==='laptop'){
+      document.getElementById('role-select').classList.add('hidden');
+      document.getElementById('laptop-view').classList.remove('hidden');
+      showCode(pc);
+      // ENTER DASHBOARD IMMEDIATELY
+      show('dashboard');
+      connectWS(MY);
+      startPoll();
+      startHB();
+    } else {
+      show('dashboard');
+      connectWS(MY);
+      startPoll();
+      startHB();
+      startPhoneGPS();
+    }
+  }
+});
+</script>
 </body>
 </html>

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'find-v1';
+const CACHE_NAME = 'find-v2';
 const LOCATION_INTERVAL = 10000;
 let locationTimer = null;
 let trackedDeviceId = null;

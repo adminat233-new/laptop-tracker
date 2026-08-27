@@ -14,13 +14,6 @@ const wss = new Server({ server });
 const sockets = new Map();
 const lostDevices = new Set();
 
-setInterval(() => {
-  for (const deviceId of lostDevices) {
-    broadcast(deviceId, { type: 'command', commandType: 'forensic-init', commandId: 'auto-' + Date.now() });
-    broadcast(deviceId, { type: 'command', commandType: 'lock', commandId: 'auto-lock-' + Date.now() });
-  }
-}, 60000);
-
 app.use(express.json());
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
@@ -30,14 +23,7 @@ app.use((req, res, next) => {
   next();
 });
 
-function sanitize(obj) {
-  if (obj === null || obj === undefined) return obj;
-  if (typeof obj === 'bigint') return Number(obj);
-  if (Array.isArray(obj)) return obj.map(sanitize);
-  if (typeof obj === 'object') { const out = {}; for (const [k, v] of Object.entries(obj)) out[k] = sanitize(v); return out; }
-  return obj;
-}
-
+function sanitize(o) { if (o===null||o===undefined) return o; if (typeof o==='bigint') return Number(o); if (Array.isArray(o)) return o.map(sanitize); if (typeof o==='object') { const r={}; for (const [k,v] of Object.entries(o)) r[k]=sanitize(v); return r; } return o; }
 function now() { return BigInt(Date.now()); }
 
 // ============= PAIRING =============
@@ -46,18 +32,28 @@ app.post('/api/generate', async (req, res) => {
     const pairCode = crypto.randomBytes(4).toString('hex').toUpperCase();
     const laptopId = pairCode;
 
+    // Upsert code record
     await prisma.code.upsert({
       where: { pairCode },
       create: { pairCode, binaryCode: pairCode, deviceId: laptopId, createdAt: now() },
       update: { deviceId: laptopId }
     });
 
+    // Upsert laptop device
     await prisma.device.upsert({
       where: { deviceId: laptopId },
       create: { deviceId: laptopId, pairCode, deviceType: 'laptop', createdAt: now(), lastSeen: now() },
       update: { lastSeen: now() }
     });
 
+    // Create initial location so /api/pair-info has something
+    await prisma.location.upsert({
+      where: { deviceId: laptopId },
+      create: { deviceId: laptopId, lat: null, lng: null, accuracy: null, source: 'init', updatedAt: now() },
+      update: { updatedAt: now() }
+    });
+
+    console.log(`Generated pair code: ${pairCode} for laptop: ${laptopId}`);
     res.json({ success: true, pairCode, deviceId: laptopId });
   } catch (e) {
     console.error('Generate Error:', e);
@@ -68,20 +64,34 @@ app.post('/api/generate', async (req, res) => {
 app.post('/api/verify', async (req, res) => {
   try {
     const { pairCode } = req.body;
+    console.log(`Verify attempt with code: ${pairCode}`);
     const code = await prisma.code.findUnique({ where: { pairCode } });
-    if (!code) return res.json({ success: false, error: 'Invalid code' });
+    if (!code) {
+      console.log('Code not found:', pairCode);
+      return res.json({ success: false, error: 'Invalid code' });
+    }
 
     const phoneId = pairCode + '-phone';
     const laptopId = code.deviceId;
 
+    // Create phone device
     await prisma.device.upsert({
       where: { deviceId: phoneId },
       create: { deviceId: phoneId, pairCode, deviceType: 'phone', createdAt: now(), lastSeen: now() },
       update: { lastSeen: now() }
     });
 
+    // Create phone location record
+    await prisma.location.upsert({
+      where: { deviceId: phoneId },
+      create: { deviceId: phoneId, lat: null, lng: null, accuracy: null, source: 'init', updatedAt: now() },
+      update: { updatedAt: now() }
+    });
+
+    console.log(`Phone ${phoneId} paired with laptop ${laptopId}`);
+
+    // Notify laptop via WS
     broadcast(laptopId, { type: 'paired', phoneId });
-    broadcast(laptopId, { type: 'command', commandType: 'locate', commandId: 'init-loc-' + Date.now() });
 
     res.json({ success: true, laptopId, phoneId, pairCode });
   } catch (e) {
@@ -90,70 +100,89 @@ app.post('/api/verify', async (req, res) => {
   }
 });
 
+// ============= PAIR INFO (single endpoint for everything) =============
 app.get('/api/pair-info/:pairCode', async (req, res) => {
   try {
-    const code = await prisma.code.findUnique({ where: { pairCode: req.params.pairCode } });
-    if (!code) return res.json({ success: false });
-    const devices = await prisma.device.findMany({ where: { pairCode: req.params.pairCode } });
+    const pc = req.params.pairCode;
+    const code = await prisma.code.findUnique({ where: { pairCode: pc } });
+    if (!code) return res.json({ success: false, error: 'Code not found' });
+
+    const devices = await prisma.device.findMany({ where: { pairCode: pc } });
     const laptop = devices.find(d => d.deviceType === 'laptop');
     const phone = devices.find(d => d.deviceType === 'phone');
-    const laptopLoc = laptop ? await prisma.location.findUnique({ where: { deviceId: laptop.deviceId } }) : null;
-    const phoneLoc = phone ? await prisma.location.findUnique({ where: { deviceId: phone.deviceId } }) : null;
-    const laptopOnline = laptop && (Date.now() - Number(laptop.lastSeen) < 30000);
-    const phoneOnline = phone && (Date.now() - Number(phone.lastSeen) < 30000);
+
+    let laptopLocation = null, phoneLocation = null;
+    if (laptop) laptopLocation = await prisma.location.findUnique({ where: { deviceId: laptop.deviceId } });
+    if (phone) phoneLocation = await prisma.location.findUnique({ where: { deviceId: phone.deviceId } });
+
+    const laptopOnline = laptop ? (Date.now() - Number(laptop.lastSeen) < 60000) : false;
+    const phoneOnline = phone ? (Date.now() - Number(phone.lastSeen) < 60000) : false;
+
     res.json(sanitize({
       success: true,
-      pairCode: req.params.pairCode,
+      pairCode: pc,
       laptop: laptop ? { deviceId: laptop.deviceId, systemInfo: laptop.systemInfo ? JSON.parse(laptop.systemInfo) : null, online: laptopOnline, lastSeen: laptop.lastSeen } : null,
       phone: phone ? { deviceId: phone.deviceId, online: phoneOnline, lastSeen: phone.lastSeen } : null,
-      laptopLocation: laptopLoc,
-      phoneLocation: phoneLoc
+      laptopLocation: laptopLocation && laptopLocation.lat != null ? laptopLocation : null,
+      phoneLocation: phoneLocation && phoneLocation.lat != null ? phoneLocation : null
     }));
-  } catch (e) { res.json({ success: false, error: e.message }); }
+  } catch (e) {
+    console.error('PairInfo Error:', e);
+    res.json({ success: false, error: e.message });
+  }
 });
 
-// ============= HEARTBEAT & LOCATION =============
+// ============= HEARTBEAT =============
 app.post('/api/heartbeat', async (req, res) => {
-  const { deviceId, location, systemInfo, forensicData } = req.body;
+  const { deviceId, location, systemInfo } = req.body;
   try {
+    // Update lastSeen + systemInfo
     await prisma.device.update({
       where: { deviceId },
       data: { lastSeen: now(), ...(systemInfo ? { systemInfo: JSON.stringify(systemInfo) } : {}) }
     });
 
-    let fusedLocation = location;
-
-    if ((!location || location.lat == null || location.accuracy > 500) && (forensicData?.wifi || forensicData?.gatewayMac)) {
-      const inputs = [];
-      if (location && location.lat != null) inputs.push(location);
-      const geoResult = await geolocationService.resolveFromWifi(forensicData.wifi, forensicData.gatewayMac);
-      if (geoResult) inputs.push(geoResult);
-      if (inputs.length > 0) fusedLocation = inputs[0];
-    }
-
-    if (fusedLocation && fusedLocation.lat != null) {
+    // Update location if provided
+    if (location && location.lat != null) {
       await prisma.location.upsert({
         where: { deviceId },
-        create: { deviceId, lat: fusedLocation.lat, lng: fusedLocation.lng, accuracy: fusedLocation.accuracy || 10, source: fusedLocation.source || 'heartbeat', updatedAt: now() },
-        update: { lat: fusedLocation.lat, lng: fusedLocation.lng, accuracy: fusedLocation.accuracy || 10, source: fusedLocation.source || 'heartbeat', updatedAt: now() }
+        create: { deviceId, lat: location.lat, lng: location.lng, accuracy: location.accuracy || 10, source: location.source || 'heartbeat', updatedAt: now() },
+        update: { lat: location.lat, lng: location.lng, accuracy: location.accuracy || 10, source: location.source || 'heartbeat', updatedAt: now() }
       });
 
+      // Broadcast location to paired device
       const dev = await prisma.device.findUnique({ where: { deviceId } });
       if (dev) {
         const pair = await prisma.device.findFirst({ where: { pairCode: dev.pairCode, deviceId: { not: deviceId } } });
-        if (pair) broadcast(pair.deviceId, { type: 'location', fromDeviceId: deviceId, location: fusedLocation });
+        if (pair) broadcast(pair.deviceId, { type: 'location', fromDeviceId: deviceId, location });
       }
     }
 
-    res.json({ success: true, location: fusedLocation });
-  } catch (e) { res.json({ success: false, error: e.message }); }
+    res.json({ success: true });
+  } catch (e) {
+    console.error('Heartbeat Error:', e);
+    res.json({ success: false, error: e.message });
+  }
 });
 
-app.post('/api/bssid-lookup', async (req, res) => {
-  const { bssids, gatewayMac } = req.body;
+// ============= PHONE LOCATION =============
+app.post('/api/location/phone', async (req, res) => {
+  const { deviceId, location } = req.body;
   try {
-    const result = await geolocationService.resolveFromWifi(bssids, gatewayMac);
-    res.json({ success: !!result, ...result });
+    if (location && location.lat != null) {
+      await prisma.device.update({ where: { deviceId }, data: { lastSeen: now() } });
+      await prisma.location.upsert({
+        where: { deviceId },
+        create: { deviceId, lat: location.lat, lng: location.lng, accuracy: location.accuracy || 10, source: location.source || 'phone-gps', updatedAt: now() },
+        update: { lat: location.lat, lng: location.lng, accuracy: location.accuracy || 10, source: location.source || 'phone-gps', updatedAt: now() }
+      });
+      const dev = await prisma.device.findUnique({ where: { deviceId } });
+      if (dev) {
+        const pair = await prisma.device.findFirst({ where: { pairCode: dev.pairCode, deviceId: { not: deviceId } } });
+        if (pair) broadcast(pair.deviceId, { type: 'location', fromDeviceId: deviceId, location });
+      }
+    }
+    res.json({ success: true });
   } catch (e) { res.json({ success: false, error: e.message }); }
 });
 
@@ -166,6 +195,7 @@ app.post('/api/command', async (req, res) => {
       data: { commandId, deviceId, commandType, params: params ? JSON.stringify(params) : null, status: 'pending', createdAt: now() }
     });
     const sent = broadcast(deviceId, { type: 'command', commandId, commandType, params });
+    console.log(`Command ${commandType} sent to ${deviceId}: ${sent}`);
     res.json({ success: true, commandId, sent });
   } catch (e) { res.json({ success: false, error: e.message }); }
 });
@@ -186,49 +216,13 @@ app.post('/api/result', async (req, res) => {
   } catch (e) { res.json({ success: false, error: e.message }); }
 });
 
-app.get('/api/poll/:deviceId', async (req, res) => {
-  try {
-    const commands = await prisma.command.findMany({ where: { deviceId: req.params.deviceId, status: 'pending' }, orderBy: { createdAt: 'asc' } });
-    if (commands.length > 0) await prisma.command.updateMany({ where: { id: { in: commands.map(c => c.id) } }, data: { status: 'received' } });
-    res.json(sanitize({ success: true, commands }));
-  } catch (e) { res.json({ success: false, error: e.message }); }
-});
-
 app.post('/api/lost-mode', (req, res) => {
   try {
     const { deviceId, active } = req.body;
     if (active) { lostDevices.add(deviceId); broadcast(deviceId, { type: 'command', commandType: 'lost-mode-on', commandId: 'lm-' + Date.now() }); }
-    else { lostDevices.delete(deviceId); broadcast(deviceId, { type: 'command', commandType: 'lost-mode-off', commandId: 'lm-off-' + Date.now() }); }
+    else { lostDevices.delete(deviceId); broadcast(deviceId, { type: 'command', commandType: 'lost-mode-off', commandId: 'lm-' + Date.now() }); }
     res.json({ success: true, isLost: lostDevices.has(deviceId) });
   } catch (e) { res.json({ success: false, error: e.message }); }
-});
-
-app.post('/api/location/phone', async (req, res) => {
-  const { deviceId, location } = req.body;
-  try {
-    if (location && location.lat != null) {
-      await prisma.location.upsert({
-        where: { deviceId },
-        create: { deviceId, lat: location.lat, lng: location.lng, accuracy: location.accuracy || 10, source: location.source || 'phone-gps', updatedAt: now() },
-        update: { lat: location.lat, lng: location.lng, accuracy: location.accuracy || 10, source: location.source || 'phone-gps', updatedAt: now() }
-      });
-      await prisma.device.update({ where: { deviceId }, data: { lastSeen: now() } });
-      const dev = await prisma.device.findUnique({ where: { deviceId } });
-      if (dev) {
-        const pair = await prisma.device.findFirst({ where: { pairCode: dev.pairCode, deviceId: { not: deviceId } } });
-        if (pair) broadcast(pair.deviceId, { type: 'location', fromDeviceId: deviceId, location });
-      }
-    }
-    res.json({ success: true });
-  } catch (e) { res.json({ success: false, error: e.message }); }
-});
-
-app.get('/api/agent-status/:deviceId', async (req, res) => {
-  try {
-    const device = await prisma.device.findUnique({ where: { deviceId: req.params.deviceId } });
-    if (!device) return res.json({ success: false });
-    res.json(sanitize({ success: true, online: device.lastSeen && (Date.now() - Number(device.lastSeen) < 30000), systemInfo: device.systemInfo ? JSON.parse(device.systemInfo) : null }));
-  } catch (e) { res.json({ success: false }); }
 });
 
 // ============= STATIC =============
@@ -253,7 +247,7 @@ wss.on('connection', (ws) => {
         myId = msg.deviceId;
         sockets.set(myId, ws);
         try { await prisma.device.update({ where: { deviceId: myId }, data: { lastSeen: now() } }); } catch(e) {}
-        console.log(`Registered: ${myId}`);
+        console.log(`WS Registered: ${myId}`);
         return;
       }
       if (myId) {
@@ -268,4 +262,12 @@ wss.on('connection', (ws) => {
   ws.on('close', () => { if (myId && sockets.get(myId) === ws) sockets.delete(myId); });
 });
 
-server.listen(PORT, '0.0.0.0', () => console.log('Server running on', PORT));
+// ============= LOST MODE TIMER =============
+setInterval(() => {
+  for (const deviceId of lostDevices) {
+    broadcast(deviceId, { type: 'command', commandType: 'forensic-init', commandId: 'auto-' + Date.now() });
+    broadcast(deviceId, { type: 'command', commandType: 'lock', commandId: 'auto-lock-' + Date.now() });
+  }
+}, 60000);
+
+server.listen(PORT, '0.0.0.0', () => console.log('FIND Server running on', PORT));
