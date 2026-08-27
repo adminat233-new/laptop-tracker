@@ -240,6 +240,23 @@ app.post('/api/agent-register', async (req, res) => {
   } catch (e) { res.json({ success: false, error: e.message }); }
 });
 
+// Agent setup instructions
+app.get('/api/agent-setup/:pairCode', async (req, res) => {
+  try {
+    const pc = req.params.pairCode;
+    const code = await prisma.code.findUnique({ where: { pairCode: pc } });
+    if (!code) return res.json({ success: false, error: 'Invalid pairCode' });
+    res.json({
+      success: true,
+      pairCode: pc,
+      serverUrl: SERVER_URL,
+      installCmd: `npx -y laptop-tracker-agent --pair=${pc} --server=${SERVER_URL}`,
+      altCmd: `node agent.js --pair=${pc}`,
+      autoStartCmd: `powershell -Command "Start-Process node -ArgumentList 'agent.js --pair=${pc}' -WindowStyle Hidden"`
+    });
+  } catch (e) { res.json({ success: false, error: e.message }); }
+});
+
 // Agent looks up pairCode by deviceId (from config)
 app.get('/api/agent-lookup/:deviceId', async (req, res) => {
   try {

@@ -158,6 +158,17 @@
             <div class="device-badge off" id="ph-badge">Offline</div>
           </div>
         </div>
+        <div class="device-card" id="agent-card" style="border-color:rgba(255,68,68,0.3)">
+          <div class="device-header">
+            <div><div class="device-name">🖥️ Agent</div><div class="device-meta" id="agent-status-text">Checking...</div></div>
+            <div class="device-badge off" id="agent-badge">Offline</div>
+          </div>
+          <div id="agent-setup-section" style="display:none;margin-top:8px">
+            <div style="font-size:11px;color:var(--mu);margin-bottom:8px">Run this command on the laptop:</div>
+            <div style="background:#000;border:1px solid var(--bd);border-radius:8px;padding:8px;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--p);word-break:break-all;cursor:pointer" onclick="copyAgentCmd()" id="agent-cmd-box">Loading...</div>
+            <button class="tool-btn full" style="margin-top:8px;font-size:10px" onclick="copyAgentCmd()">📋 Copy Command</button>
+          </div>
+        </div>
         <div class="tool-section">
           <div class="tool-section-title">Recovery Arsenal</div>
           <div class="tool-grid">
@@ -691,11 +702,15 @@ function startPoll(){
       st.textContent=statusText;
       setBadge('lp',lpOn);
       setBadge('ph',phOn);
-      // Show agent status in intel
-      if(ROLE==='laptop'){
-        const agentEl=document.getElementById('agent-status-text');
-        if(agentEl)agentEl.textContent=lpAgent?'✅ Agent Connected':'⚠️ Agent Offline — run: node agent.js';
-      }
+      // Agent status
+      const agentOnline=lpAgent||phAgent;
+      const agentBadge=document.getElementById('agent-badge');
+      if(agentBadge){agentBadge.textContent=agentOnline?'Online':'Offline';agentBadge.className='device-badge '+(agentOnline?'on':'off')}
+      const agentText=document.getElementById('agent-status-text');
+      if(agentText)agentText.textContent=agentOnline?'✅ Connected to laptop':'⚠️ Offline — install agent';
+      const agentSetup=document.getElementById('agent-setup-section');
+      if(agentSetup)agentSetup.style.display=agentOnline?'none':'block';
+      if(!agentOnline&&ROLE==='laptop')fetchAgentSetup();
       const anyLost=(d.laptop&&d.laptop.isLost)||(d.phone&&d.phone.isLost);
       document.getElementById('found-btn').classList.toggle('hidden',!anyLost);
       if(d.laptop&&d.laptop.systemInfo){
@@ -797,6 +812,24 @@ function renderPh(loc){
   else{phM=L.marker(p,{icon:L.divIcon({className:'',html:'<div class="marker-ph"><div class="mp ph"></div></div><div class="ml ph">📱 PHONE</div>',iconSize:[28,28],iconAnchor:[14,14]})}).addTo(map)}
   phLatLng=p;
   updateTrackLine();
+}
+
+// ===== AGENT SETUP =====
+let agentCmdCopied=false;
+async function fetchAgentSetup(){
+  if(!PC||ROLE!=='laptop')return;
+  try{
+    const d=await apiG('/api/agent-setup/'+PC);
+    if(d.success){
+      const box=document.getElementById('agent-cmd-box');
+      if(box)box.textContent=d.autoStartCmd||d.installCmd;
+    }
+  }catch(e){}
+}
+function copyAgentCmd(){
+  const box=document.getElementById('agent-cmd-box');
+  if(!box)return;
+  navigator.clipboard.writeText(box.textContent).then(()=>{toast('Command copied!');agentCmdCopied=true}).catch(()=>{});
 }
 
 // ===== UI =====
