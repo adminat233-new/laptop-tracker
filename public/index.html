@@ -560,7 +560,7 @@ async function browserScreenshot(){
 
 function showScreenshot(base64){
   const m=document.getElementById('modal');
-  m.innerHTML='<div class="close" onclick=\\'this.parentElement.style.display="none"\\'>✕</div>';
+  m.innerHTML='<div class="close" onclick="document.getElementById(\'modal\').style.display=\'none\'">✕</div>';
   const img=document.createElement('img');
   img.src='data:image/png;base64,'+base64;
   img.style.cssText='max-width:100%;max-height:80vh;border-radius:16px';
