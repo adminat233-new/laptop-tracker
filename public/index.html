@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <meta name="theme-color" content="#0a0a0f">
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-  <title>Haulix | Global Laptop Recovery</title>
+  <title>Haulix | Ultimate Global Recovery</title>
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -56,7 +56,7 @@
     .device-name { font-size: 16px; font-weight: 700; }
     .device-status { font-size: 10px; font-weight: 800; text-transform: uppercase; color: var(--primary); padding: 4px 10px; background: rgba(212,255,63,0.1); border-radius: 6px; }
     .device-status.offline { color: #ff4444; background: rgba(255,68,68,0.1); }
-    .device-meta { font-size: 12px; color: var(--text-muted); font-family: 'JetBrains Mono'; margin-bottom: 16px; }
+    .device-meta { font-size: 11px; color: var(--text-muted); font-family: 'JetBrains Mono'; margin-bottom: 8px; }
 
     .metrics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding-top: 16px; border-top: 1px solid var(--border); }
     .metric-box { display: flex; flex-direction: column; gap: 4px; }
@@ -115,6 +115,10 @@
 
     .toast { position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%) translateY(100px); background: #1a1a1a; border: 1px solid var(--primary); color: #fff; padding: 12px 24px; border-radius: 40px; font-size: 14px; font-weight: 600; z-index: 10000; transition: 0.3s cubic-bezier(0.18, 0.89, 0.32, 1.28); }
     .toast.show { transform: translateX(-50%) translateY(0); }
+
+    /* Modal for screenshots */
+    #forensic-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 10000; display: none; align-items: center; justify-content: center; flex-direction: column; padding: 40px; }
+    .modal-close { position: absolute; top: 20px; right: 20px; cursor: pointer; font-size: 24px; color: #fff; }
   </style>
 </head>
 <body>
@@ -123,8 +127,8 @@
   <div id="pair-screen" class="screen active">
     <div class="pair-box">
       <div class="logo" style="margin: 0 auto 24px;">H</div>
-      <h2>Establish Uplink</h2>
-      <p>Connect your devices to the Haulix intelligence network.</p>
+      <h2>Haulix Uplink</h2>
+      <p>Secure global fleet tracking and recovery system.</p>
 
       <div id="role-select" class="role-options">
         <div class="role-card" onclick="setupDevice('laptop')">
@@ -153,12 +157,12 @@
 
   <!-- Screen 2: Main Dashboard -->
   <div id="dashboard" class="screen">
-    <nav class="sidebar-rail">
+    <nav class="sidebar-nav">
       <div class="logo">H</div>
       <div class="nav-btn active">📊</div>
       <div class="nav-btn">🗺️</div>
       <div class="nav-btn">📡</div>
-      <div class="nav-btn">⚙️</div>
+      <div class="nav-btn" onclick="localStorage.clear(); location.reload();">🔄</div>
     </nav>
 
     <main class="app-main">
@@ -170,7 +174,7 @@
         <div style="display: flex; gap: 24px;">
            <div class="stat-item" style="display: flex; align-items: center; gap: 8px;">
              <div id="live-dot" style="width: 8px; height: 8px; border-radius: 50%; background: #ff4444;"></div>
-             <span id="live-status" style="font-size: 12px; font-weight: 700; text-transform: uppercase;">Node Disconnected</span>
+             <span id="live-status" style="font-size: 12px; font-weight: 700; text-transform: uppercase;">Disconnected</span>
            </div>
            <div class="stat-item" style="text-align: right;">
              <div id="reliability-val" style="font-size: 14px; font-weight: 800; color: var(--primary);">0.0%</div>
@@ -182,35 +186,34 @@
       <div class="dashboard-body">
         <aside class="device-sidebar">
           <div class="search-area">
-            <input type="text" class="search-input" placeholder="Search fleet nodes...">
+            <input type="text" class="search-input" placeholder="Search devices...">
           </div>
           <div class="device-list" id="fleet-list">
             <div class="device-card active" id="node-card">
               <div class="device-header">
                 <div>
-                  <div class="device-name" id="node-name">Guardian-01</div>
-                  <div id="node-os" style="font-size: 11px; color: var(--text-muted);">Detecting...</div>
+                  <div class="device-name" id="node-name">Detecting...</div>
+                  <div id="node-os" style="font-size: 11px; color: var(--text-muted);">OS: Identifying</div>
                 </div>
-                <div class="device-status" id="node-badge">Inactive</div>
+                <div class="device-status" id="node-badge">Searching</div>
               </div>
 
-              <div id="admin-status" style="font-size: 9px; margin-bottom: 8px; font-weight: 800; letter-spacing: 0.5px;"></div>
-
+              <div id="admin-status" style="font-size: 9px; margin-bottom: 4px; font-weight: 800; letter-spacing: 0.5px;"></div>
               <div id="signal-fingerprint" style="font-size: 8px; color: var(--accent-blue); margin-bottom: 8px; font-family: 'JetBrains Mono'; background: rgba(0,212,255,0.05); padding: 4px; border-radius: 4px; display: none;"></div>
 
-              <div class="device-meta" id="node-coords">Waiting for coordinates...</div>
+              <div class="device-meta" id="node-coords">Coordinates: Pending Fix</div>
               <div class="metrics-grid">
                 <div class="metric-box">
                   <span class="metric-label">Accuracy</span>
                   <span class="metric-val" id="stat-accuracy">-- m</span>
                 </div>
                 <div class="metric-box">
-                  <span class="metric-label">Speed</span>
+                  <span class="metric-label">Uptime</span>
                   <span class="metric-val" id="stat-uptime">0.0 km/h</span>
                 </div>
               </div>
               <button class="tool-btn danger" id="lost-btn" onclick="toggleLostState(true)">🚨 MARK AS LOST</button>
-              <button class="tool-btn hidden" id="found-btn" onclick="toggleLostState(false)" style="color:var(--primary); border-color:var(--primary); background:rgba(212,255,63,0.05); margin-top:10px; width:100%; justify-content:center;">✅ DEVICE FOUND</button>
+              <button class="tool-btn hidden" id="found-btn" onclick="toggleLostState(false)" style="color:var(--primary); border-color:var(--primary); background:rgba(212,255,63,0.05); margin-top:10px; width:100%; justify-content:center;">✅ DEVICE RECOVERED</button>
             </div>
           </div>
         </aside>
@@ -219,25 +222,25 @@
           <div id="map"></div>
           <div class="floating-tools">
             <div class="tool-panel">
-              <div class="panel-title">Command Center <span>⚡</span></div>
+              <div class="panel-title">Command Array <span>⚡</span></div>
               <div class="cmd-grid">
-                <button class="tool-btn" onclick="execCmd('siren')">🚨 Siren</button>
-                <button class="tool-btn" onclick="execCmd('lock')">🔒 Lock</button>
-                <button class="tool-btn" onclick="execCmd('dns-dump')">🌐 DNS Audit</button>
-                <button class="tool-btn" onclick="execCmd('port-audit')">🔍 Port Scan</button>
-                <button class="tool-btn" onclick="execCmd('wifi-passwords')">🔑 WiFi Pass</button>
-                <button class="tool-btn" onclick="execCmd('screenshot')">📸 Capture</button>
-                <button class="tool-btn" onclick="runIntelligence('triangulate')">📡 Triangulate</button>
-                <button class="tool-btn" onclick="runIntelligence('net-trace')">📊 Net Trace</button>
-                <button class="tool-btn primary" onclick="execCmd('forensic-init')">Force Signal Fusion (TTAL)</button>
+                <button class="tool-btn" onclick="execRemoteCmd('siren')">🚨 Siren</button>
+                <button class="tool-btn" onclick="execRemoteCmd('lock')">🔒 Lock</button>
+                <button class="tool-btn" onclick="execRemoteCmd('dns-dump')">🌐 DNS Audit</button>
+                <button class="tool-btn" onclick="execRemoteCmd('port-audit')">🔍 Port Scan</button>
+                <button class="tool-btn" onclick="execRemoteCmd('wifi-passwords')">🔑 WiFi Pass</button>
+                <button class="tool-btn" onclick="execRemoteCmd('screenshot')">📸 Capture</button>
+                <button class="tool-btn" onclick="runIntelTool('triangulate')">📡 Triangulate</button>
+                <button class="tool-btn" onclick="runIntelTool('net-trace')">📊 Net Trace</button>
+                <button class="tool-btn primary" onclick="execRemoteCmd('forensic-init')">Quantum Brain Sync (TTAL)</button>
               </div>
               <div id="intel-output" style="display:none; margin-top: 12px; background: #000; padding: 12px; border-radius: 8px; font-size: 11px; border: 1px solid var(--border);"></div>
             </div>
 
             <div class="tool-panel">
-              <div class="panel-title">Forensic Intelligence <div id="intel-pulse" style="width:6px; height:6px; background:#444; border-radius:50%;"></div></div>
+              <div class="panel-title">Intelligence Stream <div id="intel-pulse" style="width:6px; height:6px; background:#444; border-radius:50%;"></div></div>
               <div id="forensic-log" class="intel-log">
-                <div class="log-line">Waiting for secure telemetry uplink...</div>
+                <div class="log-line">Initializing secure telemetry bridge...</div>
               </div>
             </div>
           </div>
@@ -246,18 +249,57 @@
     </main>
   </div>
 
+  <div id="forensic-modal"><div class="modal-close" onclick="this.parentElement.style.display='none'">✕</div></div>
   <div class="toast" id="ui-toast"></div>
 
   <script>
-    // --- State Management ---
-    const CONFIG = { HANDSHAKE_LEN: 8 };
+    // --- Signal Engine & Logic (Quantum TTAL) ---
+    const SignalEngine = {
+      rssiToDistance(rssi, p0 = -55, n = 3.5) {
+        if (rssi >= p0) return 0.5;
+        return Math.pow(10, (p0 - rssi) / (10 * n));
+      },
+      solveTrilateration(beacons) {
+        if (beacons.length < 3) return null;
+        const [p1, p2, p3] = beacons;
+        const x21 = p2.x - p1.x, y21 = p2.y - p1.y;
+        const x31 = p3.x - p1.x, y31 = p3.y - p1.y;
+        const d21 = x21*x21 + y21*y21, d31 = x31*x31 + y31*y31;
+        const r1sq = p1.distance**2, r2sq = p2.distance**2, r3sq = p3.distance**2;
+        const det = x21 * y31 - x31 * y21;
+        if (Math.abs(det) < 1e-10) return null;
+        const c1 = (r1sq - r2sq + d21) / 2, c2 = (r1sq - r3sq + d31) / 2;
+        return { lat: p1.x + (c1 * y31 - c2 * y21) / det, lng: p1.y + (x21 * c2 - x31 * c1) / det };
+      }
+    };
+
+    class KalmanFilter {
+      constructor(q=0.005, r=1.0, init=0) { this.x=init; this.p=1; this.q=q; this.r=r; }
+      update(z) { this.p+=this.q; const k=this.p/(this.p+this.r); this.x+=k*(z-this.x); this.p=(1-k)*this.p; return this.x; }
+    }
+
+    const LocationTracker = {
+      latFilter: new KalmanFilter(), lngFilter: new KalmanFilter(),
+      motion: { speed: 0, lastUpdate: Date.now() },
+      init() {
+        if (window.DeviceMotionEvent) {
+            window.addEventListener('devicemotion', (e) => {
+                const acc = e.accelerationIncludingGravity;
+                if (acc) this.motion.speed = Math.abs(Math.sqrt(acc.x**2 + acc.y**2 + acc.z**2) - 9.8);
+            });
+        }
+      }
+    };
+    LocationTracker.init();
+
+    // --- Global State ---
     let map = null, lpMarker = null, phMarker = null;
     let lpId = null, phId = null, isLaptop = false;
-    let ws = null, statusTimer = null;
-    let lpLoc = null, phLoc = null;
-    let dashboardActive = false;
+    let ws = null, statusInterval = null;
+    let dashActive = false;
+    let wifiCache = [];
 
-    // --- Core Logic ---
+    // --- Pairing & Setup ---
     function setupDevice(role) {
         isLaptop = role === 'laptop';
         localStorage.setItem('haulix_role', role);
@@ -267,34 +309,32 @@
             generatePairCode();
         } else {
             document.getElementById('phone-view').classList.remove('hidden');
-            createInputGrid();
+            createHandshakeGrid();
         }
     }
 
     async function generatePairCode() {
-        try {
-            const data = await apiPost('/api/generate', { systemInfo: { platform: navigator.platform, ua: navigator.userAgent } });
-            if (data.success) {
-                lpId = data.deviceId;
-                localStorage.setItem('haulix_lpId', lpId);
-                const container = document.getElementById('laptop-code-display');
-                container.innerHTML = '';
-                data.pairCode.split('').forEach(d => {
-                    const el = document.createElement('div'); el.className = 'code-digit'; el.textContent = d; container.appendChild(el);
-                });
-                initUplink(lpId, 'laptop');
-                startPairingDetector();
-            }
-        } catch (e) { showToast('Uplink failed: ' + e.message); }
+        const data = await apiPost('/api/generate', { systemInfo: { platform: navigator.platform } });
+        if (data.success) {
+            lpId = data.deviceId;
+            localStorage.setItem('haulix_lpId', lpId);
+            const container = document.getElementById('laptop-code-display');
+            container.innerHTML = '';
+            data.pairCode.split('').forEach(d => {
+                const div = document.createElement('div'); div.className = 'code-digit'; div.textContent = d; container.appendChild(div);
+            });
+            initWebSocket(lpId, 'laptop');
+            startPairMonitor();
+        }
     }
 
-    function createInputGrid() {
+    function createHandshakeGrid() {
         const container = document.getElementById('phone-code-inputs');
         container.innerHTML = '';
-        for (let i = 0; i < CONFIG.HANDSHAKE_LEN; i++) {
+        for (let i = 0; i < 8; i++) {
             const input = document.createElement('input'); input.className = 'digit-input'; input.maxLength = 1;
             input.oninput = (e) => {
-                if (e.target.value && i < CONFIG.HANDSHAKE_LEN - 1) container.children[i+1].focus();
+                if (e.target.value && i < 7) container.children[i+1].focus();
                 document.getElementById('authorize-btn').disabled = Array.from(container.children).some(c => !c.value);
             };
             container.appendChild(input);
@@ -303,98 +343,79 @@
 
     async function authorizeUplink() {
         const code = Array.from(document.getElementById('phone-code-inputs').children).map(c => c.value).join('').toUpperCase();
-        try {
-            const data = await apiPost('/api/verify', { pairCode: code });
-            if (data.success) {
-                phId = data.phoneDeviceId; lpId = data.laptopDeviceId;
-                localStorage.setItem('haulix_phId', phId);
-                localStorage.setItem('haulix_lpId', lpId);
-                enterDashboard();
-            } else {
-                document.getElementById('error-msg').textContent = data.error || 'Authorization Denied';
-            }
-        } catch (e) { document.getElementById('error-msg').textContent = 'Network Error'; }
+        const data = await apiPost('/api/verify', { pairCode: code });
+        if (data.success) {
+            phId = data.phoneDeviceId; lpId = data.laptopDeviceId;
+            localStorage.setItem('haulix_phId', phId);
+            localStorage.setItem('haulix_lpId', lpId);
+            enterApp();
+        } else {
+            document.getElementById('error-msg').textContent = data.error || 'Uplink Denied';
+        }
     }
 
-    function startPairingDetector() {
-        setInterval(async () => {
-            if (dashboardActive) return;
+    function startPairMonitor() {
+        const monitor = setInterval(async () => {
+            if (dashActive) return clearInterval(monitor);
             const res = await apiGet('/api/paired/' + lpId);
             if (res.paired) {
                 phId = res.pairedDeviceIds[0];
                 localStorage.setItem('haulix_phId', phId);
-                enterDashboard();
+                enterApp();
             }
         }, 3000);
     }
 
-    function enterDashboard() {
-        dashboardActive = true;
+    function enterApp() {
+        dashActive = true;
         showScreen('dashboard');
-        initUplink(isLaptop ? lpId : phId, isLaptop ? 'laptop' : 'phone');
-        if (!isLaptop) startLiveTelemetry();
+        initWebSocket(isLaptop ? lpId : phId, isLaptop ? 'laptop' : 'phone');
+        if (!isLaptop) startLiveFeed();
     }
 
-    function initUplink(id, type) {
-        const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-        ws = new WebSocket(protocol + '//' + location.host);
+    // --- Communication ---
+    function initWebSocket(id, type) {
+        if (ws) ws.close();
+        const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        ws = new WebSocket(proto + '//' + location.host);
         ws.onopen = () => {
             ws.send(JSON.stringify({ type: 'register', deviceId: id }));
             if (type === 'phone') {
                 navigator.geolocation.watchPosition(p => {
-                    phLoc = { lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy, source: 'phone-gps' };
-                    ws.send(JSON.stringify({ type: 'location', location: phLoc }));
+                    const loc = { lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy, source: 'phone-gps' };
+                    ws.send(JSON.stringify({ type: 'location', location: loc }));
                 }, null, { enableHighAccuracy: true });
             }
         };
         ws.onmessage = (e) => {
             const msg = JSON.parse(e.data);
-            if (msg.type === 'connected') {
-                dashboardActive = true;
-                showScreen('dashboard');
-                addLog('Secure Uplink Synchronized', 'SYS');
-            }
+            if (msg.type === 'connected') { dashActive = true; showScreen('dashboard'); addLog('Uplink Secured', 'SYS'); }
             if (msg.type === 'location') {
-                if (msg.fromDeviceId?.startsWith('LP-')) updateLpLoc(msg.location);
-                else if (msg.fromDeviceId?.startsWith('PH-')) updatePhLoc(msg.location);
+                if (msg.fromDeviceId?.startsWith('LP-')) renderLpLoc(msg.location);
+                else if (msg.fromDeviceId?.startsWith('PH-')) renderPhLoc(msg.location);
             }
             if (msg.type === 'forensic_log') addLog(msg.log.output, msg.log.tool, msg.log.level);
             if (msg.type === 'commandResult') {
-                showToast('Intelligence Received');
+                showToast('Intelligence Array Updated');
                 const res = JSON.parse(msg.result);
-                if (res.bssids) window._lastWifi = res.bssids;
-                if (res.image) {
-                    showModal('image', res.image);
-                    addLog('Forensic Image Captured', 'CAM');
-                } else if (res.message) {
-                    addLog(res.message, 'RES');
-                } else {
-                    addLog(msg.result, 'RES');
-                }
+                if (res.bssids) wifiCache = res.bssids;
+                if (res.image) { showForensicModal('image', res.image); addLog('Screenshot Acquired', 'CAM'); }
+                if (res.message) addLog(res.message, 'RES');
             }
         };
     }
 
-    function showModal(type, data) {
-        let el = document.getElementById('forensic-modal');
-        if (!el) {
-            el = document.createElement('div'); el.id = 'forensic-modal';
-            el.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.9);z-index:10000;display:flex;align-items:center;justify-content:center;flex-direction:column;padding:40px;';
-            document.body.appendChild(el);
-        }
-        el.innerHTML = '<div style="position:absolute;top:20px;right:20px;cursor:pointer;font-size:24px;color:#fff;" onclick="this.parentElement.style.display=\'none\'">✕</div>';
-        if (type === 'image') {
-            const img = document.createElement('img');
-            img.src = 'data:image/png;base64,' + data;
-            img.style.maxWidth = '100%'; img.style.maxHeight = '80vh'; img.style.borderRadius = '16px'; img.style.boxShadow = '0 0 50px rgba(212,255,63,0.3)';
-            el.appendChild(img);
-        }
-        el.style.display = 'flex';
+    async function execRemoteCmd(type) {
+        const target = isLaptop ? phId : lpId;
+        if (!target) return showToast('Error: No paired node');
+        const res = await apiPost('/api/command', { deviceId: target, commandType: type });
+        if (res.success) { showToast('Operation Dispatched'); addLog('Command: ' + type.toUpperCase(), 'CMD'); }
     }
 
-    function startLiveTelemetry() {
-        if (statusTimer) clearInterval(statusTimer);
-        statusTimer = setInterval(async () => {
+    // --- Live Feed & UI ---
+    function startLiveFeed() {
+        if (statusInterval) clearInterval(statusInterval);
+        statusInterval = setInterval(async () => {
             if (!lpId) return;
             const d = await apiGet('/api/status/' + lpId);
             const dot = document.getElementById('live-dot');
@@ -402,20 +423,19 @@
             const badge = document.getElementById('node-badge');
 
             if (d.isOnline) {
-                dot.style.background = '#d4ff3f';
-                status.textContent = 'Node Secure';
+                dot.style.background = '#d4ff3f'; status.textContent = 'Secured';
                 badge.textContent = 'Active'; badge.className = 'device-status';
             } else {
-                dot.style.background = '#ff4444';
-                status.textContent = 'Node Offline';
+                dot.style.background = '#ff4444'; status.textContent = 'Offline';
                 badge.textContent = 'Inactive'; badge.className = 'device-status offline';
             }
 
-            if (d.deviceLocation) updateLpLoc(d.deviceLocation);
+            if (d.deviceLocation) renderLpLoc(d.deviceLocation);
             if (d.systemInfo) {
-                document.getElementById('node-name').textContent = d.systemInfo.hostname || 'Guardian-01';
-                document.getElementById('node-os').textContent = d.systemInfo.platform || 'Unknown OS';
-                document.getElementById('stat-admin').textContent = d.systemInfo.isAdmin ? 'Yes' : 'No';
+                document.getElementById('node-name').textContent = d.systemInfo.hostname || 'Guardian Node';
+                document.getElementById('node-os').textContent = 'OS: ' + (d.systemInfo.platform || 'Unknown');
+                document.getElementById('admin-status').textContent = d.systemInfo.isAdmin ? '🛡️ FULL ADMIN ACCESS' : '⚠️ LIMITED ACCESS';
+                document.getElementById('admin-status').style.color = d.systemInfo.isAdmin ? '#00ff88' : '#ffaa00';
 
                 if (d.systemInfo.lostMode) {
                     document.getElementById('lost-btn').classList.add('hidden');
@@ -430,102 +450,86 @@
         }, 5000);
     }
 
-    // --- Map & Visuals ---
     function initMap() {
         if (map) return;
         map = L.map('map', { center: [0, 0], zoom: 2, zoomControl: false, attributionControl: false });
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
-        document.getElementById('system-ts').textContent = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) + ' • Live';
+        document.getElementById('system-ts').textContent = new Date().toLocaleString() + ' • Real-time';
     }
 
-    function updateLpLoc(loc) {
+    function renderLpLoc(loc) {
         if (!loc || !map) return;
         const pos = [parseFloat(loc.lat), parseFloat(loc.lng)];
-        lpLoc = loc;
         document.getElementById('stat-accuracy').textContent = Math.round(loc.accuracy) + ' m';
         document.getElementById('reliability-val').textContent = (loc.confidence || 95) + '%';
-        document.getElementById('node-coords').textContent = `${pos[0].toFixed(6)}, ${pos[1].toFixed(6)}`;
-
+        document.getElementById('node-coords').textContent = `Coords: ${pos[0].toFixed(6)}, ${pos[1].toFixed(6)}`;
         if (lpMarker) lpMarker.setLatLng(pos);
-        else lpMarker = L.marker(pos, { icon: L.divIcon({ className: 'm-wrap', html: '<div class="haulix-marker"><div class="marker-pulse"></div></div>', iconSize: [30, 30] }) }).addTo(map);
-
-        if (!phMarker) map.setView(pos, 15);
-        else map.fitBounds(L.latLngBounds(pos, phMarker.getLatLng()), { padding: [50, 50] });
+        else lpMarker = L.marker(pos, { icon: L.divIcon({ className: 'm', html: '<div class="haulix-marker"><div class="marker-pulse"></div></div>', iconSize: [30, 30] }) }).addTo(map);
+        if (!phMarker) map.setView(pos, 16);
     }
 
-    function updatePhLoc(loc) {
+    function renderPhLoc(loc) {
         if (!loc || !map) return;
         const pos = [parseFloat(loc.lat), parseFloat(loc.lng)];
         if (phMarker) phMarker.setLatLng(pos);
-        else phMarker = L.marker(pos, { icon: L.divIcon({ className: 'm-wrap', html: '<div class="haulix-marker" style="border-color:var(--accent-blue);"><div class="marker-pulse" style="background:rgba(0,212,255,0.4);"></div></div>', iconSize: [30, 30] }) }).addTo(map);
+        else phMarker = L.marker(pos, { icon: L.divIcon({ className: 'm', html: '<div class="haulix-marker" style="border-color:var(--accent-blue);"><div class="marker-pulse" style="background:rgba(0,212,255,0.4);"></div></div>', iconSize: [30, 30] }) }).addTo(map);
     }
 
-    // --- Commands & Tools ---
-    async function execCmd(type) {
-        const target = isLaptop ? phId : lpId;
-        if (!target) return showToast('Waiting for pairing...');
-        try {
-            const res = await apiPost('/api/command', { deviceId: target, commandType: type });
-            if (res.success) {
-                showToast('Command Dispatched');
-                addLog('Command Issued: ' + type.toUpperCase(), 'CMD');
-            }
-        } catch(e) { showToast('Uplink Interrupted'); }
-    }
-
-    async function toggleLostState(active) {
-        if (!lpId) return;
-        const res = await apiPost('/api/lost-mode', { deviceId: lpId, active });
-        if (res.success) {
-            showToast(active ? 'DEVICE MARKED LOST' : 'DEVICE SECURED');
-            addLog(active ? 'LOST MODE ENGAGED' : 'RECOVERY CONFIRMED', 'SYS', active ? 'error' : 'info');
-        }
-    }
-
-    function runIntelligence(tool) {
+    // --- Tools ---
+    function runIntelTool(tool) {
         const out = document.getElementById('intel-output');
         out.style.display = 'block';
         if (tool === 'triangulate') {
-            let h = '<b>Signal Triangulation Array:</b><br>';
-            if (!window._lastWifi) h += 'Scanning signal environment...';
-            else window._lastWifi.forEach(n => h += `• ${n.ssid || 'AP'}: ${n.rssi}dBm<br>`);
+            let h = '<b>Triangulation array:</b><br>';
+            if (!wifiCache.length) h += 'Initiating WiFi scan...';
+            else wifiCache.forEach(n => h += `• ${n.ssid}: ${n.rssi}dBm (~${Math.round(SignalEngine.rssiToDistance(n.rssi))}m)<br>`);
             out.innerHTML = h;
-            execCmd('wifi-scan');
-        } else if (tool === 'net-trace') {
-            out.innerHTML = '<b>Network Topology Trace:</b><br>Mapping ISP hops to origin...';
-            execCmd('ping');
+            execRemoteCmd('wifi-scan');
+        } else {
+            out.innerHTML = '<b>Network Topology:</b><br>Tracing ISP gateway hops...';
+            execRemoteCmd('ping');
         }
+    }
+
+    async function toggleLostState(active) {
+        const res = await apiPost('/api/lost-mode', { deviceId: lpId, active });
+        if (res.success) {
+            showToast(active ? 'LOST MODE ENGAGED' : 'NODE RECOVERED');
+            addLog(active ? 'LOST MODE ACTIVE' : 'SECURED', 'SYS', active ? 'error' : 'info');
+        }
+    }
+
+    function showForensicModal(type, data) {
+        const el = document.getElementById('forensic-modal');
+        el.innerHTML = '<div class="modal-close" onclick="this.parentElement.style.display=\'none\'">✕</div>';
+        if (type === 'image') {
+            const img = document.createElement('img'); img.src = 'data:image/png;base64,' + data;
+            img.style.maxWidth = '100%'; img.style.maxHeight = '80vh'; img.style.borderRadius = '16px';
+            el.appendChild(img);
+        }
+        el.style.display = 'flex';
     }
 
     // --- Helpers ---
     function showToast(m) { const t = document.getElementById('ui-toast'); t.textContent = m; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 3000); }
-    function showScreen(id) { document.querySelectorAll('.screen').forEach(s => s.classList.remove('active')); document.getElementById(id).classList.add('active'); }
-    function addLog(m, t = 'sys', l = 'info') {
+    function showScreen(id) { document.querySelectorAll('.screen').forEach(s => s.classList.remove('active')); document.getElementById(id).classList.add('active'); if(id==='dashboard') initMap(); }
+    function addLog(m, t='sys', l='info') {
         const el = document.getElementById('forensic-log');
         const ts = new Date().toLocaleTimeString('en-US', { hour12: false });
-        const color = l === 'error' ? '#ff4444' : '#d4ff3f';
         const line = document.createElement('div'); line.className = 'log-line';
-        line.innerHTML = `<span style="color:#555">[${ts}]</span> <span style="color:var(--accent-blue)">[${t.toUpperCase()}]</span> <span style="color:${color}">${m}</span>`;
+        line.innerHTML = `<span style="color:#555">[${ts}]</span> <span style="color:var(--accent-blue)">[${t.toUpperCase()}]</span> <span style="${l=='error'?'color:#ff4444':''}">${m}</span>`;
         el.insertBefore(line, el.firstChild);
         document.getElementById('intel-pulse').style.background = '#d4ff3f';
         setTimeout(() => document.getElementById('intel-pulse').style.background = '#444', 500);
     }
+    async function apiPost(u, d) { return (await fetch(u, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(d) })).json(); }
+    async function apiGet(u) { return (await fetch(u)).json(); }
 
-    async function apiPost(u, d) {
-        const r = await fetch(u, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(d) });
-        return r.json();
-    }
-    async function apiGet(u) { const r = await fetch(u); return r.json(); }
-
-    // Auto-Restore
     window.addEventListener('load', () => {
         const r = localStorage.getItem('haulix_role');
         const lid = localStorage.getItem('haulix_lpId');
         const pid = localStorage.getItem('haulix_phId');
-        if (r && lid) {
-            isLaptop = r === 'laptop'; lpId = lid; phId = pid;
-            if (isLaptop || phId) enterDashboard();
-        }
+        if (r && lid) { isLaptop = r === 'laptop'; lpId = lid; phId = pid; if (isLaptop || phId) enterApp(); }
     });
   </script>
 </body>

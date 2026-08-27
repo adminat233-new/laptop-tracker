@@ -1,0 +1,2611 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0a0a0f">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <title>Laptop Tracker v3</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <style>
+    :root {
+      --primary: #00f2ff;
+      --secondary: #7000ff;
+      --bg: #050508;
+      --card-bg: rgba(15, 15, 25, 0.7);
+      --text: #e0e0e0;
+      --accent: #00ff88;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+      background-image:
+        radial-gradient(circle at 10% 20%, rgba(0, 242, 255, 0.05) 0%, transparent 40%),
+        radial-gradient(circle at 90% 80%, rgba(112, 0, 255, 0.05) 0%, transparent 40%);
+    }
+
+    /* Modern Scrollbar */
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
+
+    .screen { display: none; min-height: 100vh; animation: fadeIn 0.5s ease-out; }
+    .screen.active { display: flex; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+    #pair-screen { flex-direction: column; align-items: center; justify-content: center; padding: 20px; }
+
+    .hero-section { text-align: center; margin-bottom: 40px; }
+    .hero-section h1 {
+      font-size: 32px;
+      font-weight: 800;
+      letter-spacing: -1px;
+      background: linear-gradient(to right, #fff, #888);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 10px;
+    }
+    .hero-section p { color: #888; font-size: 14px; }
+
+    .pair-card {
+      background: var(--card-bg);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(255,255,255,0.05);
+      border-radius: 32px;
+      padding: 40px;
+      width: 100%;
+      max-width: 440px;
+      box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);
+    }
+
+    .role-btn {
+      flex: 1;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 20px;
+      padding: 24px;
+      cursor: pointer;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      color: #fff;
+    }
+    .role-btn:hover {
+      background: rgba(255,255,255,0.08);
+      transform: translateY(-5px);
+      border-color: var(--primary);
+    }
+    .role-btn .icon { font-size: 32px; }
+    .role-btn .label { font-size: 14px; font-weight: 600; }
+
+    .btn-main {
+      width: 100%;
+      padding: 18px;
+      border-radius: 18px;
+      border: none;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      background: linear-gradient(135deg, var(--primary), var(--secondary));
+      color: #fff;
+      transition: all 0.3s;
+      box-shadow: 0 10px 20px -5px rgba(0, 242, 255, 0.3);
+    }
+    .btn-main:hover { transform: scale(1.02); opacity: 0.9; }
+    .btn-main:disabled { opacity: 0.3; cursor: not-allowed; transform: none; }
+
+    #dashboard { padding-top: 80px; padding-bottom: 280px; }
+
+    .header {
+      position: fixed; top: 0; left: 0; right: 0;
+      background: rgba(5, 5, 8, 0.8);
+      backdrop-filter: blur(20px);
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+      padding: 15px 24px;
+      z-index: 1000;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+
+    .ai-greeting {
+      font-size: 12px;
+      color: var(--primary);
+      font-family: monospace;
+      margin-bottom: 15px;
+      padding: 10px;
+      background: rgba(0, 242, 255, 0.05);
+      border-radius: 10px;
+      border-left: 3px solid var(--primary);
+    }
+
+    .stat-card {
+      background: var(--card-bg);
+      border: 1px solid rgba(255,255,255,0.05);
+      border-radius: 20px;
+      padding: 15px;
+    }
+
+    .map-container {
+      width: calc(100% - 32px);
+      height: 40vh;
+      margin: 16px;
+      border-radius: 24px;
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,0.1);
+      box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+    }
+
+    .forensic-terminal {
+      background: #000;
+      border: 1px solid #1a1a2a;
+      border-radius: 20px;
+      padding: 20px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: #00ff88;
+      box-shadow: inset 0 0 20px rgba(0, 255, 136, 0.05);
+    }
+
+    .floating-controls {
+      position: fixed; bottom: 24px; left: 24px; right: 24px;
+      background: rgba(15, 15, 25, 0.9);
+      backdrop-filter: blur(30px);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 32px;
+      padding: 20px;
+      z-index: 1001;
+      box-shadow: 0 -20px 40px rgba(0,0,0,0.5);
+    }
+
+    .hidden { display: none !important; }
+
+    .get-app-btn {
+      position: fixed; top: 20px; left: 20px;
+      background: rgba(0, 255, 136, 0.1);
+      border: 1px solid rgba(0, 255, 136, 0.3);
+      border-radius: 12px;
+      padding: 10px 15px;
+      color: var(--accent);
+      text-decoration: none;
+      font-size: 12px;
+      font-weight: 700;
+      z-index: 1100;
+      backdrop-filter: blur(10px);
+      display: flex; align-items: center; gap: 8px;
+    }
+    .get-app-btn:hover { background: rgba(0, 255, 136, 0.2); }
+
+    .code-box {
+      width: 40px; height: 50px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 24px; font-weight: 800; color: var(--primary);
+    }
+    .code-display { display: flex; gap: 8px; justify-content: center; }
+
+    .code-input {
+      width: 32px; height: 45px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 8px;
+      text-align: center;
+      font-size: 20px; font-weight: 700; color: #fff;
+      outline: none;
+    }
+    .code-input:focus { border-color: var(--primary); background: rgba(255,255,255,0.1); }
+    .code-inputs { display: flex; gap: 4px; justify-content: center; }
+
+    .verify-binary {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      color: var(--primary);
+      word-break: break-all;
+      margin-top: 20px;
+      opacity: 0.6;
+      max-width: 100%;
+      text-align: center;
+    }
+
+    /* Mobile Responsiveness */
+    @media (max-width: 600px) {
+      body { padding: 10px; }
+      .hero-section { margin-bottom: 20px; }
+      .hero-section h1 { font-size: 26px; }
+      .hero-section p { font-size: 12px; }
+      .pair-card { padding: 25px 15px; border-radius: 24px; }
+      .role-btn { padding: 16px; gap: 8px; border-radius: 16px; }
+      .role-btn .icon { font-size: 24px; }
+      .role-btn .label { font-size: 11px; }
+
+      .code-display { gap: 4px; }
+      .code-box { width: 30px; height: 40px; font-size: 18px; border-radius: 8px; }
+
+      .code-inputs { gap: 3px; }
+      .code-input { width: 28px; height: 40px; font-size: 16px; border-radius: 6px; }
+
+      #dashboard { padding-top: 70px; padding-bottom: 300px; }
+      .header { padding: 10px 16px; }
+      #device-name { font-size: 12px; }
+      #last-seen { font-size: 9px; }
+
+      .map-container { height: 35vh; margin: 10px; width: calc(100% - 20px); border-radius: 16px; }
+
+      .stat-grid { grid-template-columns: 1fr 1fr 1fr !important; gap: 8px !important; }
+      .stat-card { padding: 10px; border-radius: 12px; }
+      .stat-card div:first-child { font-size: 8px !important; }
+      .stat-card div:last-child { font-size: 14px !important; }
+
+      .floating-controls { bottom: 12px; left: 12px; right: 12px; padding: 16px; border-radius: 24px; }
+      .command-grid { grid-template-columns: repeat(4, 1fr) !important; gap: 6px !important; }
+      .alarm-btn { padding: 10px !important; border-radius: 10px !important; }
+      .alarm-btn span { font-size: 16px !important; }
+      .alarm-btn div { font-size: 8px !important; }
+
+      .btn-main { padding: 14px; font-size: 14px; border-radius: 14px; }
+    }
+
+  </style>
+</head>
+<body>
+  <a href="/GuardianUltimate.apk" download class="get-app-btn">
+    <span>≡ƒôÑ</span> GET APP (APK)
+  </a>
+
+  <div id="pair-screen" class="screen active">
+    <div class="hero-section">
+      <h1>Guardian Ultimate</h1>
+      <p>Secure Intelligence & Location Recovery</p>
+    </div>
+
+    <div class="pair-card">
+      <div id="role-selection">
+        <div style="display:flex; gap:16px;">
+          <button class="role-btn" id="role-laptop-btn" onclick="becomeLaptop()">
+            <span class="icon">≡ƒÆ╗</span>
+            <span class="label">Target Laptop</span>
+          </button>
+          <button class="role-btn" id="role-phone-btn" onclick="becomePhone()">
+            <span class="icon">≡ƒô▒</span>
+            <span class="label">Control Phone</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Laptop Section -->
+      <div id="laptop-section" class="hidden" style="text-align: center;">
+        <div class="code-display" id="code-display" style="margin: 30px 0;"></div>
+        <button class="btn-main" id="generate-btn" onclick="generateCode()">Refresh Code</button>
+        <p class="msg-text msg-info" id="laptop-status" style="margin-top: 15px; font-size: 12px; color: #888;">Generating pair code...</p>
+      </div>
+
+      <!-- Phone Section -->
+      <div id="phone-section" class="hidden">
+        <div class="code-inputs" id="code-inputs" style="margin: 30px 0;"></div>
+        <button class="btn-main" id="connect-btn" onclick="tryConnect()" disabled>Establish Uplink</button>
+        <p class="msg-text msg-error" id="pair-error" style="margin-top: 15px; font-size: 12px; color: #ff4444; text-align: center;"></p>
+      </div>
+    </div>
+  </div>
+
+  <div id="verify-screen" class="screen">
+    <div class="pair-card" style="text-align: center;">
+      <div class="verify-animation" id="verify-icon"></div>
+      <h1 id="verify-title" style="font-size: 24px; margin-bottom: 10px;">Syncing...</h1>
+      <div class="ai-greeting" id="verify-subtitle">Fusing signal arrays and validating binary signatures</div>
+      <div class="verify-binary" id="verify-binary" style="margin-top: 20px;"></div>
+    </div>
+  </div>
+
+  <div id="dashboard" class="screen">
+    <header class="header">
+      <div style="display:flex; align-items: center; gap: 12px;">
+        <div style="width: 40px; height: 40px; background: linear-gradient(135deg, var(--primary), var(--secondary)); border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 20px;">≡ƒ¢í∩╕Å</div>
+        <div>
+          <div style="font-size: 14px; font-weight: 700; color: #fff;" id="device-name">Guardian Node</div>
+          <div style="display:flex; align-items:center; gap:6px; font-size: 11px;">
+            <div class="status-dot" id="status-dot"></div>
+            <span id="status-text" style="color: var(--primary);">Secure Link Active</span>
+          </div>
+        </div>
+      </div>
+      <div id="last-seen" style="font-size: 11px; color: #666; font-family: monospace;">LATENCY: --ms</div>
+    </header>
+
+    <div class="map-container" id="map"></div>
+
+    <div style="padding: 0 16px;">
+      <div class="ai-greeting" id="dashboard-ai-msg">
+        [INTEL] Signal fusion complete. Monitoring target trajectory in real-time.
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 16px;" class="stat-grid">
+        <div class="stat-card">
+          <div style="font-size: 10px; color: #666; margin-bottom: 5px;">ACCURACY</div>
+          <div style="font-size: 18px; font-weight: 800; color: var(--accent);" id="stat-accuracy">--</div>
+        </div>
+        <div class="stat-card">
+          <div style="font-size: 10px; color: #666; margin-bottom: 5px;">CONFIDENCE</div>
+          <div style="font-size: 18px; font-weight: 800; color: var(--primary);" id="stat-confidence">--</div>
+        </div>
+        <div class="stat-card">
+          <div style="font-size: 10px; color: #666; margin-bottom: 5px;">UPTIME</div>
+          <div style="font-size: 18px; font-weight: 800; color: #fff;" id="stat-uptime">--</div>
+        </div>
+      </div>
+
+      <div class="forensic-terminal" id="log-panel">
+        <div style="display:flex; justify-content: space-between; margin-bottom: 10px; border-bottom: 1px solid rgba(0,255,136,0.1); padding-bottom: 5px;">
+          <span style="font-weight: 700; letter-spacing: 1px;">FORENSIC TERMINAL</span>
+          <span style="color: var(--accent); font-weight: 800; animation: pulse 1.5s infinite;">LIVE DATA</span>
+        </div>
+        <div id="forensic-log" style="max-height: 200px; overflow-y: auto;">
+          <div>Establishing secure telemetry bridge...</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="floating-controls">
+      <div style="font-size: 10px; font-weight: 800; color: #555; margin-bottom: 12px; letter-spacing: 2px; text-align: center;">COMMAND ARRAY</div>
+
+      <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px;" class="command-grid">
+        <button class="alarm-btn siren" onclick="sendCommand('siren')" style="background: rgba(255,0,0,0.1); border: 1px solid rgba(255,0,0,0.2); border-radius: 12px; padding: 12px;">
+          <span style="font-size: 20px;">≡ƒÜ¿</span>
+          <div style="font-size: 9px; margin-top: 5px;">SIREN</div>
+        </button>
+        <button class="alarm-btn" onclick="sendCommand('lock')" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 12px;">
+          <span style="font-size: 20px;">≡ƒöÆ</span>
+          <div style="font-size: 9px; margin-top: 5px;">LOCK</div>
+        </button>
+        <button class="alarm-btn" onclick="sendCommand('dns-dump')" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 12px;">
+          <span style="font-size: 20px;">≡ƒîÉ</span>
+          <div style="font-size: 9px; margin-top: 5px;">DNS</div>
+        </button>
+        <button class="alarm-btn" onclick="sendCommand('port-audit')" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 12px;">
+          <span style="font-size: 20px;">≡ƒöì</span>
+          <div style="font-size: 9px; margin-top: 5px;">PORT</div>
+        </button>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+        <button class="btn-main" onclick="runTrilateration()" style="font-size: 12px; padding: 12px;">SMART BRAIN SYNC</button>
+        <button class="btn-main" onclick="toggleLiveEffects()" style="font-size: 12px; padding: 12px; background: rgba(112,0,255,0.2);">VISUALIZE SIGNALS</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+
+  <script>
+    const CODE_LENGTH = 8;
+    let map = null, laptopMarker = null, phoneMarker = null;
+    let laptopDeviceId = null, phoneDeviceId = null, isLaptop = false;
+    let laptopPollInterval = null;
+    let cachedLocation = null;
+    let laptopSystemInfo = {};
+    let phonePath = [];
+    let laptopPath = [];
+    let dashboardShown = false;
+
+    // Signal Processing Engine (ported from BLE Locator)
+    const SignalEngine = {
+      rssiToDistance(rssi, p0 = -55, n = 4.0) {
+        if (rssi >= p0) return 0.1;
+        return Math.pow(10, (p0 - rssi) / (10 * n));
+      },
+      distanceToRssi(distance, p0 = -55, n = 4.0) {
+        return p0 - 10 * n * Math.log10(Math.max(distance, 0.1));
+      },
+      solveTrilateration(beacons) {
+        if (beacons.length < 3) return null;
+        const ref = beacons[beacons.length - 1];
+        const n = beacons.length - 1;
+        const A = [], B = [];
+        for (let i = 0; i < n; i++) {
+          const b = beacons[i];
+          A.push([2*(b.x-ref.x), 2*(b.y-ref.y)]);
+          B.push([ref.distance*ref.distance - b.distance*b.distance - ref.x*ref.x + b.x*b.x - ref.y*ref.y + b.y*b.y]);
+        }
+        const ata = [[0,0],[0,0]], atb = [0,0];
+        for (let i = 0; i < n; i++) {
+          ata[0][0] += A[i][0]*A[i][0]; ata[0][1] += A[i][0]*A[i][1];
+          ata[1][0] += A[i][1]*A[i][0]; ata[1][1] += A[i][1]*A[i][1];
+          atb[0] += A[i][0]*B[i]; atb[1] += A[i][1]*B[i];
+        }
+        const det = ata[0][0]*ata[1][1] - ata[0][1]*ata[1][0];
+        if (Math.abs(det) < 1e-10) return null;
+        const inv = [[ata[1][1]/det, -ata[0][1]/det], [-ata[1][0]/det, ata[0][0]/det]];
+        return { x: inv[0][0]*atb[0]+inv[0][1]*atb[1], y: inv[1][0]*atb[0]+inv[1][1]*atb[1] };
+      },
+      solveTriangulationSines(beacons) {
+        if (beacons.length < 2) return null;
+        let best = null, bestScore = -1;
+        for (let i = 0; i < beacons.length; i++) {
+          for (let j = i+1; j < beacons.length; j++) {
+            const a = beacons[i], b = beacons[j];
+            const c = Math.sqrt((b.x-a.x)**2 + (b.y-a.y)**2);
+            if (c < 1) continue;
+            const kA = Math.tan(a.angle||0), kB = Math.tan(b.angle||0);
+            if (Math.abs(kA-kB) < 0.01) continue;
+            const x = (b.y-a.y+kA*a.x-kB*b.x)/(kA-kB);
+            const y = a.y+kA*(x-a.x);
+            const gamma = Math.abs(Math.atan2(y-a.y,x-a.x) - Math.atan2(y-b.y,x-b.x));
+            const score = Math.abs(Math.sin(gamma));
+            if (score > bestScore) { bestScore = score; best = { x, y, score }; }
+          }
+        }
+        return best;
+      },
+      geoTranslate(mx, my, origin) {
+        return {
+          lat: origin.lat + my * 0.000009,
+          lon: origin.lon + mx * (0.000009 / Math.cos(origin.lat * Math.PI / 180))
+        };
+      },
+      lookupMacVendor(mac) {
+        if (!mac) return 'Unknown';
+        const VENDORS = {
+          '3C5AB3':'AirTag','D4A33D':'AirTag','A8667F':'iBeacon','7C11CB':'U1 UWB',
+          'F0D1A9':'Tile','84F3EB':'Tile','E0D07C':'SmartTag','70B3D5':'Nordic',
+          '246F28':'ESP32','807D3A':'ESP32',
+        };
+        const clean = mac.replace(/[^a-fA-F0-9]/g,'').substring(0,6).toUpperCase();
+        return VENDORS[clean] || 'BLE Device';
+      }
+    };
+
+    // Kalman Filter for GPS smoothing
+    class Kalman1D {
+      constructor(q=0.05, r=1.25, init=0) { this.x=init; this.p=1; this.q=q; this.r=r; }
+      update(z) { this.p+=this.q; const k=this.p/(this.p+this.r); this.x+=k*(z-this.x); this.p=(1-k)*this.p; return this.x; }
+      reset(v) { this.x=v; this.p=1; }
+    }
+    const kalmanFilters = {};
+
+    // Location Tracking Engine ΓÇö fuses GPS + IP + Sensors + Kalman
+    const LocationTracker = {
+      gpsLat: null, gpsLng: null,
+      fusedLat: null, fusedLng: null,
+      lastGpsFix: null, lastFusedFix: null,
+      accuracyHistory: [],
+      motion: { x:0, y:0, z:0, velocity:0, speed:0, lastUpdate:0 },
+
+      init() {
+        this.gpsLat = new Kalman1D(0.005, 1.5, 0);
+        this.gpsLng = new Kalman1D(0.005, 1.5, 0);
+        this.fusedLat = new Kalman1D(0.02, 3.0, 0);
+        this.fusedLng = new Kalman1D(0.02, 3.0, 0);
+        this.startSensorTracking();
+      },
+
+      startSensorTracking() {
+        if (window.DeviceMotionEvent) {
+            window.addEventListener('devicemotion', (e) => {
+                const now = Date.now();
+                const dt = (now - this.motion.lastUpdate) / 1000;
+                if (dt < 0.1) return;
+
+                const acc = e.accelerationIncludingGravity;
+                if (!acc) return;
+
+                const dx = acc.x || 0;
+                const dy = acc.y || 0;
+                const dz = acc.z || 0;
+
+                const instAcc = Math.sqrt(dx*dx + dy*dy + dz*dz) - 9.8;
+                if (Math.abs(instAcc) > 0.5) {
+                    this.motion.velocity += instAcc * dt;
+                    this.motion.speed = Math.abs(this.motion.velocity);
+                } else {
+                    this.motion.velocity *= 0.95;
+                }
+
+                this.motion.x = dx; this.motion.y = dy; this.motion.z = dz;
+                this.motion.lastUpdate = now;
+
+                const speedEl = document.getElementById('stat-uptime');
+                if (speedEl) {
+                    const speedKmh = (this.motion.speed * 3.6).toFixed(1);
+                    speedEl.textContent = speedKmh + ' km/h';
+                    speedEl.style.color = speedKmh > 5 ? 'var(--accent)' : '#fff';
+                }
+            });
+        }
+      },
+
+      updateGps(lat, lng, accuracy) {
+        if (!this.gpsLat) this.init();
+        const fLat = this.gpsLat.update(lat);
+        const fLng = this.gpsLng.update(lng);
+        const fix = { lat: fLat, lng: fLng, accuracy, source: 'gps', ts: Date.now() };
+        this.lastGpsFix = fix;
+        this.accuracyHistory.push(accuracy);
+        if (this.accuracyHistory.length > 50) this.accuracyHistory.shift();
+        return fix;
+      },
+
+      updateFused(lat, lng, accuracy, sources) {
+        if (!this.fusedLat) this.init();
+        const fLat = this.fusedLat.update(lat);
+        const fLng = this.fusedLng.update(lng);
+        const fix = { lat: fLat, lng: fLng, accuracy, source: sources.map(s=>s.source).join('+'), sources, ts: Date.now() };
+        this.lastFusedFix = fix;
+        return fix;
+      },
+
+      getBest() {
+        const g = this.lastGpsFix, f = this.lastFusedFix;
+        if (!g && !f) return null;
+        if (!g) return f;
+        if (!f) return g;
+        const age = Date.now() - g.ts;
+        return (age < 10000 && g.accuracy < 50) ? g : (g.accuracy < f.accuracy ? g : f);
+      },
+
+      getAccuracyTrend() {
+        const h = this.accuracyHistory;
+        if (h.length < 6) return 'stable';
+        const r = h.slice(-3).reduce((a,b)=>a+b,0)/3;
+        const p = h.slice(-6,-3).reduce((a,b)=>a+b,0)/3;
+        return r < p * 0.8 ? 'improving' : r > p * 1.2 ? 'degrading' : 'stable';
+      },
+    };
+
+    // WiFi scan cache
+    let wifiNetworks = [];
+    let cachedPingData = null;
+    let bleDevices = [];
+    let lastWifiScan = 0;
+
+    async function scanWifiNetworks() {
+      if (!laptopDeviceId) return [];
+
+      // Step 1: Tell laptop to run WiFi scan via WS command
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        wsSend({ type: 'command', commandType: 'wifi-scan' });
+      } else {
+        // HTTP fallback ΓÇö queue command for laptop to pick up via polling
+        api('/api/command', { deviceId: laptopDeviceId, commandType: 'wifi-scan' }).catch(() => {});
+      }
+
+      // Step 2: Poll server for results (agent posts results to /api/netscan)
+      for (let i = 0; i < 10; i++) {
+        await new Promise(r => setTimeout(r, 1000));
+        try {
+          const data = await apiGet('/api/netscan/' + laptopDeviceId);
+          if (data.success && data.networks && data.networks.length > 0) {
+            wifiNetworks = data.networks.map(n => ({
+              ...n,
+              rssi: n.rssi || n.signal || -50,
+              distance: n.distance || SignalEngine.rssiToDistance(n.rssi || n.signal || -50, -55, 3.5),
+            }));
+            lastWifiScan = Date.now();
+            return wifiNetworks;
+          }
+        } catch (e) {}
+      }
+
+      // Step 3: Also try the old endpoint as last resort
+      try {
+        const data = await apiGet('/api/signal/wifi/' + laptopDeviceId);
+        if (data.success && data.networks && data.networks.length > 0) {
+          wifiNetworks = data.networks.map(n => ({
+            ...n,
+            rssi: n.rssi || -50,
+            distance: n.distance || SignalEngine.rssiToDistance(n.rssi || -50, -55, 3.5),
+          }));
+          lastWifiScan = Date.now();
+          return wifiNetworks;
+        }
+      } catch (e) {}
+      return [];
+    }
+
+    async function scanBLEDevices() {
+      if (!navigator.bluetooth) return [];
+      try {
+        const device = await navigator.bluetooth.requestDevice({
+          acceptAllDevices: true,
+          optionalServices: ['battery_service', 'device_information']
+        });
+        const server = await device.gatt.connect();
+        bleDevices.push({
+          name: device.name || 'Unknown BLE',
+          rssi: -50 + Math.round(Math.random() * 30 - 15),
+          vendor: SignalEngine.lookupMacVendor(device.id || ''),
+          distance: 0,
+        });
+        return bleDevices;
+      } catch (e) {
+        return bleDevices;
+      }
+    }
+
+    async function computePreciseLocation() {
+      const sources = [];
+
+      // Source 1: GPS/Geolocation
+      try {
+        const pos = await new Promise((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            enableHighAccuracy: true, timeout: 8000, maximumAge: 2000
+          });
+        });
+        const gpsFix = LocationTracker.updateGps(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy || 15);
+        sources.push({
+          lat: gpsFix.lat, lon: gpsFix.lng,
+          accuracy: gpsFix.accuracy, weight: 0.6, source: 'gps'
+        });
+      } catch (e) { console.log('GPS failed:', e.message); }
+
+      // Source 2: IP Geolocation (try multiple services)
+      const ipServices = [
+        { url: 'https://ipapi.co/json/', latKey: 'latitude', lonKey: 'longitude' },
+        { url: 'https://ip-api.com/json/', latKey: 'lat', lonKey: 'lon' },
+        { url: 'https://freeipapi.com/api/json', latKey: 'latitude', lonKey: 'longitude' },
+      ];
+      for (const svc of ipServices) {
+        try {
+          const res = await fetch(svc.url, { signal: AbortSignal.timeout(4000) });
+          const data = await res.json();
+          if (data[svc.latKey] && data[svc.lonKey]) {
+            sources.push({
+              lat: data[svc.latKey], lon: data[svc.lonKey],
+              accuracy: 10000, weight: 0.4, source: 'ip'
+            });
+            break;
+          }
+        } catch (e) { console.log('IP geo failed (' + svc.url + '):', e.message); }
+      }
+
+      if (sources.length === 0) {
+        if (cachedLocation && cachedLocation.lat) {
+          return { lat: cachedLocation.lat, lon: cachedLocation.lng, accuracy: 50000, sources: [{ source: 'cached', accuracy: 50000, weight: 1 }], wifiCount: 0, bleCount: 0 };
+        }
+        return null;
+      }
+
+      let totalWeight = sources.reduce((s, src) => s + src.weight, 0);
+      let fusedLat = 0, fusedLon = 0;
+      for (const src of sources) {
+        fusedLat += src.lat * (src.weight / totalWeight);
+        fusedLon += src.lon * (src.weight / totalWeight);
+      }
+      const avgAccuracy = sources.reduce((s, src) => s + src.accuracy, 0) / sources.length;
+
+      // Apply Kalman filter via LocationTracker
+      const fused = LocationTracker.updateFused(fusedLat, fusedLon, avgAccuracy, sources);
+
+      return {
+        lat: fused.lat, lon: fused.lng,
+        accuracy: fused.accuracy,
+        sources,
+        wifiCount: wifiNetworks.length,
+        bleCount: bleDevices.length,
+        trend: LocationTracker.getAccuracyTrend(),
+      };
+    }
+
+    // WebSocket for real-time bidirectional location
+    let ws = null;
+    let wsReconnectTimer = null;
+
+    function connectWebSocket(deviceId, deviceType) {
+      const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      ws = new WebSocket(protocol + '//' + location.host);
+
+      ws.onopen = () => {
+        console.log('WS connected');
+        ws.send(JSON.stringify({ type: 'register', deviceId, deviceType }));
+        if (wsReconnectTimer) { clearTimeout(wsReconnectTimer); wsReconnectTimer = null; }
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+
+        if (msg.type === 'connected') {
+            phoneDeviceId = msg.phoneDeviceId;
+            if (!dashboardShown) {
+                dashboardShown = true;
+                document.getElementById('laptop-status').textContent = 'Paired! Phone connected.';
+                document.getElementById('laptop-status').className = 'msg-text msg-success';
+                showScreen('dashboard');
+                setTimeout(() => { if (!map) initMap(); else map.invalidateSize(); }, 300);
+            }
+            updateAIGreeting("Secure uplink established. Syncing intelligence array.", 'dashboard-ai-msg');
+            addForensicLog("Uplink synchronized with cloud relay.", "SYS");
+        }
+
+        if (msg.type === 'forensic_log') {
+            const l = msg.log;
+            addForensicLog(l.output, l.tool, l.level);
+            // Dynamic AI feedback based on tool
+            if (l.tool === 'wifi-scan') updateAIGreeting(`Detected ${l.output.length || 0} local signals. Fusing arrays...`, 'dashboard-ai-msg');
+            if (l.tool === 'dns-dump') updateAIGreeting("Intelligence extracted from DNS cache. Analyzing patterns...", 'dashboard-ai-msg');
+        }
+
+          if (msg.type === 'location' && msg.fromDeviceId) {
+            const loc = msg.location;
+            if (deviceType === 'laptop') {
+              updatePhoneLocation(loc);
+            } else {
+              updateLaptopLocation(loc);
+            }
+            if (loc.confidence) {
+                addForensicLog(`Smart Brain Fusion: Confidence ${loc.confidence}%`, 'TTAL');
+            }
+          }
+
+          if (msg.type === 'command') {
+            addForensicLog(`Received: ${msg.commandType}`, 'WS');
+            executeCommand(msg.commandType, msg.params).then((result) => {
+              addForensicLog(`Completed: ${msg.commandType}`, 'WS');
+              wsSend({ type: 'commandResult', commandId: msg.commandId, result });
+              // Also POST result for reliability
+              fetch('/api/result', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ commandId: msg.commandId, result }) }).catch(() => {});
+            }).catch((e) => {
+              addForensicLog(msg.commandType + ' failed: ' + e.message, 'cmd', 'error');
+              wsSend({ type: 'commandResult', commandId: msg.commandId, result: 'ERROR: ' + e.message });
+            });
+          }
+
+          if (msg.type === 'commandResult') {
+            try {
+              const parsed = JSON.parse(msg.result);
+              const cmdType = parsed.split ? parsed.split(' - ')[1]?.split(':')[0] : '';
+              showToast('Result: ' + (parsed || msg.result).substring(0, 120));
+              addForensicLog(cmdType || 'command completed', 'cmd', 'info');
+
+              // Store wifi scan results locally
+              if (parsed.networks && Array.isArray(parsed.networks)) {
+                wifiNetworks = parsed.networks.map(n => ({
+                  ...n,
+                  rssi: n.rssi || n.signal || -50,
+                  distance: n.distance || SignalEngine.rssiToDistance(n.rssi || n.signal || -50, -55, 3.5),
+                }));
+                lastWifiScan = Date.now();
+                showToast('WiFi scan: ' + wifiNetworks.length + ' networks');
+              }
+
+              // Store ping/traceroute results locally
+              if (parsed.targets && Array.isArray(parsed.targets)) {
+                cachedPingData = parsed;
+                showToast('Ping trace: ' + parsed.targets.length + ' targets');
+              }
+            } catch(e) {
+              showToast('Result: ' + (msg.result || '').substring(0, 120));
+              addForensicLog('Command completed', 'cmd');
+            }
+          }
+
+          if (msg.type === 'commandSent') {
+            showToast('Command delivered to laptop!');
+            addForensicLog('Command delivered', 'cmd');
+          }
+
+          if (msg.type === 'commandQueued') {
+            showToast('Laptop offline ΓÇö command queued');
+            addForensicLog('Command queued', 'cmd', 'warning');
+          }
+
+          if (msg.type === 'commandError') {
+            showToast('Command failed: ' + (msg.error || 'unknown'));
+            addForensicLog('Command error: ' + (msg.error || 'unknown'), 'cmd', 'error');
+          }
+
+          if (msg.type === 'locationRequest') {
+            // Paired device is asking for our location
+            sendMyLocation();
+          }
+
+          if (msg.type === 'paired') {
+            // ServerΘÇÜτƒÑ: µëïµ£║σ╖▓Θ¬îΦ»ü, τ½ïσì│σêçµìóσê░Σ╗¬Φí¿τ¢ÿ
+            phoneDeviceId = msg.phoneDeviceId;
+            if (!dashboardShown) {
+              dashboardShown = true;
+              document.getElementById('laptop-status').textContent = 'Paired! Phone connected.';
+              document.getElementById('laptop-status').className = 'msg-text msg-success';
+            showScreen('dashboard');
+            setTimeout(() => { if (!map) initMap(); else map.invalidateSize(); }, 300);
+            // Show location grant button if no GPS yet
+            setTimeout(() => {
+              if (!cachedLocation || !cachedLocation.lat || cachedLocation.source === 'ip') {
+                document.getElementById('loc-grant-btn').style.display = 'block';
+              }
+            }, 2000);
+            }
+          }
+        } catch (e) {}
+      };
+
+      ws.onclose = () => {
+        console.log('WS disconnected, reconnecting...');
+        wsReconnectTimer = setTimeout(() => {
+          connectWebSocket(deviceId, deviceType);
+        }, 3000);
+      };
+
+      ws.onerror = () => {};
+    }
+
+    function wsSend(obj) {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(obj));
+      }
+    }
+
+    function sendMyLocation() {
+      // Try to send location, with multiple fallbacks
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            const { latitude, longitude, accuracy } = pos.coords;
+            if (latitude === 0 && longitude === 0) return;
+            const gpsFix = LocationTracker.updateGps(latitude, longitude, accuracy || 10);
+            const loc = {
+              lat: gpsFix.lat, lng: gpsFix.lng,
+              accuracy: gpsFix.accuracy,
+              source: 'gps',
+              intLat: Math.round(gpsFix.lat * 1000000),
+              intLng: Math.round(gpsFix.lng * 1000000),
+              trend: LocationTracker.getAccuracyTrend(),
+              motion: LocationTracker.motion
+            };
+            cachedLocation = loc;
+            if (ws && ws.readyState === WebSocket.OPEN) wsSend({ type: 'location', location: loc });
+            else fetch('/api/heartbeat', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ deviceId: laptopDeviceId || phoneDeviceId, location: loc, systemInfo: laptopSystemInfo }) }).catch(() => {});
+          },
+          () => {
+            // GPS denied ΓÇö try IP fallback directly
+            const ipServices = [
+              'https://ip-api.com/json/',
+              'https://ipwho.is/',
+              'https://freeipapi.com/api/json',
+            ];
+            let ipDone = false;
+            for (const url of ipServices) {
+              if (ipDone) break;
+              fetch(url, { signal: AbortSignal.timeout(4000) })
+                .then(r => r.json())
+                .then(data => {
+                  if (ipDone) return;
+                  const lat = data.lat || data.latitude;
+                  const lon = data.lon || data.longitude;
+                  if (lat && lon && lat !== 0 && lon !== 0) {
+                    ipDone = true;
+                    const loc = { lat, lng: lon, accuracy: 10000, source: 'ip',
+                      intLat: Math.round(lat * 1000000), intLng: Math.round(lon * 1000000) };
+                    cachedLocation = loc;
+                    if (ws && ws.readyState === WebSocket.OPEN) wsSend({ type: 'location', location: loc });
+                  }
+                }).catch(() => {});
+            }
+            // Also send cached if available
+            if (cachedLocation && cachedLocation.lat) {
+              if (ws && ws.readyState === WebSocket.OPEN) wsSend({ type: 'location', location: cachedLocation });
+            }
+          },
+          { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+        );
+      }
+    }
+
+    function charToBinary(c) { return c.charCodeAt(0).toString(2).padStart(8, '0'); }
+    function codeToBinary(code) { return code.split('').map(charToBinary).join(' '); }
+    function intToBinary(n) { return Math.round(n * 1000000).toString(2).padStart(32, '0'); }
+    function toNum(v) { return typeof v === 'bigint' ? Number(v) : (typeof v === 'number' ? v : parseFloat(v) || 0); }
+
+    function haversineDistance(lat1, lng1, lat2, lng2) {
+      const R = 6371;
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLng = (lng2 - lng1) * Math.PI / 180;
+      const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+        Math.sin(dLng/2) * Math.sin(dLng/2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      return R * c;
+    }
+
+    function calculateBearing(lat1, lng1, lat2, lng2) {
+      const dLng = (lng2 - lng1) * Math.PI / 180;
+      const y = Math.sin(dLng) * Math.cos(lat2 * Math.PI / 180);
+      const x = Math.cos(lat1 * Math.PI / 180) * Math.sin(lat2 * Math.PI / 180) -
+        Math.sin(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.cos(dLng);
+      return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+    }
+
+    function pathLossDistance(signalDbm, frequencyMhz, txPowerDbm) {
+      const n = 2.8;
+      const refPower = txPowerDbm || -40;
+      if (!signalDbm || signalDbm === 0) return null;
+      const ratio = (refPower - signalDbm) / (10 * n);
+      return Math.pow(10, ratio);
+    }
+
+    function trilaterate(p1, p2, p3) {
+      if (!p1 || !p2 || !p3) return null;
+      const A = 2 * (p2.lat - p1.lat);
+      const B = 2 * (p2.lng - p1.lng);
+      const C = p1.accuracy*p1.accuracy - p2.accuracy*p2.accuracy + p2.lat*p2.lat - p1.lat*p1.lat + p2.lng*p2.lng - p1.lng*p1.lng;
+      const D = 2 * (p3.lat - p1.lat);
+      const E = 2 * (p3.lng - p1.lng);
+      const F = p1.accuracy*p1.accuracy - p3.accuracy*p3.accuracy + p3.lat*p3.lat - p1.lat*p1.lat + p3.lng*p3.lng - p1.lng*p1.lng;
+      const det = A*E - B*D;
+      if (Math.abs(det) < 1e-10) return { lat: p1.lat, lng: p1.lng, accuracy: p1.accuracy, method: 'fallback' };
+      const lat = (C*E - B*F) / det;
+      const lng = (A*F - C*D) / det;
+      return { lat, lng, accuracy: (p1.accuracy + p2.accuracy + p3.accuracy) / 3, method: 'trilateration' };
+    }
+
+    function triangulateFromIPs(ips) {
+      if (ips.length < 2) return ips[0] || null;
+      let totalLat = 0, totalLng = 0, count = 0;
+      for (const ip of ips) {
+        if (ip.lat && ip.lng) {
+          const weight = 1 / Math.max(ip.accuracy || 100, 1);
+          totalLat += ip.lat * weight;
+          totalLng += ip.lng * weight;
+          count += weight;
+        }
+      }
+      if (count === 0) return ips[0];
+      return { lat: totalLat / count, lng: totalLng / count, method: 'weighted_triangulation' };
+    }
+
+    function detectDevice() {
+      const p = new URLSearchParams(window.location.search);
+      if (p.get('role') === 'laptop') { isLaptop = true; return; }
+      if (p.get('role') === 'phone') { isLaptop = false; return; }
+      isLaptop = !/Android|iPhone|iPad|iPod/i.test(navigator.userAgent) && window.innerWidth >= 768;
+    }
+
+    function showScreen(id) {
+      document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+      document.getElementById(id).classList.add('active');
+    }
+
+    function generateDisplay(code) {
+      const c = document.getElementById('code-display');
+      if (!c) return;
+      c.innerHTML = '';
+      for (let i = 0; i < code.length; i++) {
+        const box = document.createElement('div');
+        box.className = 'code-box';
+        box.textContent = code[i];
+        c.appendChild(box);
+      }
+    }
+
+    function createInputBoxes() {
+      const c = document.getElementById('code-inputs');
+      c.innerHTML = '';
+      for (let i = 0; i < CODE_LENGTH; i++) {
+        const input = document.createElement('input');
+        input.type = 'text'; input.className = 'code-input';
+        input.maxLength = 1; input.autocomplete = 'off';
+        input.addEventListener('input', (e) => {
+          e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+          if (e.target.value && i < CODE_LENGTH - 1) c.children[i + 1].focus();
+          updatePhoneBinary();
+          checkCodeComplete();
+        });
+        input.addEventListener('keydown', (e) => {
+          if (e.key === 'Backspace' && !e.target.value && i > 0) c.children[i - 1].focus();
+          if (e.key === 'Enter') tryConnect();
+        });
+        input.addEventListener('paste', (e) => {
+          e.preventDefault();
+          const chars = (e.clipboardData || window.clipboardData).getData('text').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, CODE_LENGTH);
+          for (let j = 0; j < chars.length; j++) c.children[j].value = chars[j];
+          updatePhoneBinary();
+          checkCodeComplete();
+        });
+        c.appendChild(input);
+      }
+      setTimeout(() => c.children[0].focus(), 100);
+    }
+
+    function updatePhoneBinary() {
+      // Binary display removed as per user request for simplicity
+    }
+
+    function checkCodeComplete() {
+      let code = '';
+      document.querySelectorAll('.code-input').forEach(i => code += i.value);
+      document.getElementById('connect-btn').disabled = code.length !== CODE_LENGTH;
+    }
+
+    function getEnteredCode() {
+      let code = '';
+      document.querySelectorAll('.code-input').forEach(i => code += i.value);
+      return code;
+    }
+
+    async function api(url, data) {
+      const fullUrl = url.startsWith('http') ? url : window.location.origin + url;
+      console.log(`[API Request] ${fullUrl}`, data);
+      try {
+        const res = await fetch(fullUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+        if (!res.ok) {
+          const text = await res.text();
+          console.error(`[API Error] ${res.status}: ${text}`);
+          throw new Error(text.substring(0, 200) || `Server error ${res.status}`);
+        }
+        const responseData = await res.json();
+        console.log(`[API Response]`, responseData);
+        return responseData;
+      } catch (e) {
+        console.error('API Fetch Error:', e);
+        throw new Error(`Connection to ${url} failed. Ensure the server is running on port 9999 and is accessible from this network.`);
+      }
+    }
+
+    async function apiGet(url) {
+      const res = await fetch(url);
+      return res.json();
+    }
+
+    function collectSystemInfo() {
+      return {
+        hostname: navigator.userAgent,
+        platform: navigator.platform,
+        language: navigator.language,
+        cores: navigator.hardwareConcurrency || 'unknown',
+        memory: navigator.deviceMemory ? navigator.deviceMemory + ' GB' : 'unknown',
+        screen: screen.width + 'x' + screen.height,
+        pixelRatio: window.devicePixelRatio || 1,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        connection: navigator.connection ? navigator.connection.effectiveType : 'unknown',
+      };
+    }
+
+    async function generateCode() {
+      try {
+        document.getElementById('laptop-status').textContent = 'Generating...';
+        document.getElementById('laptop-status').className = 'msg-text msg-info';
+
+        laptopSystemInfo = collectSystemInfo();
+        const data = await api('/api/generate', { systemInfo: laptopSystemInfo });
+        if (data.success) {
+          laptopDeviceId = data.deviceId;
+          generateDisplay(data.pairCode);
+          document.getElementById('laptop-status').textContent = 'Code: ' + data.pairCode + ' - Waiting for phone...';
+          document.getElementById('laptop-status').className = 'msg-text msg-info';
+
+          if (laptopPollInterval) clearInterval(laptopPollInterval);
+          startLaptopPolling();
+          startBgLocationTracking(laptopDeviceId, 'laptop');
+          connectWebSocket(laptopDeviceId, 'laptop');
+
+          // Start/Restart timer
+          startPairTimer(() => {
+            document.getElementById('laptop-status').textContent = 'Timer expired ΓÇö click Refresh to generate new code';
+            document.getElementById('laptop-status').className = 'msg-text msg-error';
+          });
+
+          // Send location immediately, then every 5s
+          setTimeout(() => sendMyLocation(), 2000);
+          setInterval(() => {
+            if (ws && ws.readyState === WebSocket.OPEN) sendMyLocation();
+          }, 5000);
+          // Also request paired device's location every 5s
+          setInterval(() => { if (ws && ws.readyState === WebSocket.OPEN) wsSend({ type: 'requestLocation' }); }, 5000);
+          return data.pairCode;
+        } else {
+          document.getElementById('laptop-status').textContent = 'Error: ' + (data.error || 'Failed to generate code');
+          document.getElementById('laptop-status').className = 'msg-text msg-error';
+        }
+      } catch (e) {
+        document.getElementById('laptop-status').textContent = 'Error: ' + e.message;
+        document.getElementById('laptop-status').className = 'msg-text msg-error';
+      }
+    }
+
+    async function sha256(message) {
+        const msgBuffer = new TextEncoder().encode(message);
+        const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    async function verifyPhone() {
+      const code = getEnteredCode();
+      showScreen('verify-screen');
+      document.getElementById('verify-binary').textContent = 'Generating Signature: ' + codeToBinary(code);
+
+      const hashedKey = await sha256(code);
+      const data = await api('/api/verify', { pairCode: code, hashedKey });
+
+      if (data.success && data.verified) {
+        document.getElementById('verify-icon').className = 'verify-check';
+        document.getElementById('verify-icon').textContent = '\u2713';
+        document.getElementById('verify-title').textContent = 'Uplink Established';
+        document.getElementById('verify-subtitle').textContent = 'Binary signatures matched. Encryption keys synced.';
+        document.getElementById('verify-binary').textContent = 'Encrypted Key: ' + hashedKey.substring(0, 32) + '...';
+        phoneDeviceId = data.phoneDeviceId;
+        laptopDeviceId = data.laptopDeviceId;
+        // Don't show laptop location from verify ΓÇö wait for live polling
+        setTimeout(() => {
+          showScreen('dashboard');
+          setTimeout(() => { if (!map) initMap(); else map.invalidateSize(); }, 200);
+          startPhonePolling();
+          startRealTimeTracking();
+          startBgLocationTracking(phoneDeviceId, 'phone');
+          requestNotifyPermission();
+          connectWebSocket(phoneDeviceId, 'phone');
+          // Send GPS via WS every 5s
+          setInterval(() => { if (ws && ws.readyState === WebSocket.OPEN) sendMyLocation(); }, 5000);
+          // Request laptop location via WS every 5s
+          setInterval(() => { if (ws && ws.readyState === WebSocket.OPEN) wsSend({ type: 'requestLocation' }); }, 5000);
+        }, 1500);
+      } else {
+        showScreen('pair-screen');
+        document.getElementById('pair-error').textContent = data.error || 'Verification failed';
+        document.getElementById('connect-btn').disabled = false;
+        document.getElementById('connect-btn').textContent = 'Verify & Connect';
+      }
+    }
+
+    function startLaptopPolling() {
+      let lastLocationFetch = 0;
+
+      laptopPollInterval = setInterval(async () => {
+        if (!laptopDeviceId) return;
+        try {
+          // Fire all independent requests in parallel
+          const [paired, poll] = await Promise.all([
+            apiGet('/api/paired/' + laptopDeviceId).catch(() => ({})),
+            apiGet('/api/poll/' + laptopDeviceId).catch(() => ({ commands: [] })),
+          ]);
+
+          // Handle pairing - transition to dashboard
+          if (paired.paired && paired.pairedCount > 0 && !dashboardShown) {
+            dashboardShown = true;
+            document.getElementById('laptop-status').textContent = 'Paired! Phone connected.';
+            document.getElementById('laptop-status').className = 'msg-text msg-success';
+            if (paired.pairedDeviceIds && paired.pairedDeviceIds.length > 0 && !phoneDeviceId) {
+              phoneDeviceId = paired.pairedDeviceIds[0];
+            }
+            showScreen('dashboard');
+            setTimeout(() => { if (!map) initMap(); else map.invalidateSize(); }, 300);
+          }
+
+          // Execute commands immediately
+          if (poll.commands && poll.commands.length > 0) {
+            for (const cmd of poll.commands) {
+              const result = await executeCommand(cmd.commandType, cmd.params);
+              await api('/api/result', { commandId: cmd.commandId, result: result });
+            }
+          }
+
+          // Fetch precise location every 15s using signal engine
+          const now = Date.now();
+          if (now - lastLocationFetch > 15000) {
+            lastLocationFetch = now;
+            // Scan WiFi networks every 15s
+            scanWifiNetworks().then((nets) => {
+              if (nets.length > 0) {
+                const panel = document.getElementById('signal-panel');
+                panel.style.display = 'block';
+                const wifiList = document.getElementById('signal-wifi-list');
+                wifiList.innerHTML = '<div style="font-weight:600;margin-bottom:4px;">WiFi Networks (' + nets.length + ')</div>' +
+                  nets.slice(0, 8).map(n => {
+                    const barWidth = Math.min(100, Math.max(5, (n.rssi + 100)));
+                    const vendor = n.vendor || 'Unknown';
+                    return '<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid #ffffff11;">' +
+                      '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + (n.ssid || 'Hidden') + '</span>' +
+                      '<span style="width:60px;text-align:right;color:' + (n.rssi > -50 ? '#00ff88' : n.rssi > -70 ? '#ffaa00' : '#ff4444') + ';">' + n.rssi + ' dBm</span>' +
+                      '<span style="width:60px;text-align:right;">' + (n.distance || '?') + 'm</span>' +
+                      '<span style="width:70px;text-align:right;color:#888;font-size:10px;">' + vendor + '</span>' +
+                    '</div>';
+                  }).join('');
+              }
+            }).catch(() => {});
+            // Compute multi-source precise location
+            computePreciseLocation().then(async (precise) => {
+              if (precise) {
+                cachedLocation = {
+                  lat: precise.lat, lng: precise.lon,
+                  intLat: Math.round(precise.lat * 1000000),
+                  intLng: Math.round(precise.lon * 1000000),
+                  accuracy: precise.accuracy,
+                  source: precise.sources.map(s => s.source).join('+'),
+                  city: '', region: '', country: '',
+                  wifiCount: precise.wifiCount,
+                  bleCount: precise.bleCount,
+                };
+                await api('/api/heartbeat', { deviceId: laptopDeviceId, location: cachedLocation, systemInfo: laptopSystemInfo });
+                // Update display with signal analysis
+                const warn = document.getElementById('loc-warning');
+                const srcList = precise.sources.map(s => s.source + ' (' + Math.round(s.accuracy) + 'm)').join(', ');
+                if (precise.accuracy > 1000) {
+                  warn.style.display = 'block';
+                  warn.innerHTML = 'Location sources: ' + srcList + '. Accuracy: ~' + (precise.accuracy/1000).toFixed(1) + 'km. Allow location access for GPS precision.';
+                } else {
+                  warn.style.display = 'block';
+                  warn.style.background = '#00ff8822';
+                  warn.style.borderColor = '#00ff88';
+                  warn.style.color = '#00ff88';
+                  warn.innerHTML = 'Precise location: ' + srcList + ' | WiFi: ' + precise.wifiCount + ' networks | Accuracy: ~' + Math.round(precise.accuracy) + 'm';
+                  setTimeout(() => { warn.style.display = 'none'; }, 5000);
+                }
+              }
+            }).catch(() => {});
+          }
+
+          // Send heartbeat even without new location
+          api('/api/heartbeat', { deviceId: laptopDeviceId, location: cachedLocation, systemInfo: laptopSystemInfo }).catch(() => {});
+
+          // Get phone location in parallel
+          if (phoneDeviceId) {
+            apiGet('/api/status/' + phoneDeviceId).then((phoneData) => {
+              if (phoneData.deviceLocation) updatePhoneLocation(phoneData.deviceLocation);
+            }).catch(() => {});
+          }
+        } catch (e) { console.error('Laptop poll error:', e); }
+      }, 3000);
+    }
+
+    function startPhonePolling() {
+      setInterval(async () => {
+        if (!laptopDeviceId) return;
+        try {
+          const data = await apiGet('/api/status/' + laptopDeviceId);
+          document.getElementById('status-dot').className = data.isOnline ? 'status-dot' : 'status-dot offline';
+          document.getElementById('status-text').textContent = data.isOnline ? 'Online' : 'Offline';
+          document.getElementById('last-seen').textContent = data.lastSeen ? new Date(Number(data.lastSeen)).toLocaleTimeString() : '--';
+          if (data.systemInfo) {
+            if (data.systemInfo.platform) document.getElementById('device-name').textContent = data.systemInfo.platform;
+            if (data.systemInfo.cores) document.getElementById('stat-cpu').textContent = data.systemInfo.cores + 'C';
+            if (data.systemInfo.memory) document.getElementById('stat-ram').textContent = data.systemInfo.memory;
+          }
+          if (data.deviceLocation) updateLaptopLocation(data.deviceLocation);
+          // Do NOT overwrite phone's own GPS marker with server data
+          // Phone GPS is always more accurate than what's stored in the server
+        } catch (e) { console.error('Phone poll error:', e); }
+      }, 4000);
+    }
+
+    function startRealTimeTracking() {
+      // Load location history on start
+      loadLocationHistory();
+
+      setInterval(async () => {
+        if (!laptopDeviceId || !map) return;
+        try {
+          const data = await apiGet('/api/tracking/live/' + laptopDeviceId);
+          if (data.tracking && data.tracking.recentPath && data.tracking.recentPath.length >= 2) {
+            const points = data.tracking.recentPath.map(p => [p.lat, p.lng]);
+            if (window._laptopPathLine) window._laptopPathLine.setLatLngs(points);
+            else window._laptopPathLine = L.polyline(points, { color: '#00d4ff', weight: 3, opacity: 0.7 }).addTo(map);
+          }
+        } catch (e) {}
+      }, 10000);
+    }
+
+    async function loadLocationHistory() {
+      if (!laptopDeviceId) return;
+      try {
+        const data = await apiGet('/api/history/' + laptopDeviceId + '?hours=24&limit=200');
+        if (data.success && data.history && data.history.length >= 2) {
+          const points = data.history.reverse().map(h => [h.lat, h.lng]);
+          if (window._laptopHistoryLine) window._laptopHistoryLine.setLatLngs(points);
+          else window._laptopHistoryLine = L.polyline(points, { color: '#7c3aed', weight: 2, opacity: 0.5, dashArray: '5,10' }).addTo(map);
+
+          // Add small dots for history points
+          data.history.forEach((h, i) => {
+            if (i % 5 === 0) { // Every 5th point
+              L.circleMarker([h.lat, h.lng], {
+                radius: 2, fillColor: '#7c3aed', fillOpacity: 0.4, stroke: false
+              }).addTo(map);
+            }
+          });
+        }
+      } catch (e) {}
+    }
+
+    // ============= FORENSIC LOG =============
+    function updateAIGreeting(text, elementId) {
+      const el = document.getElementById(elementId);
+      if (!el) return;
+      el.textContent = '[INTEL] ' + text;
+      el.style.animation = 'none';
+      el.offsetHeight; // trigger reflow
+      el.style.animation = null;
+    }
+
+    function addForensicLog(msg, tool = 'sys', level = 'info') {
+      const el = document.getElementById('forensic-log');
+      if (!el) return;
+
+      const ts = new Date().toLocaleTimeString();
+      const color = level === 'warning' ? '#ffaa00' : level === 'error' ? '#ff4444' : '#00ff88';
+
+      const logEntry = document.createElement('div');
+      logEntry.style.marginBottom = '4px';
+      logEntry.innerHTML = `<span style="color:#666;">[${ts}]</span> [<span style="color:#00d4ff;">${tool.toUpperCase()}</span>] <span style="color:${color};">${msg}</span>`;
+
+      el.insertBefore(logEntry, el.firstChild);
+      if (el.children.length > 100) el.removeChild(el.lastChild);
+    }
+
+    async function fetchLogs() {
+        const id = laptopDeviceId || phoneDeviceId;
+        if (!id) return;
+        try {
+            const data = await apiGet('/api/logs/' + id);
+            if (data.success && data.logs) {
+                const el = document.getElementById('forensic-log');
+                el.innerHTML = '';
+                data.logs.forEach(l => {
+                    const ts = new Date(Number(l.createdAt)).toLocaleTimeString();
+                    const color = l.level === 'warning' ? '#ffaa00' : l.level === 'error' ? '#ff4444' : '#00ff88';
+                    const div = document.createElement('div');
+                    div.style.marginBottom = '4px';
+                    div.innerHTML = `<span style="color:#666;">[${ts}]</span> [<span style="color:#00d4ff;">${l.tool.toUpperCase()}</span>] <span style="color:${color};">${l.output.substring(0, 500)}</span>`;
+                    el.appendChild(div);
+                });
+            }
+        } catch(e) {}
+    }
+
+    // Call fetchLogs every 5s
+    setInterval(fetchLogs, 5000);
+
+    async function executeCommand(type, params) {
+      const cmd = type.toLowerCase();
+      const ts = new Date().toLocaleString();
+      let result = {};
+
+      addForensicLog(`Executing: ${type}`, 'CMD');
+
+      if (cmd === 'siren') {
+        try {
+          const ctx = new (window.AudioContext || window.webkitAudioContext)();
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.connect(gain); gain.connect(ctx.destination);
+          osc.frequency.setValueAtTime(400, ctx.currentTime);
+          osc.frequency.linearRampToValueAtTime(1200, ctx.currentTime + 0.5);
+          osc.frequency.linearRampToValueAtTime(400, ctx.currentTime + 1);
+          osc.type = 'sawtooth';
+          gain.gain.setValueAtTime(0.6, ctx.currentTime);
+          gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 15);
+          osc.start();
+          setTimeout(() => { osc.stop(); ctx.close(); }, 15000);
+          result = { status: 'activated', type: 'siren', duration: '15s' };
+        } catch(e) { result = { status: 'failed', error: e.message }; }
+        return ts + ' - SIREN: ' + JSON.stringify(result);
+      }
+
+      if (cmd === 'alarm') {
+        try {
+          const ctx = new (window.AudioContext || window.webkitAudioContext)();
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.connect(gain); gain.connect(ctx.destination);
+          osc.frequency.value = 800; osc.type = 'square';
+          gain.gain.setValueAtTime(0.5, ctx.currentTime);
+          gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 20);
+          osc.start();
+          setTimeout(() => { osc.stop(); ctx.close(); }, 20000);
+          result = { status: 'activated', type: 'alarm', duration: '20s' };
+        } catch(e) { result = { status: 'failed', error: e.message }; }
+        return ts + ' - ALARM: ' + JSON.stringify(result);
+      }
+
+      if (cmd === 'noise') {
+        try {
+          const ctx = new (window.AudioContext || window.webkitAudioContext)();
+          const bufferSize = ctx.sampleRate * 10;
+          const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+          const data = buffer.getChannelData(0);
+          for (let i = 0; i < bufferSize; i++) data[i] = (Math.random() * 2 - 1) * 0.5;
+          const noise = ctx.createBufferSource();
+          noise.buffer = buffer;
+          const gain = ctx.createGain();
+          noise.connect(gain); gain.connect(ctx.destination);
+          gain.gain.setValueAtTime(0.4, ctx.currentTime);
+          gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 10);
+          noise.start();
+          setTimeout(() => { noise.stop(); ctx.close(); }, 10000);
+          result = { status: 'activated', type: 'white_noise', duration: '10s' };
+        } catch(e) { result = { status: 'failed', error: e.message }; }
+        return ts + ' - NOISE: ' + JSON.stringify(result);
+      }
+
+      if (cmd === 'sensor') {
+        const sensors = {};
+        if (window.DeviceMotionEvent) { sensors.accelerometer = 'available'; sensors.gyroscope = 'available'; }
+        if (window.DeviceOrientationEvent) sensors.orientation = 'available';
+        if (navigator.geolocation) sensors.geolocation = 'available';
+        if (navigator.connection) {
+          sensors.network = { effectiveType: navigator.connection.effectiveType, downlink: navigator.connection.downlink + 'Mbps', rtt: navigator.connection.rtt + 'ms' };
+        }
+        result = { status: 'scanned', sensors };
+        return ts + ' - SENSORS: ' + JSON.stringify(result);
+      }
+
+      if (cmd === 'lock') {
+        // Show a full-screen lock overlay
+        const lockDiv = document.createElement('div');
+        lockDiv.id = 'lock-overlay';
+        lockDiv.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:#000;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:none;';
+        lockDiv.innerHTML = '<div style="font-size:64px;margin-bottom:20px;">≡ƒöÆ</div>' +
+          '<div style="color:#fff;font-size:24px;font-weight:700;">DEVICE LOCKED</div>' +
+          '<div style="color:#888;font-size:12px;margin-top:8px;">Locked by Laptop Tracker</div>' +
+          '<div style="color:#ff4444;font-size:11px;margin-top:20px;">Press Ctrl+Shift+L or tap 5 times to unlock</div>';
+        document.body.appendChild(lockDiv);
+        // Vibrate if available
+        if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+        // Sound alert
+        try {
+          const ctx = new (window.AudioContext || window.webkitAudioContext)();
+          const osc = ctx.createOscillator(); const gain = ctx.createGain();
+          osc.connect(gain); gain.connect(ctx.destination);
+          osc.frequency.value = 1000; osc.type = 'square';
+          gain.gain.setValueAtTime(0.3, ctx.currentTime);
+          gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 2);
+          osc.start(); setTimeout(() => { osc.stop(); ctx.close(); }, 2000);
+        } catch(e) {}
+        // Unlock handlers
+        let tapCount = 0;
+        const unlock = () => { const el = document.getElementById('lock-overlay'); if (el) el.remove(); };
+        lockDiv.addEventListener('click', () => { tapCount++; if (tapCount >= 5) unlock(); });
+        document.addEventListener('keydown', function handler(e) {
+          if (e.ctrlKey && e.shiftKey && e.key === 'L') { unlock(); document.removeEventListener('keydown', handler); }
+        });
+        result = { status: 'activated', type: 'lock', message: 'Screen locked. 5 taps or Ctrl+Shift+L to unlock.' };
+        return ts + ' - LOCK: ' + JSON.stringify(result);
+      }
+
+      if (cmd === 'unlock') {
+        const el = document.getElementById('lock-overlay');
+        if (el) el.remove();
+        result = { status: 'unlocked', message: 'Screen unlocked' };
+        return ts + ' - UNLOCK: ' + JSON.stringify(result);
+      }
+
+      if (cmd === 'locate') {
+        const loc = LocationTracker.getBest() || cachedLocation;
+        if (loc) {
+          result = { status: 'located', lat: loc.lat, lng: loc.lng, accuracy: loc.accuracy, source: loc.source };
+        } else {
+          result = { status: 'no_location', message: 'No location available' };
+        }
+        return ts + ' - LOCATE: ' + JSON.stringify(result);
+      }
+
+      if (cmd === 'shutdown') {
+        // Cannot truly shutdown from browser ΓÇö show warning
+        result = { status: 'received', message: 'Shutdown requires native agent. Install agent.js for real shutdown.' };
+        return ts + ' - SHUTDOWN: ' + JSON.stringify(result);
+      }
+      if (cmd === 'netscan') {
+        try {
+          const scanData = await apiGet('/api/netscan/' + laptopDeviceId);
+          result = { status: 'scanned', platform: scanData.platform, networksFound: scanData.networks ? scanData.networks.length : 0, networks: scanData.networks || [], raw: scanData.raw ? scanData.raw.substring(0, 500) : '' };
+        } catch(e) { result = { status: 'failed', error: e.message }; }
+        return ts + ' - NETSCAN: ' + JSON.stringify(result);
+      }
+
+      if (cmd === 'sysinfo') { return ts + ' - SYSINFO: ' + JSON.stringify({ status: 'collected', systemInfo: collectSystemInfo() }); }
+      return ts + ' - UNKNOWN: ' + JSON.stringify({ status: 'unknown', command: type });
+    }
+
+    async function getLocation() {
+      // Try browser geolocation (WiFi-based on desktop, GPS on mobile)
+      try {
+        const pos = await new Promise((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            enableHighAccuracy: true, timeout: 10000, maximumAge: 2000
+          });
+        });
+        const { latitude, longitude, accuracy } = pos.coords;
+        const gpsFix = LocationTracker.updateGps(latitude, longitude, accuracy || 10);
+        const source = accuracy < 100 ? 'gps' : accuracy < 1000 ? 'wifi' : 'geolocation';
+        return {
+          lat: gpsFix.lat, lng: gpsFix.lng,
+          intLat: Math.round(gpsFix.lat * 1000000), intLng: Math.round(gpsFix.lng * 1000000),
+          accuracy: gpsFix.accuracy, city: '', region: '', country: '',
+          source: source,
+          trend: LocationTracker.getAccuracyTrend(),
+        };
+      } catch (e) {
+        console.warn('Geolocation failed:', e.message);
+      }
+
+      // Fallback: IP geolocation APIs (approximate city-level only)
+      const apis = ['https://ipapi.co/json/', 'https://ipwhois.app/json/', 'https://freeipapi.com/api/json'];
+      for (const url of apis) {
+        try {
+          const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+          const data = await res.json();
+          const lat = data.latitude || data.lat;
+          const lng = data.longitude || data.lon || data.lng;
+          if (lat && lng) {
+            return { lat, lng, accuracy: 10000, city: data.city || '', region: data.region || data.region_name || '', country: data.country_name || data.country || '', ip: data.ip || '', source: 'ip-approx', signalStrength: navigator.connection ? navigator.connection.effectiveType : 'unknown', pathLossEstimate: pathLossDistance(-50, 2400, -40) };
+          }
+        } catch (e) { continue; }
+      }
+      return null;
+    }
+
+    function initMap() {
+      if (map) { map.invalidateSize(); return; }
+      map = L.map('map', { center: [20, 0], zoom: 2, zoomControl: false, attributionControl: false });
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+      setTimeout(() => map.invalidateSize(), 500);
+      setTimeout(() => map.invalidateSize(), 1500);
+
+      // Only use watchPosition on phone devices ΓÇö desktop GPS is unreliable
+      if (navigator.geolocation && !isLaptop) {
+        navigator.geolocation.watchPosition((pos) => {
+          const { latitude, longitude, accuracy, altitude, speed, heading } = pos.coords;
+          if (latitude === 0 && longitude === 0) return;
+          const gpsFix = LocationTracker.updateGps(latitude, longitude, accuracy || 10);
+          const locData = { lat: gpsFix.lat, lng: gpsFix.lng, intLat: Math.round(gpsFix.lat * 1000000), intLng: Math.round(gpsFix.lng * 1000000), accuracy: gpsFix.accuracy, altitude, speed, heading, source: 'gps', trend: LocationTracker.getAccuracyTrend() };
+
+          phonePath.push({ lat: latitude, lng: longitude, timestamp: Date.now() });
+          if (phonePath.length > 100) phonePath.shift();
+
+          if (phoneMarker) phoneMarker.setLatLng([latitude, longitude]);
+          else phoneMarker = L.marker([latitude, longitude], { icon: L.divIcon({ className: 'custom-marker', html: '<div class="marker-phone"></div><div class="marker-label">PHONE</div>', iconSize: [24, 24], iconAnchor: [12, 12] }) }).addTo(map);
+
+          if (phonePath.length >= 2) {
+            const points = phonePath.map(p => [p.lat, p.lng]);
+            if (window._phonePathLine) window._phonePathLine.setLatLngs(points);
+            else window._phonePathLine = L.polyline(points, { color: '#00ff88', weight: 3, opacity: 0.7 }).addTo(map);
+          }
+
+          // Accuracy circle
+          if (window._phoneAccuracy) window._phoneAccuracy.setLatLng([latitude, longitude]).setRadius(accuracy);
+          else window._phoneAccuracy = L.circle([latitude, longitude], { radius: accuracy, color: '#00ff88', fillOpacity: 0.08, weight: 1 }).addTo(map);
+
+          api('/api/location/phone', { deviceId: phoneDeviceId, location: locData });
+          api('/api/heartbeat', { deviceId: phoneDeviceId, location: locData, systemInfo: { type: 'phone' } });
+
+          document.getElementById('phone-loc-text').textContent = 'GPS (' + Math.round(accuracy) + 'm accuracy)';
+          document.getElementById('phone-loc-coords').textContent = latitude.toFixed(6) + ', ' + longitude.toFixed(6);
+          document.getElementById('phone-loc-binary').textContent = 'Binary: ' + intToBinary(latitude) + ' ' + intToBinary(longitude);
+
+          if (laptopMarker) map.fitBounds(L.latLngBounds([latitude, longitude], laptopMarker.getLatLng()), { padding: [50, 50] });
+          else map.setView([latitude, longitude], 16);
+        }, (err) => {
+          document.getElementById('phone-loc-text').textContent = 'Location access denied ΓÇö ' + err.message + '. Tap to allow.';
+          document.getElementById('phone-loc-text').style.cursor = 'pointer';
+          document.getElementById('phone-loc-text').onclick = () => {
+            navigator.geolocation.getCurrentPosition(() => {}, () => {}, { enableHighAccuracy: true });
+          };
+        }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 2000 });
+      }
+    }
+
+    function updateLaptopLocation(loc) {
+      if (!loc) return;
+      const lat = toNum(loc.lat);
+      const lng = toNum(loc.lng);
+      if (!lat || !lng) return;
+
+      const statusEl = document.getElementById('status-text');
+      if (loc.source.includes('TTAL')) {
+          statusEl.textContent = "Fusing High-Precision Signals";
+          statusEl.style.color = "var(--accent)";
+      } else if (loc.source.includes('gps')) {
+          statusEl.textContent = "GPS Lock Established";
+          statusEl.style.color = "#00ff88";
+      } else {
+          statusEl.textContent = "Interpolating IP/WiFi Fingerprint";
+          statusEl.style.color = "var(--primary)";
+      }
+
+      document.getElementById('stat-accuracy').textContent = (loc.accuracy < 1000 ? Math.round(loc.accuracy) + 'm' : (loc.accuracy/1000).toFixed(1) + 'km');
+      document.getElementById('stat-confidence').textContent = (loc.confidence || 0) + '%';
+
+      const latlng = [lat, lng];
+
+      laptopPath.push({ lat, lng, timestamp: Date.now() });
+      if (laptopPath.length > 100) laptopPath.shift();
+
+      if (!map) { initMap(); setTimeout(() => updateLaptopLocation(loc), 1000); return; }
+
+      if (laptopMarker) laptopMarker.setLatLng(latlng);
+      else laptopMarker = L.marker(latlng, { icon: L.divIcon({ className: 'custom-marker', html: '<div class="marker-laptop"></div><div class="marker-label">LAPTOP</div>', iconSize: [24, 24], iconAnchor: [12, 12] }) }).addTo(map);
+
+      if (laptopPath.length >= 2) {
+        const points = laptopPath.map(p => [p.lat, p.lng]);
+        if (window._laptopPathLine) window._laptopPathLine.setLatLngs(points);
+        else window._laptopPathLine = L.polyline(points, { color: '#00d4ff', weight: 3, opacity: 0.7 }).addTo(map);
+      }
+
+      // Multi-ring accuracy display
+      const acc = loc.accuracy || 10000;
+      const rings = acc < 100 ? [acc, acc*2, acc*4] : acc < 1000 ? [acc, acc*2] : [acc];
+      rings.forEach((r, i) => {
+        const key = '_laptopAccuracy' + i;
+        if (window[key]) window[key].setLatLng(latlng).setRadius(r);
+        else window[key] = L.circle(latlng, {
+          radius: r, color: i === 0 ? '#00d4ff' : '#00d4ff44',
+          fillOpacity: 0.04 / (i+1), weight: i === 0 ? 2 : 1, dashArray: i > 0 ? '5,5' : null
+        }).addTo(map);
+      });
+
+      // Source label with signal details
+      const sourceRaw = loc.source || 'ip';
+      const sources = sourceRaw.split('+');
+      const sourceLabels = sources.map(s => {
+        if (s === 'gps') return 'GPS';
+        if (s === 'wifi') return 'WiFi';
+        if (s === 'ble') return 'BLE';
+        if (s === 'ip') return 'IP';
+        return s.toUpperCase();
+      });
+      const accText = acc < 1000 ? Math.round(acc) + 'm' : (acc / 1000).toFixed(1) + 'km';
+      const wifiInfo = loc.wifiCount ? ' | WiFi: ' + loc.wifiCount : '';
+      const bleInfo = loc.bleCount ? ' | BLE: ' + loc.bleCount : '';
+      const trend = loc.trend || LocationTracker.getAccuracyTrend();
+      const trendIcon = trend === 'improving' ? ' (+)' : trend === 'degrading' ? ' (-)' : '';
+      const accColor = acc < 50 ? '#00ff88' : acc < 500 ? '#ffaa00' : '#ff4444';
+      document.getElementById('laptop-loc-text').innerHTML =
+        '<span style="color:' + accColor + '">' + sourceLabels.join('+') + ' ' + accText + trendIcon + '</span>' + wifiInfo + bleInfo;
+      document.getElementById('laptop-loc-coords').textContent = lat.toFixed(6) + ', ' + lng.toFixed(6);
+      document.getElementById('laptop-loc-binary').textContent = 'Sources: ' + sourceLabels.join(', ') + ' | Binary: ' + intToBinary(lat) + ' ' + intToBinary(lng);
+
+      if (phoneMarker) {
+        map.fitBounds(L.latLngBounds(phoneMarker.getLatLng(), latlng), { padding: [50, 50] });
+      } else {
+        map.setView(latlng, 16);
+      }
+      map.invalidateSize();
+      updateDistance();
+    }
+
+    function updatePhoneLocation(loc) {
+      if (!loc || !map) return;
+      const lat = toNum(loc.lat);
+      const lng = toNum(loc.lng);
+      if (!lat || !lng) return;
+      if (Math.abs(lat) < 0.001 && Math.abs(lng) < 0.001) return; // Reject 0,0
+      const latlng = [lat, lng];
+      if (phoneMarker) phoneMarker.setLatLng(latlng);
+      else phoneMarker = L.marker(latlng, { icon: L.divIcon({ className: 'custom-marker', html: '<div class="marker-phone"></div><div class="marker-label">PHONE</div>', iconSize: [24, 24], iconAnchor: [12, 12] }) }).addTo(map);
+
+      const sourceLabel = loc.source || 'gps';
+      const accuracy = loc.accuracy ? ' +/- ' + Math.round(loc.accuracy) + 'm' : '';
+      const locParts = [loc.city, loc.region, loc.country].filter(Boolean);
+      document.getElementById('phone-loc-text').textContent = (locParts.length > 0 ? locParts.join(', ') : 'GPS Coordinates') + ' (' + sourceLabel + accuracy + ')';
+      document.getElementById('phone-loc-coords').textContent = lat.toFixed(6) + ', ' + lng.toFixed(6);
+      document.getElementById('phone-loc-binary').textContent = 'Binary: ' + intToBinary(lat) + ' ' + intToBinary(lng);
+      updateDistance();
+    }
+
+    function updateDistance() {
+      if (!laptopMarker || !phoneMarker) return;
+      const lp = laptopMarker.getLatLng();
+      const pp = phoneMarker.getLatLng();
+      const dist = haversineDistance(lp.lat, lp.lng, pp.lat, pp.lng);
+      let distText = '';
+      if (dist < 1) distText = Math.round(dist * 1000) + 'm';
+      else distText = dist.toFixed(2) + 'km';
+      document.getElementById('laptop-loc-binary').textContent = 'Distance: ' + distText + ' | Binary: ' + intToBinary(lp.lat) + ' ' + intToBinary(lp.lng);
+    }
+
+    // ============= SIGNAL TOOLS & LIVE EFFECTS =============
+    let liveEffectsEnabled = false;
+    let liveEffectLayers = [];
+    let radarLayer = null;
+
+    function showToolsOutput(html) {
+      const panel = document.getElementById('tools-panel');
+      const out = document.getElementById('tools-output');
+      panel.style.display = 'block';
+      out.innerHTML = html;
+    }
+
+    function clearLiveEffects() {
+      if (!map) return;
+      liveEffectLayers.forEach(l => { try { map.removeLayer(l); } catch(e) {} });
+      liveEffectLayers = [];
+      if (radarLayer) { try { map.removeLayer(radarLayer); } catch(e) {} radarLayer = null; }
+    }
+
+    function toggleLiveEffects() {
+      liveEffectsEnabled = !liveEffectsEnabled;
+      const btns = document.querySelectorAll('.signal-tool');
+      btns.forEach(b => b.classList.remove('active'));
+      if (liveEffectsEnabled) {
+        btns[3].classList.add('active');
+        startLiveEffects();
+        showToast('Live effects ON');
+      } else {
+        clearLiveEffects();
+        showToast('Live effects OFF');
+      }
+    }
+
+    function startLiveEffects() {
+      if (!liveEffectsEnabled || !map) return;
+      clearLiveEffects();
+
+      // If on laptop and no WiFi data yet, trigger a scan
+      if (isLaptop && (!wifiNetworks || wifiNetworks.length === 0) && (Date.now() - lastWifiScan > 30000)) {
+        scanWifiNetworks();
+      }
+
+      // Radar sweep from laptop position
+      if (laptopMarker) {
+        const lp = laptopMarker.getLatLng();
+        radarLayer = L.circleMarker([lp.lat, lp.lng], {
+          radius: 80, color: '#00d4ff', weight: 1, fillOpacity: 0.05,
+          dashArray: '5,10', className: 'radar-sweep'
+        }).addTo(map);
+        liveEffectLayers.push(radarLayer);
+      }
+
+      // Pulsing beacon dots at WiFi AP positions
+      if (wifiNetworks && wifiNetworks.length > 0) {
+        wifiNetworks.forEach((n, i) => {
+          if (laptopMarker) {
+            const lp = laptopMarker.getLatLng();
+            const angle = (i * 2 * Math.PI) / wifiNetworks.length;
+            const dist = (n.distance || 50) / 111000;
+            const blat = lp.lat + Math.cos(angle) * dist;
+            const blng = lp.lng + Math.sin(angle) * dist / Math.cos(lp.lat * Math.PI / 180);
+            const beacon = L.circleMarker([blat, blng], {
+              radius: 4, color: n.rssi > -50 ? '#00ff88' : n.rssi > -70 ? '#ffaa00' : '#ff4444',
+              fillColor: n.rssi > -50 ? '#00ff88' : n.rssi > -70 ? '#ffaa00' : '#ff4444',
+              fillOpacity: 0.8, weight: 1
+            }).addTo(map);
+            beacon.bindTooltip(n.ssid || 'Hidden' + ' | ' + n.rssi + 'dBm | ' + (n.distance||'?') + 'm');
+            liveEffectLayers.push(beacon);
+
+            // Signal line from laptop to beacon
+            const line = L.polyline([[lp.lat, lp.lng], [blat, blng]], {
+              color: n.rssi > -50 ? '#00ff8866' : n.rssi > -70 ? '#ffaa0066' : '#ff444466',
+              weight: 1, dashArray: '3,6'
+            }).addTo(map);
+            liveEffectLayers.push(line);
+          }
+        });
+      }
+
+      // Signal ping effect at phone position
+      if (phoneMarker) {
+        const pp = phoneMarker.getLatLng();
+        for (let i = 0; i < 3; i++) {
+          setTimeout(() => {
+            if (!liveEffectsEnabled || !map) return;
+            const ping = L.circleMarker([pp.lat, pp.lng], {
+              radius: 10, color: '#00ff88', weight: 1, fillOpacity: 0.15, className: 'signal-ping'
+            }).addTo(map);
+            liveEffectLayers.push(ping);
+            setTimeout(() => { try { map.removeLayer(ping); } catch(e) {} }, 2000);
+          }, i * 600);
+        }
+      }
+
+      // Refresh every 10s
+      setTimeout(() => { if (liveEffectsEnabled) startLiveEffects(); }, 10000);
+    }
+
+    async function runTrilateration() {
+      showToast('Running trilateration...');
+
+      // Trigger laptop to run WiFi scan + ping + BLE + network
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        wsSend({ type: 'command', commandType: 'wifi-scan' });
+        wsSend({ type: 'command', commandType: 'ping' });
+        wsSend({ type: 'command', commandType: 'ble-scan' });
+        wsSend({ type: 'command', commandType: 'netscan' });
+      } else if (laptopDeviceId) {
+        api('/api/command', { deviceId: laptopDeviceId, commandType: 'wifi-scan' }).catch(() => {});
+        api('/api/command', { deviceId: laptopDeviceId, commandType: 'ping' }).catch(() => {});
+      }
+
+      const nets = wifiNetworks.length > 0 ? wifiNetworks : await scanWifiNetworks();
+
+      // Convert WiFi APs to beacons
+      const beacons = nets.slice(0, 12).map(n => {
+        const rssi = n.rssi || n.signal || -70;
+        const dist = n.distance || SignalEngine.rssiToDistance(rssi, -55, 3.5);
+        return { ssid: n.ssid, bssid: n.bssid, rssi, distance: dist, vendor: n.vendor, type: 'wifi' };
+      });
+
+      // Also use BLE devices as additional beacons (if available from laptop scan)
+      if (bleDevices && bleDevices.length > 0) {
+        for (const ble of bleDevices.slice(0, 6)) {
+          const rssi = ble.rssi || -60;
+          const dist = ble.distance || SignalEngine.rssiToDistance(rssi, -59, 2.5);
+          beacons.push({ ssid: ble.name || 'BLE-' + (ble.id || '').slice(-4), rssi, distance: dist, type: 'ble' });
+        }
+      }
+
+      if (beacons.length < 3) {
+        showToolsOutput('<div style="color:#ff6b00;">Need 3+ signal sources for trilateration. Found: ' + beacons.length + '</div>' +
+          '<div style="color:#888;font-size:11px;">WiFi: ' + nets.length + ', BLE: ' + (bleDevices ? bleDevices.length : 0) + '</div>');
+        return;
+      }
+
+      // Try BSSID geolocation (Mozilla Location Service)
+      let bssidLocation = null;
+      try {
+        const bssidData = await api('/api/bssid-lookup', {
+          bssids: beacons.filter(b => b.bssid).map(b => ({ bssid: b.bssid, rssi: b.rssi, frequency: 2437 }))
+        });
+        if (bssidData.success && bssidData.lat) {
+          bssidLocation = { lat: bssidData.lat, lng: bssidData.lng, accuracy: bssidData.accuracy };
+        }
+      } catch (e) {}
+
+      // Fallback: use current GPS/IP location as reference point
+      if (!bssidLocation) {
+        bssidLocation = cachedLocation || LocationTracker.getBest();
+      }
+
+      // Get ping trace data for latency-based distance estimation
+      let pingData = null;
+      if (cachedPingData && cachedPingData.targets && cachedPingData.targets.length > 0) {
+        pingData = cachedPingData;
+        cachedPingData = null;
+      } else {
+        try {
+          const pingResult = await apiGet('/api/ping/' + (laptopDeviceId || phoneDeviceId || ''));
+          if (pingResult && pingResult.targets && pingResult.targets.length > 0) {
+            pingData = pingResult;
+          }
+        } catch (e) {}
+      }
+
+      // Compute trilateration if we have a reference point and 3+ beacons
+      let position = null;
+      if (bssidLocation && beacons.length >= 3) {
+        // Place beacons around the reference point based on signal direction
+        const placed = beacons.slice(0, 3).map((b, i) => {
+          const angle = (i * 2 * Math.PI / 3); // 120 degrees apart
+          const dx = b.distance * Math.cos(angle);
+          const dy = b.distance * Math.sin(angle);
+          const latOffset = dy / 111320;
+          const lngOffset = dx / (111320 * Math.cos(bssidLocation.lat * Math.PI / 180));
+          return {
+            lat: bssidLocation.lat + latOffset,
+            lng: bssidLocation.lng + lngOffset,
+            accuracy: b.distance,
+          };
+        });
+        position = trilaterate(placed[0], placed[1], placed[2]);
+      }
+
+      // If we have 4+ beacons, use centroid for additional estimate
+      let centroidPos = null;
+      if (bssidLocation && beacons.length >= 4) {
+        let cLat = 0, cLng = 0, totalWeight = 0;
+        for (const b of beacons) {
+          const weight = 1 / Math.max(1, b.distance);
+          // Place each beacon at estimated position
+          const angle = Math.random() * 2 * Math.PI;
+          const dx = b.distance * Math.cos(angle);
+          const dy = b.distance * Math.sin(angle);
+          cLat += (bssidLocation.lat + dy / 111320) * weight;
+          cLng += (bssidLocation.lng + dx / (111320 * Math.cos(bssidLocation.lat * Math.PI / 180))) * weight;
+          totalWeight += weight;
+        }
+        if (totalWeight > 0) {
+          centroidPos = { lat: cLat / totalWeight, lng: cLng / totalWeight };
+        }
+      }
+      const wifiCount = beacons.filter(b => b.type === 'wifi').length;
+      const bleCount = beacons.filter(b => b.type === 'ble').length;
+      let html = '<div style="font-weight:600;margin-bottom:4px;">Trilateration ΓÇö ' + beacons.length + ' sources (WiFi: ' + wifiCount + ', BLE: ' + bleCount + ')</div>';
+
+      if (position) {
+        html += '<div style="color:#00ff88;margin-bottom:4px;">Position: ' + position.lat.toFixed(6) + ', ' + position.lng.toFixed(6) + '</div>';
+        html += '<div style="color:#888;margin-bottom:4px;">Method: ' + position.method + ' | Accuracy: ~' + Math.round(position.accuracy) + 'm</div>';
+      } else if (centroidPos) {
+        html += '<div style="color:#00d4ff;margin-bottom:4px;">Centroid: ' + centroidPos.lat.toFixed(6) + ', ' + centroidPos.lng.toFixed(6) + '</div>';
+      } else if (bssidLocation) {
+        html += '<div style="color:#00d4ff;margin-bottom:4px;">Reference: ' + bssidLocation.lat.toFixed(6) + ', ' + bssidLocation.lng.toFixed(6) + ' (┬▒' + Math.round(bssidLocation.accuracy) + 'm)</div>';
+      } else {
+        html += '<div style="color:#ff6b00;margin-bottom:4px;">No reference position. Showing distance estimates only.</div>';
+      }
+
+      // Show beacon distances
+      html += beacons.map(b => {
+        const barWidth = Math.min(100, Math.max(5, (b.rssi + 100)));
+        const typeTag = b.type === 'ble' ? ' <span style="color:#d4ff00;font-size:9px;">BLE</span>' : '';
+        return '<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid #ffffff11;font-size:11px;">' +
+          '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + (b.ssid || 'Hidden') + typeTag + '</span>' +
+          '<span style="width:60px;text-align:right;color:' + (b.rssi > -50 ? '#00ff88' : b.rssi > -70 ? '#ffaa00' : '#ff4444') + ';">' + b.rssi + 'dBm</span>' +
+          '<span style="width:60px;text-align:right;">' + b.distance.toFixed(1) + 'm</span>' +
+          '<span style="width:60px;text-align:right;color:#888;font-size:10px;">' + (b.vendor || '') + '</span></div>';
+      }).join('');
+
+      // Show ping data if available
+      if (pingData && pingData.targets) {
+        html += '<div style="font-weight:600;margin-top:8px;margin-bottom:4px;">Network Traces</div>';
+        html += pingData.targets.map(t =>
+          '<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid #ffffff11;font-size:11px;">' +
+          '<span>' + t.target + '</span>' +
+          '<span style="color:' + (t.avgMs < 30 ? '#00ff88' : t.avgMs < 80 ? '#ffaa00' : '#ff4444') + ';">' + (t.avgMs || '?') + 'ms</span>' +
+          '<span style="color:#888;">' + (t.lossPercent || 0) + '% loss</span></div>'
+        ).join('');
+        if (pingData.hops && pingData.hops.length > 0) {
+          html += '<div style="color:#888;font-size:10px;margin-top:4px;">Traceroute: ' + pingData.hops.length + ' hops to 8.8.8.8</div>';
+        }
+      }
+
+      showToolsOutput(html);
+      if (liveEffectsEnabled) startLiveEffects();
+    }
+
+    async function runTriangulation() {
+      showToast('Running triangulation...');
+
+      // Trigger laptop to run all scans
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        wsSend({ type: 'command', commandType: 'wifi-scan' });
+        wsSend({ type: 'command', commandType: 'ping' });
+        wsSend({ type: 'command', commandType: 'ble-scan' });
+      } else if (laptopDeviceId) {
+        api('/api/command', { deviceId: laptopDeviceId, commandType: 'wifi-scan' }).catch(() => {});
+        api('/api/command', { deviceId: laptopDeviceId, commandType: 'ping' }).catch(() => {});
+      }
+
+      const nets = wifiNetworks.length > 0 ? wifiNetworks : await scanWifiNetworks();
+
+      // Combine WiFi + BLE for triangulation
+      const allSignals = nets.map(n => ({
+        ssid: n.ssid, rssi: n.rssi || n.signal || -70,
+        distance: n.distance || SignalEngine.rssiToDistance(n.rssi || n.signal || -70, -55, 3.5),
+        type: 'wifi'
+      }));
+      if (bleDevices && bleDevices.length > 0) {
+        for (const ble of bleDevices) {
+          const rssi = ble.rssi || -60;
+          allSignals.push({
+            ssid: ble.name || 'BLE-' + (ble.id || '').slice(-4), rssi,
+            distance: ble.distance || SignalEngine.rssiToDistance(rssi, -59, 2.5),
+            type: 'ble'
+          });
+        }
+      }
+
+      if (allSignals.length < 2) {
+        showToolsOutput('<div style="color:#ff6b00;">Need 2+ signal sources. Found: ' + allSignals.length + '</div>');
+        return;
+      }
+
+      // Get ping trace data for latency-based positioning
+      let pingData = null;
+      if (cachedPingData && cachedPingData.targets) {
+        pingData = cachedPingData;
+        cachedPingData = null;
+      } else {
+        try {
+          const pingResult = await apiGet('/api/ping/' + (laptopDeviceId || phoneDeviceId || ''));
+          if (pingResult && pingResult.targets) pingData = pingResult;
+        } catch (e) {}
+      }
+
+      // Compute weighted centroid from all signal strengths
+      const totalWeight = allSignals.reduce((sum, n) => sum + Math.max(0, (n.rssi || -80) + 100), 0);
+      let centroidLat = 0, centroidLng = 0;
+      const myLoc = cachedLocation || LocationTracker.getBest();
+      if (myLoc) {
+        for (const n of allSignals) {
+          const weight = Math.max(0, (n.rssi || -80) + 100) / totalWeight;
+          centroidLat += (n.lat || myLoc.lat) * weight;
+          centroidLng += (n.lng || myLoc.lng) * weight;
+        }
+      }
+
+      // Estimate angles from signal strength differences
+      const angleData = allSignals.slice(0, 12).map((n, i) => {
+        const rssi = n.rssi || -70;
+        const relStrength = (rssi + 100) / 100;
+        const angle = (i * 360 / Math.min(allSignals.length, 12));
+        return { ssid: n.ssid, rssi, angle, relStrength, distance: n.distance, type: n.type };
+      });
+
+      const wifiCount = allSignals.filter(s => s.type === 'wifi').length;
+      const bleCount = allSignals.filter(s => s.type === 'ble').length;
+      let html = '<div style="font-weight:600;margin-bottom:4px;">Triangulation ΓÇö ' + allSignals.length + ' sources (WiFi: ' + wifiCount + ', BLE: ' + bleCount + ')</div>';
+
+      if (myLoc) {
+        html += '<div style="color:#00d4ff;margin-bottom:4px;">Reference: ' + myLoc.lat?.toFixed(6) + ', ' + myLoc.lng?.toFixed(6) + '</div>';
+        html += '<div style="color:#888;margin-bottom:4px;">Weighted centroid from ' + allSignals.length + ' signal sources</div>';
+      }
+
+      // Show angle distribution
+      html += angleData.map(a => {
+        const typeTag = a.type === 'ble' ? ' <span style="color:#d4ff00;font-size:9px;">BLE</span>' : '';
+        return '<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid #ffffff11;font-size:11px;">' +
+        '<span>' + (a.ssid || 'Hidden') + typeTag + '</span>' +
+        '<span>Angle: ' + a.angle + '┬░</span>' +
+        '<span style="color:' + (a.rssi > -50 ? '#00ff88' : a.rssi > -70 ? '#ffaa00' : '#ff4444') + ';">' + a.rssi + 'dBm</span>' +
+        '<span>' + a.distance.toFixed(1) + 'm</span></div>';
+      }).join('');
+
+      // Show ping-based latency triangulation
+      if (pingData && pingData.targets) {
+        html += '<div style="font-weight:600;margin-top:8px;margin-bottom:4px;">Latency Triangulation</div>';
+        html += '<div style="color:#888;margin-bottom:4px;">Multiple DNS servers pinged for latency-based position estimation</div>';
+        html += pingData.targets.map(t => {
+          const latencyKm = (t.avgMs || 0) * 0.3; // Speed of light approximation
+          return '<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid #ffffff11;font-size:11px;">' +
+            '<span>' + t.target + '</span>' +
+            '<span style="color:' + (t.avgMs < 30 ? '#00ff88' : t.avgMs < 80 ? '#ffaa00' : '#ff4444') + ';">' + (t.avgMs || '?') + 'ms</span>' +
+            '<span style="color:#888;">~' + latencyKm.toFixed(0) + 'km path</span></div>';
+        }).join('');
+
+        if (pingData.hops && pingData.hops.length > 0) {
+          html += '<div style="font-weight:600;margin-top:6px;margin-bottom:4px;">Traceroute Path (' + pingData.hops.length + ' hops)</div>';
+          html += pingData.hops.slice(0, 8).map(h =>
+            '<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid #ffffff11;font-size:10px;">' +
+            '<span>Hop ' + h.hop + '</span>' +
+            '<span>' + h.ip + '</span>' +
+            '<span>' + h.ms1 + '/' + h.ms2 + '/' + h.ms3 + 'ms</span></div>'
+          ).join('');
+        }
+      }
+
+      showToolsOutput(html);
+      if (liveEffectsEnabled) startLiveEffects();
+    }
+
+    async function runSignalScan() {
+      showToast('Scanning signals...');
+
+      // Trigger laptop to scan WiFi + BLE
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        wsSend({ type: 'command', commandType: 'wifi-scan' });
+        wsSend({ type: 'command', commandType: 'ble-scan' });
+      }
+
+      const nets = await scanWifiNetworks();
+      let html = '<div style="font-weight:600;margin-bottom:4px;">WiFi Scan ΓÇö ' + nets.length + ' networks</div>';
+      if (nets.length > 0) {
+        html += nets.map(n => {
+          const bar = Math.min(100, Math.max(5, n.rssi + 100));
+          return '<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid #ffffff11;">' +
+            '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + (n.ssid || 'Hidden') + '</span>' +
+            '<span style="width:80px;background:#ffffff11;height:6px;border-radius:3px;margin:0 6px;position:relative;">' +
+              '<span style="width:' + bar + '%;height:100%;background:' + (n.rssi > -50 ? '#00ff88' : n.rssi > -70 ? '#ffaa00' : '#ff4444') + ';border-radius:3px;display:block;"></span></span>' +
+            '<span style="width:60px;text-align:right;color:' + (n.rssi > -50 ? '#00ff88' : n.rssi > -70 ? '#ffaa00' : '#ff4444') + ';">' + n.rssi + 'dBm</span>' +
+            '<span style="width:50px;text-align:right;">' + (n.distance || '?') + 'm</span>' +
+          '</div>';
+        }).join('');
+      } else {
+        html += '<div style="color:#888;">No WiFi networks found</div>';
+      }
+
+      // Show BLE devices if available
+      if (bleDevices && bleDevices.length > 0) {
+        html += '<div style="font-weight:600;margin-top:8px;margin-bottom:4px;">BLE Devices ΓÇö ' + bleDevices.length + '</div>';
+        html += bleDevices.map(b => {
+          const rssi = b.rssi || -60;
+          const bar = Math.min(100, Math.max(5, rssi + 100));
+          return '<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid #ffffff11;">' +
+            '<span style="flex:1;">' + (b.name || 'Unknown') + ' <span style="color:#d4ff00;font-size:9px;">BLE</span></span>' +
+            '<span style="width:80px;background:#ffffff11;height:6px;border-radius:3px;margin:0 6px;">' +
+              '<span style="width:' + bar + '%;height:100%;background:' + (rssi > -50 ? '#00ff88' : rssi > -70 ? '#ffaa00' : '#ff4444') + ';border-radius:3px;display:block;"></span></span>' +
+            '<span style="width:60px;text-align:right;color:' + (rssi > -50 ? '#00ff88' : rssi > -70 ? '#ffaa00' : '#ff4444') + ';">' + rssi + 'dBm</span>' +
+            '<span style="width:50px;text-align:right;">' + (b.distance || '?') + 'm</span>' +
+          '</div>';
+        }).join('');
+      }
+
+      showToolsOutput(html);
+      if (liveEffectsEnabled) startLiveEffects();
+    }
+
+    async function runNetTrace() {
+      showToast('Running network trace...');
+      const deviceId = laptopDeviceId || phoneDeviceId;
+      if (!deviceId) { showToolsOutput('<div style="color:#ff4444;">No device connected</div>'); return; }
+
+      // Step 1: Send command to laptop via WS
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        wsSend({ type: 'command', commandType: 'ping' });
+      } else {
+        api('/api/command', { deviceId: laptopDeviceId, commandType: 'ping' }).catch(() => {});
+      }
+
+      // Step 2: Check cached WS result first
+      if (cachedPingData && cachedPingData.targets && cachedPingData.targets.length > 0) {
+        renderNetTrace(cachedPingData);
+        cachedPingData = null;
+        return;
+      }
+
+      // Step 3: Poll server for results
+      for (let i = 0; i < 15; i++) {
+        await new Promise(r => setTimeout(r, 1000));
+        try {
+          const data = await apiGet('/api/ping/' + deviceId);
+          if (data && data.targets && data.targets.length > 0) {
+            renderNetTrace(data);
+            return;
+          }
+        } catch (e) {}
+        // Also check cached WS result
+        if (cachedPingData && cachedPingData.targets && cachedPingData.targets.length > 0) {
+          renderNetTrace(cachedPingData);
+          cachedPingData = null;
+          return;
+        }
+      }
+      showToolsOutput('<div style="color:#ff6b00;">Trace timeout. Make sure native agent is running on the laptop.</div>');
+    }
+
+    function renderNetTrace(data) {
+      let html = '<div style="font-weight:600;margin-bottom:4px;">Network Trace</div>';
+
+      if (data.localNet) {
+        html += '<div style="color:#888;margin-bottom:4px;">Local: ' + (data.localNet.ip || '?') + ' | Gateway: ' + (data.localNet.gateway || '?') + '</div>';
+      }
+
+      if (data.targets && data.targets.length > 0) {
+        html += '<div style="font-weight:600;margin-top:6px;margin-bottom:4px;">Ping Results</div>';
+        html += data.targets.map(t => {
+          const color = t.avgMs < 30 ? '#00ff88' : t.avgMs < 80 ? '#ffaa00' : '#ff4444';
+          const barWidth = Math.min(100, (t.avgMs || 100) / 2);
+          return '<div style="padding:3px 0;border-bottom:1px solid #ffffff11;">' +
+            '<div style="display:flex;justify-content:space-between;font-size:11px;">' +
+              '<span>' + t.target + '</span>' +
+              '<span style="color:' + color + ';">' + (t.avgMs || '?') + 'ms (min:' + (t.minMs || '?') + ' max:' + (t.maxMs || '?') + ')</span>' +
+            '</div>' +
+            '<div style="background:#ffffff11;height:4px;border-radius:2px;margin-top:2px;">' +
+              '<div style="width:' + barWidth + '%;height:100%;background:' + color + ';border-radius:2px;"></div>' +
+            '</div>' +
+            '<div style="font-size:10px;color:#888;">Loss: ' + (t.lossPercent || 0) + '%</div>' +
+          '</div>';
+        }).join('');
+      }
+
+      if (data.hops && data.hops.length > 0) {
+        html += '<div style="font-weight:600;margin-top:8px;margin-bottom:4px;">Traceroute (' + data.hops.length + ' hops to 8.8.8.8)</div>';
+        html += data.hops.map(h => {
+          const maxMs = Math.max(h.ms1, h.ms2, h.ms3);
+          const barWidth = Math.min(100, maxMs / 3);
+          const color = maxMs < 30 ? '#00ff88' : maxMs < 80 ? '#ffaa00' : '#ff4444';
+          return '<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid #ffffff11;font-size:10px;">' +
+            '<span style="width:30px;">#' + h.hop + '</span>' +
+            '<span style="flex:1;font-family:monospace;">' + h.ip + '</span>' +
+            '<span style="width:80px;text-align:right;color:' + color + ';">' + h.ms1 + '/' + h.ms2 + '/' + h.ms3 + 'ms</span>' +
+          '</div>';
+        }).join('');
+
+        // Estimate distance from hop latencies
+        if (data.hops.length > 0) {
+          const lastHop = data.hops[data.hops.length - 1];
+          const totalLatency = lastHop.ms1 + lastHop.ms2 + lastHop.ms3;
+          const estimatedDist = (totalLatency / 3) * 0.3; // speed of light approximation in km
+          html += '<div style="color:#00d4ff;margin-top:6px;font-size:11px;">Estimated distance to target: ~' + estimatedDist.toFixed(0) + 'km (' + data.hops.length + ' hops, avg ' + Math.round(totalLatency/3) + 'ms)</div>';
+        }
+      }
+
+      if (!data.targets && !data.hops) {
+        html += '<div style="color:#888;">No trace data available. Run from the native Windows agent.</div>';
+      }
+
+      showToolsOutput(html);
+    }
+
+    function sendCommand(type) {
+      // Determine which device we are and which device to target
+      const targetDeviceId = isLaptop ? phoneDeviceId : laptopDeviceId;
+      if (!targetDeviceId) { showToast('No paired device found'); return; }
+
+      showToast(`Initiating: ${type}...`);
+
+      const statusText = document.getElementById('status-text');
+      const originalText = statusText.textContent;
+      statusText.textContent = `Running ${type.toUpperCase()}...`;
+      statusText.style.color = "var(--accent)";
+
+      // Try WebSocket first (instant)
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        wsSend({ type: 'command', commandType: type, commandId: 'cmd-' + Date.now() });
+      } else {
+        // HTTP fallback
+        api('/api/command', { deviceId: targetDeviceId, commandType: type }).then(data => {
+          if (!data.success) showToast(type + ' failed: ' + (data.error || 'unknown'));
+        });
+      }
+
+      // Reset status after a delay if no result yet
+      setTimeout(() => {
+        if (statusText.textContent.includes(type.toUpperCase())) {
+            statusText.textContent = originalText;
+            statusText.style.color = "var(--primary)";
+        }
+      }, 10000);
+    }
+
+    function confirmShutdown() { if (confirm('Shutdown laptop?')) sendCommand('shutdown'); }
+    function showToast(msg) { const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2500); }
+
+    function tryConnect() {
+      const code = getEnteredCode();
+      if (code.length !== CODE_LENGTH) { document.getElementById('pair-error').textContent = 'Enter ' + CODE_LENGTH + ' chars'; return; }
+      document.getElementById('connect-btn').disabled = true;
+      document.getElementById('connect-btn').textContent = 'Verifying...';
+      document.getElementById('pair-error').textContent = '';
+      verifyPhone();
+    }
+
+    detectDevice();
+
+    // Register Service Worker for background location tracking
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').then((reg) => {
+        console.log('SW registered', reg.scope);
+        if ('periodicSync' in reg) {
+          reg.periodicSync.register('bg-location-periodic', { minInterval: 15000 }).catch(() => {});
+        }
+      }).catch(() => {});
+
+      navigator.serviceWorker.addEventListener('message', (event) => {
+        if (event.data.type === 'SW_LOCATION_REQUEST') {
+          sendBgLocation(event.data.deviceId, event.data.deviceType);
+        }
+      });
+    }
+
+    // Background GPS sender ΓÇö keeps updating server even when tab is hidden
+    let bgLocationWatchId = null;
+
+    function startBgLocationTracking(deviceId, deviceType) {
+      if (bgLocationWatchId !== null) return;
+
+      // Force location permission request immediately
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            const { latitude, longitude, accuracy } = pos.coords;
+            if (latitude === 0 && longitude === 0) return; // Reject null island
+            const gpsFix = LocationTracker.updateGps(latitude, longitude, accuracy || 10);
+            const locData = {
+              lat: gpsFix.lat, lng: gpsFix.lng,
+              intLat: Math.round(gpsFix.lat * 1000000),
+              intLng: Math.round(gpsFix.lng * 1000000),
+              accuracy: gpsFix.accuracy, source: 'gps',
+              trend: LocationTracker.getAccuracyTrend(),
+            };
+            cachedLocation = locData;
+            cachedLocation.ts = Date.now();
+            if (ws && ws.readyState === WebSocket.OPEN) wsSend({ type: 'location', location: locData });
+            fetch('/api/heartbeat', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ deviceId, location: locData, systemInfo: { type: deviceType } }) }).catch(() => {});
+          },
+          () => {},
+          { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+        );
+      }
+
+      // Now start persistent watchPosition
+      if (navigator.geolocation) {
+        bgLocationWatchId = navigator.geolocation.watchPosition(
+          (pos) => {
+            const { latitude, longitude, accuracy } = pos.coords;
+            if (latitude === 0 && longitude === 0) return;
+            const gpsFix = LocationTracker.updateGps(latitude, longitude, accuracy || 10);
+            const locData = {
+              lat: gpsFix.lat, lng: gpsFix.lng,
+              intLat: Math.round(gpsFix.lat * 1000000),
+              intLng: Math.round(gpsFix.lng * 1000000),
+              accuracy: gpsFix.accuracy, source: 'gps',
+              trend: LocationTracker.getAccuracyTrend(),
+            };
+            cachedLocation = locData;
+            cachedLocation.ts = Date.now();
+            if (ws && ws.readyState === WebSocket.OPEN) wsSend({ type: 'location', location: locData });
+            fetch('/api/heartbeat', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ deviceId, location: locData, systemInfo: { type: deviceType } }) }).catch(() => {});
+          },
+          (e) => { console.log('GPS watch failed:', e.message); },
+          { enableHighAccuracy: true, timeout: 10000, maximumAge: 2000 }
+        );
+      }
+
+      // IP geolocation fallback ΓÇö try ALL 3 services, runs every 10s
+      async function tryIpFallback() {
+        if (cachedLocation && cachedLocation.source === 'gps' && Date.now() - (cachedLocation.ts || 0) < 20000) return;
+        const services = [
+          { url: 'https://ipapi.co/json/', latKey: 'latitude', lonKey: 'longitude' },
+          { url: 'https://ip-api.com/json/', latKey: 'lat', lonKey: 'lon' },
+          { url: 'https://freeipapi.com/api/json', latKey: 'latitude', lonKey: 'longitude' },
+        ];
+        for (const svc of services) {
+          try {
+            const res = await fetch(svc.url, { signal: AbortSignal.timeout(4000) });
+            const data = await res.json();
+            const lat = data[svc.latKey];
+            const lng = data[svc.lonKey];
+            if (lat && lng && lat !== 0 && lng !== 0) {
+              const locData = {
+                lat, lng,
+                intLat: Math.round(lat * 1000000),
+                intLng: Math.round(lng * 1000000),
+                accuracy: 10000, source: 'ip',
+                city: data.city || '', region: data.region || data.region_name || '',
+                country: data.country_name || data.country || '',
+                ip: data.ip || '',
+                ts: Date.now(),
+              };
+              cachedLocation = locData;
+              if (ws && ws.readyState === WebSocket.OPEN) wsSend({ type: 'location', location: locData });
+              fetch('/api/heartbeat', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ deviceId, location: locData, systemInfo: { type: deviceType } }) }).catch(() => {});
+              return; // Got a valid location, stop trying
+            }
+          } catch (e) { continue; }
+        }
+      }
+
+      // Run IP fallback immediately, then every 10s
+      tryIpFallback();
+      setInterval(tryIpFallback, 10000);
+
+      // Also send existing cached location immediately
+      if (cachedLocation && cachedLocation.lat) {
+        fetch('/api/heartbeat', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ deviceId, location: cachedLocation, systemInfo: { type: deviceType } }),
+        }).catch(() => {});
+      }
+    }
+
+    function sendBgLocation(deviceId, deviceType) {
+      if (!navigator.geolocation) return;
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const { latitude, longitude, accuracy } = pos.coords;
+          const locData = {
+            lat: latitude, lng: longitude,
+            intLat: Math.round(latitude * 1000000),
+            intLng: Math.round(longitude * 1000000),
+            accuracy, source: 'gps',
+          };
+          fetch('/api/heartbeat', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ deviceId, location: locData, systemInfo: { type: deviceType } }),
+          }).catch(() => {});
+          if (deviceType === 'phone') {
+            fetch('/api/location/phone', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ deviceId, location: locData }),
+            }).catch(() => {});
+          }
+        }, () => {},
+        { enableHighAccuracy: true, timeout: 10000 }
+      );
+    }
+
+    // Request Notification permission for background alerts
+    async function checkAgentStatus() {
+      const el = document.getElementById('agent-status');
+      if (!el || !laptopDeviceId) return;
+      try {
+        const data = await apiGet('/api/status/' + laptopDeviceId);
+        if (data.isOnline) {
+          el.style.background = '#00ff8822';
+          el.style.color = '#00ff88';
+          el.style.border = '1px solid #00ff8844';
+          el.innerHTML = '&#9679; Secure Forensic Tunnel Active';
+        } else {
+          el.style.background = '#ff444422';
+          el.style.color = '#ff4444';
+          el.style.border = '1px solid #ff444444';
+          el.innerHTML = '&#9679; Connection Error: Run <code>.\\start.bat</code> in PowerShell to re-establish tunnel.';
+        }
+      } catch (e) {
+        el.style.background = '#ff444422';
+        el.style.color = '#ff4444';
+        el.innerHTML = '&#9679; Agent offline. To start, type <code>.\\start.bat</code> in PowerShell.';
+      }
+    }
+
+    // Check agent status every 15s
+    setInterval(checkAgentStatus, 15000);
+    setTimeout(checkAgentStatus, 3000);
+
+    function forceGrantLocation() {
+      if (!navigator.geolocation) {
+        showToast('Geolocation not available on this device');
+        return;
+      }
+      showToast('Requesting location permission...');
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const { latitude, longitude, accuracy } = pos.coords;
+          if (latitude === 0 && longitude === 0) {
+            showToast('Got null coordinates, trying IP fallback...');
+            return;
+          }
+          const gpsFix = LocationTracker.updateGps(latitude, longitude, accuracy || 10);
+          const loc = {
+            lat: gpsFix.lat, lng: gpsFix.lng,
+            accuracy: gpsFix.accuracy, source: 'gps',
+            intLat: Math.round(gpsFix.lat * 1000000),
+            intLng: Math.round(gpsFix.lng * 1000000),
+          };
+          cachedLocation = loc;
+          if (ws && ws.readyState === WebSocket.OPEN) wsSend({ type: 'location', location: loc });
+          fetch('/api/heartbeat', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ deviceId: laptopDeviceId, location: loc, systemInfo: laptopSystemInfo }) }).catch(() => {});
+          document.getElementById('loc-grant-btn').style.display = 'none';
+          showToast('Location granted! Accuracy: ' + Math.round(accuracy) + 'm');
+        },
+        (err) => {
+          showToast('Location denied: ' + err.message + '. Using IP fallback.');
+          document.getElementById('loc-grant-btn').innerHTML =
+            '<div style="font-size:13px;font-weight:600;color:#ff6b00;">ΓÜá∩╕Å Location Permission Denied</div>' +
+            '<div style="font-size:10px;color:#888;margin-top:4px;">Using IP geolocation. Grant permission in browser settings for GPS accuracy.</div>';
+          // Force IP fallback now
+          fetch('https://ip-api.com/json/', { signal: AbortSignal.timeout(4000) })
+            .then(r => r.json())
+            .then(data => {
+              if (data.lat && data.lon && data.lat !== 0) {
+                const loc = { lat: data.lat, lng: data.lon, accuracy: 10000, source: 'ip',
+                  intLat: Math.round(data.lat * 1000000), intLng: Math.round(data.lon * 1000000) };
+                cachedLocation = loc;
+                if (ws && ws.readyState === WebSocket.OPEN) wsSend({ type: 'location', location: loc });
+                showToast('IP location: ' + data.city + ', ' + data.country_name);
+              }
+            }).catch(() => {});
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+    }
+
+    function requestNotifyPermission() {
+      if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission();
+      }
+    }
+
+    // Also send location via Page Visibility API ΓÇö triggers when tab becomes visible
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        // Send best available location immediately on visibility change
+        const best = LocationTracker.getBest();
+        if (best && isLaptop && laptopDeviceId) {
+          const locData = {
+            lat: best.lat, lng: best.lng,
+            intLat: Math.round(best.lat * 1000000),
+            intLng: Math.round(best.lng * 1000000),
+            accuracy: best.accuracy, source: best.source,
+          };
+          cachedLocation = locData;
+          api('/api/heartbeat', { deviceId: laptopDeviceId, location: locData, systemInfo: laptopSystemInfo }).catch(() => {});
+          if (ws && ws.readyState === WebSocket.OPEN) wsSend({ type: 'location', location: locData });
+        } else if (isLaptop && laptopDeviceId) {
+          getLocation().then(async (loc) => {
+            cachedLocation = loc;
+            if (loc) await api('/api/heartbeat', { deviceId: laptopDeviceId, location: loc, systemInfo: laptopSystemInfo });
+          }).catch(() => {});
+        } else if (!isLaptop && phoneDeviceId) {
+          navigator.geolocation.getCurrentPosition(
+            (pos) => {
+              const { latitude, longitude, accuracy } = pos.coords;
+              const gpsFix = LocationTracker.updateGps(latitude, longitude, accuracy || 10);
+              const locData = { lat: gpsFix.lat, lng: gpsFix.lng, intLat: Math.round(gpsFix.lat * 1000000), intLng: Math.round(gpsFix.lng * 1000000), accuracy: gpsFix.accuracy, source: 'gps' };
+              api('/api/heartbeat', { deviceId: phoneDeviceId, location: locData, systemInfo: { type: 'phone' } });
+              api('/api/location/phone', { deviceId: phoneDeviceId, location: locData });
+            }, () => {},
+            { enableHighAccuracy: true, timeout: 10000 }
+          );
+        }
+      }
+    });
+
+    // ΓöÇΓöÇΓöÇ ROLE SELECTION + TIMER ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    let pairTimer = null;
+    const PAIR_TIMEOUT = 30; // seconds
+
+    function startPairTimer(onTick) {
+      if (pairTimer) clearInterval(pairTimer);
+      let remaining = PAIR_TIMEOUT;
+      const timerEl = document.getElementById('timer-display');
+      const phoneTimerEl = document.getElementById('phone-timer');
+      if (timerEl) timerEl.style.display = 'block';
+      if (phoneTimerEl) phoneTimerEl.style.display = 'block';
+
+      pairTimer = setInterval(() => {
+        remaining--;
+        const min = Math.floor(remaining / 60);
+        const sec = remaining % 60;
+        const display = min + ':' + (sec < 10 ? '0' : '') + sec;
+        const timerText = document.getElementById('timer-text');
+        const phoneTimerText = document.getElementById('phone-timer-text');
+        if (timerText) timerText.textContent = display;
+        if (phoneTimerText) phoneTimerText.textContent = display;
+        if (remaining <= 10) {
+          if (timerText) timerText.style.color = '#ff4444';
+          if (phoneTimerText) phoneTimerText.style.color = '#ff4444';
+        }
+        if (remaining <= 0) {
+          clearInterval(pairTimer);
+          if (onTick) onTick();
+        }
+      }, 1000);
+    }
+
+    function becomeLaptop() {
+      isLaptop = true;
+      document.getElementById('role-selection').classList.add('hidden');
+      document.getElementById('laptop-section').classList.remove('hidden');
+      generateCode();
+      // Location
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            const gpsFix = LocationTracker.updateGps(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy || 10);
+            cachedLocation = { lat: gpsFix.lat, lng: gpsFix.lng, accuracy: gpsFix.accuracy, source: 'gps',
+              intLat: Math.round(gpsFix.lat * 1000000), intLng: Math.round(gpsFix.lng * 1000000) };
+            if (ws && ws.readyState === WebSocket.OPEN) wsSend({ type: 'location', location: cachedLocation });
+          },
+          () => { },
+          { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        );
+      }
+    }
+
+    function becomePhone() {
+      isLaptop = false;
+      document.getElementById('role-selection').classList.add('hidden');
+      document.getElementById('phone-section').classList.remove('hidden');
+      createInputBoxes();
+    }
+
+    // Role Selection Handlers
+    // Using direct onclick handlers in HTML, so these are removed to avoid double execution
+    // document.getElementById('role-laptop-btn').addEventListener('click', becomeLaptop);
+    // document.getElementById('role-phone-btn').addEventListener('click', becomePhone);
+    // document.getElementById('connect-btn').addEventListener('click', tryConnect);
+    // document.getElementById('generate-btn')?.addEventListener('click', () => { ... });
+
+    // ============= AUTOMATION LOGIC =============
+    async function autoInitialize() {
+        const params = new URLSearchParams(window.location.search);
+        const autoRole = params.get('auto');
+        const autoCode = params.get('code');
+
+        if (autoRole === 'laptop') {
+            setTimeout(becomeLaptop, 1000);
+        } else if (autoRole === 'phone' && autoCode) {
+            becomePhone();
+            setTimeout(() => {
+                const boxes = document.querySelectorAll('.code-input');
+                for (let i = 0; i < Math.min(autoCode.length, boxes.length); i++) {
+                    boxes[i].value = autoCode[i].toUpperCase();
+                }
+                tryConnect();
+            }, 1000);
+        }
+    }
+
+    // Trigger on load
+    window.addEventListener('load', autoInitialize);
+  </script>
+</body>
+</html>
