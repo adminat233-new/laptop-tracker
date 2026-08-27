@@ -85,14 +85,30 @@ async function suppressPowerButton(active = true) {
 async function aggressiveLock() {
     log('warn', 'Executing Aggressive Lock Sequence...');
     if (process.platform === 'win32') {
-        // Standard lock
+        // Method 1: rundll32 (works in interactive session)
         await runCommand('rundll32.exe user32.dll,LockWorkStation');
+        
+        // Method 2: PowerShell lock (more reliable, targets interactive session)
+        await runPowerShell(`
+            Add-Type -TypeDefinition '
+                using System;
+                using System.Runtime.InteropServices;
+                public class LockScreen {
+                    [DllImport("user32.dll")]
+                    public static extern bool LockWorkStation();
+                }
+            `
+            [LockScreen]::LockWorkStation()
+        `);
+
+        // Method 3: tsdiscon for RDP sessions
+        await runCommand('tsdiscon').catch(() => {});
 
         if (isAdmin) {
             // Suppress tools that could bypass lock
             await runCommand('taskkill /F /IM taskmgr.exe /T').catch(() => {});
-            // Optionally kill explorer to "black out" the desktop if they manage to get past lock
-            // await runCommand('taskkill /F /IM explorer.exe /T').catch(() => {});
+            // Suppress power button
+            await suppressPowerButton(true);
         }
     }
 }

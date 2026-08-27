@@ -310,13 +310,15 @@ function broadcast(targetId, data, preferAgent=true) {
 
 // Broadcast to ALL connections for a deviceId (agent + browser)
 function broadcastAll(targetId, data) {
-  const sent = new Set();
   const msg = JSON.stringify(data);
+  let sent = false;
+  // Send to BOTH agent and browser — don't skip either
   [agentSockets, browserSockets].forEach(map => {
-    if (map.has(targetId) && !sent.has(targetId)) {
-      try { map.get(targetId).send(msg); sent.add(targetId); } catch(e) {}
+    if (map.has(targetId)) {
+      try { map.get(targetId).send(msg); sent = true; } catch(e) {}
     }
   });
+  return sent;
 }
 
 wss.on('connection', (ws) => {
