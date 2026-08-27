@@ -5,6 +5,8 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.view.View;
@@ -224,10 +226,10 @@ public class MainActivity extends AppCompatActivity {
                                 return;
                             }
                         } catch (Exception e) {}
-                        pollHandler.postDelayed(this, 2000);
+                        pollHandler.postDelayed(pollRunnable, 2000);
                     }
                     @Override
-                    public void onError(String error) { pollHandler.postDelayed(MainActivity.this::runOnUiThread, 2000); }
+                    public void onError(String error) { pollHandler.postDelayed(pollRunnable, 2000); }
                 });
             }
         };

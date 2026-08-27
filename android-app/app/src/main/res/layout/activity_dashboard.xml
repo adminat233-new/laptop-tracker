@@ -51,14 +51,21 @@
         android:padding="8dp"
         android:visibility="gone">
 
-        <TextView
-            android:id="@+id/trackDist"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:textColor="#D4FF3F"
-            android:textSize="16sp"
-            android:textStyle="bold"
-            android:text="---" />
+            <TextView
+                android:id="@+id/trackDist"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="#D4FF3F"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:text="---" />
+            <TextView
+                android:id="@+id/trackBearing"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="#FFF"
+                android:textSize="12sp"
+                android:text="---" />
     </LinearLayout>
 
     <!-- BOTTOM CONTROLS -->
@@ -87,6 +94,8 @@
 
                 <TextView android:id="@+id/lpName" android:layout_width="wrap_content" android:layout_height="wrap_content"
                     android:text="💻 Laptop" android:textColor="#FFF" android:textSize="11sp" android:textStyle="bold"/>
+                <TextView android:id="@+id/lpOs" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="OS: --" android:textColor="#888" android:textSize="9sp"/>
                 <TextView android:id="@+id/lpCoords" android:layout_width="wrap_content" android:layout_height="wrap_content"
                     android:text="Coords: --" android:textColor="#888" android:textSize="9sp"
                     android:fontFamily="monospace"/>
@@ -198,6 +207,15 @@
                 android:layout_height="wrap_content"
                 android:orientation="vertical" />
         </ScrollView>
+
+        <TextView
+            android:id="@+id/intelOutput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:visibility="gone"
+            android:textColor="#D4FF3F"
+            android:textSize="10sp"
+            android:fontFamily="monospace" />
 
         <!-- RE-PAIR -->
         <Button

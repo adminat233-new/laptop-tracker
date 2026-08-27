@@ -10,7 +10,7 @@ const app = express();
 const PORT = process.env.PORT || 9999;
 const prisma = new PrismaClient();
 const server = http.createServer(app);
-const wss = new Server({ server });
+const wss = new Server({ server, pingInterval: 30000, pingTimeout: 10000 });
 const agentSockets = new Map(); // deviceId -> ws (agent connection)
 const browserSockets = new Map(); // deviceId -> ws (browser connection)
 const lostDevices = new Set();
@@ -325,6 +325,7 @@ wss.on('connection', (ws) => {
   ws.on('message', async (data) => {
     try {
       const msg = JSON.parse(data);
+      if (msg.type === 'ping') { try { ws.send(JSON.stringify({ type: 'pong' })); } catch(e) {} return; }
       if (msg.type === 'register') {
         myId = msg.deviceId;
         myType = msg.deviceType || 'browser';

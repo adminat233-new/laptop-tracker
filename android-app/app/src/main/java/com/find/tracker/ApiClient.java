@@ -85,7 +85,7 @@ public class ApiClient {
             String json = resp.body() != null ? resp.body().string() : "{}";
             return new JSONObject(json);
         } catch (Exception e) {
-            return new JSONObject().put("success", false).put("error", e.getMessage());
+            try { return new JSONObject().put("success", false).put("error", e.getMessage()); } catch (Exception ex) { return new JSONObject(); }
         }
     }
 
@@ -96,7 +96,7 @@ public class ApiClient {
             String json = resp.body() != null ? resp.body().string() : "{}";
             return new JSONObject(json);
         } catch (Exception e) {
-            return new JSONObject().put("success", false).put("error", e.getMessage());
+            try { return new JSONObject().put("success", false).put("error", e.getMessage()); } catch (Exception ex) { return new JSONObject(); }
         }
     }
 }

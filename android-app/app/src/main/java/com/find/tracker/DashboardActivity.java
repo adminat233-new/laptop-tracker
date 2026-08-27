@@ -5,6 +5,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.graphics.Typeface;
@@ -456,10 +457,10 @@ public class DashboardActivity extends AppCompatActivity implements OnMapReadyCa
                                 }
                             }
                         } catch (Exception e) {}
-                        statusHandler.postDelayed(this, 3000);
+                        statusHandler.postDelayed(statusRunnable, 3000);
                     }
                     @Override
-                    public void onError(String error) { statusHandler.postDelayed(DashboardActivity.this::runOnUiThread, 3000); }
+                    public void onError(String error) { statusHandler.postDelayed(statusRunnable, 3000); }
                 });
             }
         };

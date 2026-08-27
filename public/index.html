@@ -372,13 +372,14 @@ async function connectDevices(){
 }
 
 // ===== WEBSOCKET =====
-let wsConnecting=false;
+let wsConnecting=false,wsPingT=null;
 function connectWS(id){
   if(wsConnecting)return;
   if(ws){
     try{ws.onclose=null;ws.close()}catch(e){}
     ws=null;
   }
+  if(wsPingT){clearInterval(wsPingT);wsPingT=null}
   wsConnecting=true;
   const p=location.protocol==='https:'?'wss:':'ws:';
   ws=new WebSocket(p+'//'+location.host);
@@ -386,16 +387,22 @@ function connectWS(id){
     wsConnecting=false;
     ws.send(JSON.stringify({type:'register',deviceId:id}));
     log('System','WebSocket connected');
+    // Keepalive ping every 25s
+    wsPingT=setInterval(()=>{if(ws&&ws.readyState===1)ws.send(JSON.stringify({type:'ping'}))},25000);
   };
   ws.onclose=()=>{
+    if(wsPingT){clearInterval(wsPingT);wsPingT=null}
     ws=null;
     if(document.getElementById('dashboard').classList.contains('active')){
-      setTimeout(()=>{wsConnecting=false;connectWS(id)},5000);
+      log('System','WS disconnected — reconnecting...');
+      setTimeout(()=>{wsConnecting=false;connectWS(id)},3000);
     }
   };
   ws.onerror=()=>{};
   ws.onmessage=(e)=>{
+    try{
     const msg=JSON.parse(e.data);
+    if(msg.type==='pong')return;
     if(msg.type==='paired'){toast('Phone connected!');log('System','Phone paired: '+msg.phoneId)}
     if(msg.type==='location'&&msg.location){
       if(msg.fromDeviceId&&msg.fromDeviceId.endsWith('-phone'))renderPh(msg.location);
@@ -405,6 +412,7 @@ function connectWS(id){
     if(msg.type==='command'){
       handleIncomingCommand(msg);
     }
+    }catch(e){}
   };
 }
 
@@ -533,15 +541,22 @@ async function cmd(type){
 
 async function sendCmdToAgent(type){
   const target=getTargetDevice();
-  try{
-    const r=await apiP('/api/command',{deviceId:target,commandType:type});
-    if(r.success){
-      toast('Sent → '+type);log('CMD → '+type,'CMD');
-      cmdWaiting=type;
-      if(cmdTimer)clearTimeout(cmdTimer);
-      cmdTimer=setTimeout(()=>{if(cmdWaiting===type){cmdWaiting=null;showIntel('⏳ '+type+': No response from target device.\n\nIs the agent running on the other device?')}},10000);
-    }else toast('Failed: '+(r.error||'Unknown'));
-  }catch(e){toast('Network error')}
+  for(let attempt=1;attempt<=2;attempt++){
+    try{
+      const r=await apiP('/api/command',{deviceId:target,commandType:type});
+      if(r.success){
+        toast('Sent → '+type);log('CMD → '+type,'CMD');
+        cmdWaiting=type;
+        if(cmdTimer)clearTimeout(cmdTimer);
+        cmdTimer=setTimeout(()=>{if(cmdWaiting===type){cmdWaiting=null;showIntel('⏳ '+type+': No response from target device.\n\nIs the agent running on the other device?')}},10000);
+        return;
+      }
+      if(attempt===2)toast('Failed: '+(r.error||'Unknown'));
+    }catch(e){
+      if(attempt===2)toast('Network error');
+      else await new Promise(r=>setTimeout(r,1000));
+    }
+  }
 }
 
 function handleResult(msg){
