@@ -464,6 +464,26 @@ async function handleCommand(msg) {
         await reportLog('system', 'Siren Activated', 'warning');
         break;
 
+      case 'arp-scan':
+        const arpResult = await runCommand('arp -a');
+        const routeResult = await runPowerShell('Get-NetRoute -DestinationPrefix "0.0.0.0/0" | Select-Object NextHop,InterfaceAlias | ConvertTo-Json');
+        result = { success: true, arp: arpResult.stdout, routes: routeResult.stdout };
+        await reportLog('arp-scan', result);
+        break;
+
+      case 'bt-proximity':
+        const btDevices = await getBluetoothSignals();
+        result = { success: true, devices: btDevices };
+        await reportLog('bt-scan', result);
+        break;
+
+      case 'process-audit':
+        const procs = await getProcessForensics();
+        const sysinfo = await getDeepSystemInfo();
+        result = { success: true, processes: procs, system: sysinfo };
+        await reportLog('process-audit', result);
+        break;
+
       default:
         result = { success: false, error: 'Unknown Forensic Module' };
     }

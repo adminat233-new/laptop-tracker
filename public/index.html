@@ -452,22 +452,33 @@
                 try {
                     const res = typeof msg.result === 'string' ? JSON.parse(msg.result) : msg.result;
                     if (res.bssids) { wifiCache = res.bssids; addLog('WiFi scan: ' + res.bssids.length + ' networks', 'SCAN'); }
-                    if (res.arp) addLog('ARP scan complete', 'SCAN');
+                    if (res.arp) addLog('ARP table received (' + (res.arp.match(/\d+\.\d+\.\d+\.\d+/g) || []).length + ' hosts)', 'SCAN');
                     if (res.image) { showForensicModal('image', res.image); addLog('Screenshot acquired', 'CAM'); }
                     if (res.output) addLog(res.output.substring(0, 200), msg.commandType || 'RES');
                     if (res.message) addLog(res.message, 'RES');
                     if (res.data && typeof res.data === 'string') addLog(res.data.substring(0, 200), msg.commandType || 'RES');
+                    if (res.devices) addLog('BT devices found: ' + res.devices.length, 'BT');
+                    if (res.processes) addLog('Process audit: ' + (res.processes.length || 0) + ' processes', 'PROC');
+                    if (res.system) addLog('System info collected', 'SYS');
                     // Update intel output panel
                     const out = document.getElementById('intel-output');
                     if (out.style.display !== 'none') {
+                        let h = '';
                         if (res.bssids) {
-                            let h = '<b>📡 WiFi Array (' + res.bssids.length + ' APs):</b><br>';
+                            h = '<b>📡 WiFi Array (' + res.bssids.length + ' APs):</b><br>';
                             res.bssids.forEach(n => h += `• ${n.ssid || 'Hidden'}: ${n.rssi || n.signal || '?'}dBm (~${Math.round(SignalEngine.rssiToDistance(n.rssi || n.signal || -50))}m)<br>`);
                             if (res.arp) h += '<br><b>ARP Table:</b><br><pre style="font-size:9px;max-height:120px;overflow:auto;">' + res.arp + '</pre>';
-                            out.innerHTML = h;
+                        } else if (res.arp) {
+                            h = '<b>🔍 ARP Scan:</b><br><pre style="font-size:9px;max-height:200px;overflow:auto;">' + res.arp + '</pre>';
+                        } else if (res.devices) {
+                            h = '<b>🔵 Bluetooth Devices (' + res.devices.length + '):</b><br>';
+                            res.devices.forEach(d => h += `• ${d.address || d.name || 'Unknown'} (${d.rssi || '?'}dBm)<br>`);
+                        } else if (res.processes) {
+                            h = '<b>⚙️ Process Audit (' + (res.processes.length || 0) + '):</b><br><pre style="font-size:9px;max-height:200px;overflow:auto;">' + JSON.stringify(res.processes, null, 1).substring(0, 2000) + '</pre>';
                         } else if (res.output) {
-                            out.innerHTML = '<b>Result:</b><br><pre style="font-size:9px;max-height:200px;overflow:auto;">' + res.output + '</pre>';
+                            h = '<b>Result:</b><br><pre style="font-size:9px;max-height:200px;overflow:auto;">' + res.output + '</pre>';
                         }
+                        if (h) out.innerHTML = h;
                     }
                 } catch(e) { addLog('Result parse error: ' + e.message, 'ERR', 'error'); }
             }
