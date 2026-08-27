@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-  <title>Haulix</title>
+  <title>FIND</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
@@ -14,11 +14,9 @@
     :root { --primary: #d4ff3f; --bg: #0a0a0a; --panel: #121212; --text: #fff; --muted: #888; --border: rgba(255,255,255,0.08); --blue: #00d4ff; --red: #ff4444; --green: #00ff88; }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); height: 100vh; overflow: hidden; }
-
     .screen { display: none; width: 100vw; height: 100vh; }
     .screen.active { display: flex; }
 
-    /* PAIRING */
     #pair-screen { align-items: center; justify-content: center; background: var(--bg); }
     .pair-box { width: 440px; padding: 48px; background: var(--panel); border: 1px solid var(--border); border-radius: 32px; text-align: center; }
     .pair-box h2 { font-size: 32px; font-weight: 800; margin-bottom: 8px; }
@@ -33,14 +31,14 @@
     .code-inputs { display: flex; gap: 8px; justify-content: center; margin: 32px 0; }
     .digit-input { width: 40px; height: 50px; background: #000; border: 1px solid var(--border); border-radius: 10px; text-align: center; font-size: 20px; font-weight: 800; color: #fff; outline: none; }
     .digit-input:focus { border-color: var(--primary); }
-    .action-btn { width: 100%; padding: 16px; background: var(--primary); color: #000; border: none; border-radius: 16px; font-weight: 800; font-size: 16px; cursor: pointer; transition: 0.2s; margin-top: 16px; }
+    .action-btn { width: 100%; padding: 16px; background: var(--primary); color: #000; border: none; border-radius: 16px; font-weight: 800; font-size: 16px; cursor: pointer; margin-top: 16px; }
     .action-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-    .action-btn.secondary { background: rgba(255,255,255,0.05); color: #fff; border: 1px solid var(--border); }
     .hidden { display: none !important; }
     .error-msg { margin-top: 16px; color: var(--red); font-size: 13px; }
     .status-msg { margin-top: 24px; font-size: 13px; color: var(--muted); }
+    .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid var(--muted); border-top-color: var(--primary); border-radius: 50%; animation: spin 0.8s linear infinite; margin-right: 8px; vertical-align: middle; }
+    @keyframes spin { to { transform: rotate(360deg); } }
 
-    /* DASHBOARD */
     #dashboard { flex-direction: row; }
     .sidebar { width: 380px; background: var(--panel); border-right: 1px solid var(--border); display: flex; flex-direction: column; transition: width 0.3s, margin 0.3s; overflow: hidden; flex-shrink: 0; }
     .sidebar.collapsed { width: 0; margin-left: -1px; }
@@ -53,9 +51,7 @@
     .sidebar-content::-webkit-scrollbar { width: 4px; }
     .sidebar-content::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
 
-    .device-card { background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 16px; padding: 16px; margin-bottom: 12px; cursor: pointer; transition: 0.2s; }
-    .device-card:hover { border-color: var(--primary); }
-    .device-card.active { border-color: var(--primary); box-shadow: 0 0 20px rgba(212,255,63,0.1); }
+    .device-card { background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 16px; padding: 16px; margin-bottom: 12px; }
     .device-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
     .device-name { font-size: 14px; font-weight: 700; }
     .device-badge { font-size: 10px; font-weight: 800; text-transform: uppercase; padding: 4px 10px; border-radius: 6px; }
@@ -78,7 +74,6 @@
     .log-box::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); }
     .log-line { margin-bottom: 3px; line-height: 1.4; }
 
-    /* MAP */
     .main-area { flex: 1; display: flex; flex-direction: column; position: relative; overflow: hidden; }
     .top-bar { height: 56px; padding: 0 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; background: var(--bg); z-index: 100; }
     .top-bar h1 { font-size: 18px; font-weight: 700; }
@@ -89,25 +84,22 @@
     .status-dot.off { background: var(--red); }
 
     #map { flex: 1; z-index: 1; }
-    .map-btn { position: absolute; top: 72px; right: 20px; z-index: 1000; }
+    .panel-toggle-bar { position: absolute; top: 72px; right: 20px; z-index: 950; display: flex; gap: 6px; }
+    .panel-toggle-btn { width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--border); background: rgba(18,18,18,0.9); color: var(--muted); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 14px; transition: 0.2s; }
+    .panel-toggle-btn:hover { border-color: var(--primary); color: var(--text); }
+    .panel-toggle-btn.active { border-color: var(--primary); color: var(--primary); background: rgba(212,255,63,0.1); }
     .panels-overlay { position: absolute; top: 72px; right: 20px; z-index: 900; display: flex; flex-direction: column; gap: 12px; max-width: 320px; }
-    .panel { background: rgba(18,18,18,0.92); backdrop-filter: blur(20px); border: 1px solid var(--border); border-radius: 14px; padding: 16px; box-shadow: 0 20px 40px rgba(0,0,0,0.5); transition: 0.3s; }
+    .panel { background: rgba(18,18,18,0.92); backdrop-filter: blur(20px); border: 1px solid var(--border); border-radius: 14px; padding: 16px; box-shadow: 0 20px 40px rgba(0,0,0,0.5); }
     .panel.hidden-panel { display: none; }
     .panel-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
     .panel-title { font-size: 11px; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
-    .panel-close { width: 24px; height: 24px; border-radius: 6px; border: none; background: rgba(255,255,255,0.05); color: var(--muted); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 14px; transition: 0.2s; }
+    .panel-close { width: 24px; height: 24px; border-radius: 6px; border: none; background: rgba(255,255,255,0.05); color: var(--muted); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 14px; }
     .panel-close:hover { background: rgba(255,68,68,0.2); color: var(--red); }
     .panel-body { font-size: 12px; }
     .panel-body pre { font-family: 'JetBrains Mono'; font-size: 10px; background: rgba(0,0,0,0.3); padding: 8px; border-radius: 6px; max-height: 200px; overflow: auto; white-space: pre-wrap; word-break: break-all; }
     .panel-body pre::-webkit-scrollbar { width: 3px; }
     .panel-body pre::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); }
 
-    .panel-toggle-bar { position: absolute; top: 72px; right: 20px; z-index: 950; display: flex; gap: 6px; }
-    .panel-toggle-btn { width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--border); background: rgba(18,18,18,0.9); color: var(--muted); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 14px; transition: 0.2s; }
-    .panel-toggle-btn:hover { border-color: var(--primary); color: var(--text); }
-    .panel-toggle-btn.active { border-color: var(--primary); color: var(--primary); background: rgba(212,255,63,0.1); }
-
-    /* MARKERS */
     .marker-lp { width: 28px; height: 28px; background: #000; border: 3px solid var(--primary); border-radius: 50%; box-shadow: 0 0 15px rgba(212,255,63,0.5); position: relative; }
     .marker-lp::after { content: ''; width: 8px; height: 8px; background: var(--primary); border-radius: 50%; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); }
     .marker-ph { width: 28px; height: 28px; background: #000; border: 3px solid var(--blue); border-radius: 50%; box-shadow: 0 0 15px rgba(0,212,255,0.5); position: relative; }
@@ -128,12 +120,11 @@
 </head>
 <body>
 
-  <!-- PAIRING SCREEN -->
   <div id="pair-screen" class="screen active">
     <div class="pair-box">
-      <div style="width:42px;height:42px;background:var(--primary);border-radius:12px;display:flex;align-items:center;justify-content:center;font-weight:900;color:#000;font-size:22px;margin:0 auto 24px;">H</div>
-      <h2>Haulix Uplink</h2>
-      <p>Secure global fleet tracking and recovery system.</p>
+      <div style="width:42px;height:42px;background:var(--primary);border-radius:12px;display:flex;align-items:center;justify-content:center;font-weight:900;color:#000;font-size:22px;margin:0 auto 24px;">F</div>
+      <h2>FIND</h2>
+      <p>Secure global fleet tracking and recovery.</p>
       <div id="role-select" class="role-options">
         <div class="role-card" onclick="setupDevice('laptop')">
           <span class="role-icon">💻</span>
@@ -147,7 +138,7 @@
       <div id="laptop-view" class="hidden">
         <div class="code-view" id="laptop-code"></div>
         <button class="action-btn" onclick="generateCode()">Refresh Code</button>
-        <div class="status-msg" id="pair-status">Waiting for Control Hub...</div>
+        <div class="status-msg" id="pair-status"><span class="spinner"></span>Waiting for Control Hub...</div>
       </div>
       <div id="phone-view" class="hidden">
         <div class="code-inputs" id="phone-inputs"></div>
@@ -157,34 +148,31 @@
     </div>
   </div>
 
-  <!-- DASHBOARD -->
   <div id="dashboard" class="screen">
-    <button class="toggle-btn sidebar-toggle" onclick="toggleSidebar()" title="Toggle Sidebar">☰</button>
-
+    <button class="toggle-btn sidebar-toggle" onclick="toggleSidebar()">☰</button>
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-header">
-        <h3>Fleet</h3>
+        <h3>FIND</h3>
         <div style="display:flex;gap:6px;">
           <button class="toggle-btn" onclick="rePair()" title="Re-pair">🔄</button>
         </div>
       </div>
       <div class="sidebar-content">
-        <div class="device-card active" id="laptop-card">
+        <div class="device-card" id="laptop-card">
           <div class="device-header">
             <div>
-              <div class="device-name" id="lp-name">Detecting...</div>
+              <div class="device-name" id="lp-name">💻 Laptop</div>
               <div class="device-meta" id="lp-os">OS: --</div>
             </div>
             <div class="device-badge offline" id="lp-badge">Offline</div>
           </div>
           <div class="device-meta" id="lp-coords">Coords: --</div>
           <div class="device-meta" id="lp-accuracy">Accuracy: --</div>
-          <div class="device-meta" id="lp-admin" style="margin-top:4px;font-size:10px;"></div>
         </div>
         <div class="device-card" id="phone-card">
           <div class="device-header">
             <div>
-              <div class="device-name">📱 Phone</div>
+              <div class="device-name" id="ph-name">📱 Phone</div>
               <div class="device-meta" id="ph-coords">Coords: --</div>
             </div>
             <div class="device-badge offline" id="ph-badge">Offline</div>
@@ -220,7 +208,7 @@
 
     <div class="main-area">
       <div class="top-bar">
-        <h1>Operations</h1>
+        <h1>FIND — Operations</h1>
         <div class="top-bar-right">
           <div class="status-pill">
             <div class="status-dot off" id="main-dot"></div>
@@ -259,9 +247,7 @@
             <span class="panel-title">Intelligence</span>
             <button class="panel-close" onclick="togglePanel('intel')">✕</button>
           </div>
-          <div class="panel-body">
-            <pre id="intel-output">Waiting for data...</pre>
-          </div>
+          <div class="panel-body"><pre id="intel-output">Waiting for data...</pre></div>
         </div>
       </div>
     </div>
@@ -271,19 +257,19 @@
   <div class="toast" id="toast"></div>
 
   <script>
-    const API = '';
-    let pairCode = null, myId = null, ws = null;
+    let pairCode = null, myId = null, myRole = null, ws = null;
     let map = null, lpMarker = null, phMarker = null;
-    let statusTimer = null, panelsVisible = { cmd: true, intel: true };
-    let sidebarOpen = true;
+    let statusTimer = null, heartbeatTimer = null;
+    let sidebarOpen = true, panelsVisible = { cmd: true, intel: true };
 
     function toast(m) { const t = document.getElementById('toast'); t.textContent = m; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 3000); }
     function show(id) { document.querySelectorAll('.screen').forEach(s => s.classList.remove('active')); document.getElementById(id).classList.add('active'); if (id === 'dashboard') initMap(); }
-    async function apiPost(url, data) { const r = await fetch(API + url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }); return r.json(); }
-    async function apiGet(url) { const r = await fetch(API + url); return r.json(); }
+    async function apiPost(url, data) { const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }); return r.json(); }
+    async function apiGet(url) { return (await fetch(url)).json(); }
 
     // ============= PAIRING =============
     function setupDevice(role) {
+      myRole = role;
       document.getElementById('role-select').classList.add('hidden');
       if (role === 'laptop') {
         document.getElementById('laptop-view').classList.remove('hidden');
@@ -292,7 +278,6 @@
         document.getElementById('phone-view').classList.remove('hidden');
         createInputs();
       }
-      localStorage.setItem('role', role);
     }
 
     async function generateCode() {
@@ -300,8 +285,10 @@
       if (data.success) {
         pairCode = data.pairCode;
         myId = data.deviceId;
+        myRole = 'laptop';
         localStorage.setItem('pairCode', pairCode);
         localStorage.setItem('myId', myId);
+        localStorage.setItem('role', 'laptop');
         const el = document.getElementById('laptop-code');
         el.innerHTML = '';
         pairCode.split('').forEach(c => { const d = document.createElement('div'); d.className = 'code-digit'; d.textContent = c; el.appendChild(d); });
@@ -317,7 +304,7 @@
         const inp = document.createElement('input');
         inp.className = 'digit-input';
         inp.maxLength = 1;
-        inp.oninput = (e) => { if (e.target.value && i < 7) el.children[i + 1].focus(); document.getElementById('connect-btn').disabled = !Array.from(el.children).every(c => c.value); };
+        inp.oninput = () => { if (inp.value && i < 7) el.children[i + 1].focus(); document.getElementById('connect-btn').disabled = !Array.from(el.children).every(c => c.value); };
         el.appendChild(inp);
       }
     }
@@ -328,6 +315,7 @@
       if (data.success) {
         pairCode = data.pairCode;
         myId = data.phoneId;
+        myRole = 'phone';
         localStorage.setItem('pairCode', pairCode);
         localStorage.setItem('myId', myId);
         localStorage.setItem('role', 'phone');
@@ -342,7 +330,11 @@
         if (document.getElementById('dashboard').classList.contains('active')) { clearInterval(timer); return; }
         try {
           const data = await apiGet('/api/pair-info/' + pairCode);
-          if (data.success && data.phone) { clearInterval(timer); enterDashboard(); }
+          if (data.success && data.phone) {
+            clearInterval(timer);
+            document.getElementById('pair-status').innerHTML = '✅ Paired! Entering dashboard...';
+            setTimeout(() => enterDashboard(), 500);
+          }
         } catch (e) {}
       }, 2000);
     }
@@ -351,14 +343,9 @@
       show('dashboard');
       connectWS(myId);
       startStatusPoll();
-      if (navigator.geolocation) {
-        navigator.geolocation.watchPosition(p => {
-          const loc = { lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy, source: 'gps' };
-          apiPost('/api/location/phone', { deviceId: myId, location: loc }).catch(() => {});
-          renderPhone(loc);
-        }, null, { enableHighAccuracy: true });
-      }
-      requestLocate();
+      startHeartbeat();
+      if (myRole === 'phone') startPhoneGPS();
+      setTimeout(() => cmd('locate'), 2000);
     }
 
     // ============= WEBSOCKET =============
@@ -370,7 +357,7 @@
       ws.onclose = () => { if (document.getElementById('dashboard').classList.contains('active')) setTimeout(() => connectWS(id), 5000); };
       ws.onmessage = (e) => {
         const msg = JSON.parse(e.data);
-        if (msg.type === 'paired') { toast('Devices Paired!'); requestLocate(); }
+        if (msg.type === 'paired') { toast('Devices Paired!'); setTimeout(() => cmd('locate'), 1000); }
         if (msg.type === 'location' && msg.location) {
           if (msg.fromDeviceId && msg.fromDeviceId.endsWith('-phone')) renderPhone(msg.location);
           else renderLaptop(msg.location);
@@ -380,25 +367,67 @@
       };
     }
 
+    // ============= HEARTBEAT =============
+    function startHeartbeat() {
+      if (heartbeatTimer) clearInterval(heartbeatTimer);
+      sendHeartbeat();
+      heartbeatTimer = setInterval(sendHeartbeat, 15000);
+    }
+
+    async function sendHeartbeat() {
+      if (!myId) return;
+      let loc = null;
+      try {
+        const pos = await new Promise((resolve, reject) => navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 5000 }));
+        loc = { lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy, source: 'browser-gps' };
+        if (myRole === 'phone') renderPhone(loc);
+        else renderLaptop(loc);
+      } catch (e) {}
+
+      try {
+        await apiPost('/api/heartbeat', {
+          deviceId: myId,
+          location: loc,
+          systemInfo: {
+            hostname: myRole === 'laptop' ? (navigator.platform || 'Laptop') : (navigator.platform || 'Phone'),
+            platform: navigator.platform,
+            userAgent: navigator.userAgent.substring(0, 100),
+            role: myRole
+          }
+        });
+      } catch (e) {}
+    }
+
+    // ============= PHONE GPS =============
+    function startPhoneGPS() {
+      if (!navigator.geolocation) return;
+      navigator.geolocation.watchPosition(p => {
+        const loc = { lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy, source: 'phone-gps' };
+        apiPost('/api/location/phone', { deviceId: myId, location: loc }).catch(() => {});
+        renderPhone(loc);
+      }, null, { enableHighAccuracy: true, maximumAge: 5000 });
+    }
+
     // ============= COMMANDS =============
     async function cmd(type) {
       if (!pairCode) return toast('Not paired');
-      const laptopId = pairCode;
-      const res = await apiPost('/api/command', { deviceId: laptopId, commandType: type });
-      if (res.success) { toast('Sent: ' + type); addLog('CMD → ' + type, 'CMD'); }
-      else toast('Failed: ' + (res.error || 'Unknown'));
+      try {
+        const res = await apiPost('/api/command', { deviceId: pairCode, commandType: type });
+        if (res.success) { toast('Sent: ' + type); addLog('CMD → ' + type, 'CMD'); }
+        else toast('Failed: ' + (res.error || 'No agent'));
+      } catch (e) { toast('Network error'); }
     }
 
     function handleResult(msg) {
       try {
         const res = typeof msg.result === 'string' ? JSON.parse(msg.result) : msg.result;
-        if (res.bssids) { addLog('WiFi: ' + res.bssids.length + ' networks', 'SCAN'); showIntel('📡 WiFi (' + res.bssids.length + ' APs):\n' + res.bssids.map(n => `• ${n.ssid || 'Hidden'}: ${n.rssi || '?'}dBm (~${Math.round(10 ** ((-55 - (n.rssi || -50)) / (10 * 3.5)))}m)`).join('\n')); }
-        else if (res.arp) { addLog('ARP scan done', 'SCAN'); showIntel('🔍 ARP:\n' + res.arp); }
-        else if (res.devices) { addLog('BT: ' + res.devices.length + ' devices', 'BT'); showIntel('🔵 Bluetooth (' + res.devices.length + '):\n' + res.devices.map(d => `• ${d.address || d.name || 'Unknown'}`).join('\n')); }
-        else if (res.processes) { addLog('Process audit done', 'PROC'); showIntel('⚙️ Processes:\n' + JSON.stringify(res.processes, null, 1).substring(0, 3000)); }
-        else if (res.image) { const m = document.getElementById('modal'); const img = document.createElement('img'); img.src = 'data:image/png;base64,' + res.image; img.style.cssText = 'max-width:100%;max-height:80vh;border-radius:16px'; m.appendChild(img); m.style.display = 'flex'; addLog('Screenshot captured', 'CAM'); }
-        else if (res.output) { addLog(res.output.substring(0, 150), msg.commandType || 'RES'); showIntel('Result:\n' + res.output); }
-        else if (res.message) { addLog(res.message, 'RES'); }
+        if (res.bssids) { addLog('WiFi: ' + res.bssids.length + ' networks', 'SCAN'); showIntel('📡 WiFi (' + res.bssids.length + '):\n' + res.bssids.map(n => `• ${n.ssid || 'Hidden'}: ${n.rssi||'?'}dBm`).join('\n')); }
+        else if (res.arp) { addLog('ARP done', 'SCAN'); showIntel('🔍 ARP:\n' + res.arp); }
+        else if (res.devices) { addLog('BT: ' + res.devices.length, 'BT'); showIntel('🔵 BT (' + res.devices.length + '):\n' + res.devices.map(d => `• ${d.address||d.name||'?'}`).join('\n')); }
+        else if (res.processes) { addLog('Processes done', 'PROC'); showIntel('⚙️ Processes:\n' + JSON.stringify(res.processes, null, 1).substring(0, 3000)); }
+        else if (res.image) { const m = document.getElementById('modal'); const img = document.createElement('img'); img.src = 'data:image/png;base64,' + res.image; img.style.cssText = 'max-width:100%;max-height:80vh;border-radius:16px'; m.appendChild(img); m.style.display = 'flex'; addLog('Screenshot', 'CAM'); }
+        else if (res.output) { addLog(res.output.substring(0, 150), msg.commandType||'RES'); showIntel('Result:\n' + res.output); }
+        else if (res.message) addLog(res.message, 'RES');
       } catch (e) {}
     }
 
@@ -416,24 +445,22 @@
           const status = document.getElementById('main-status');
           const lpBadge = document.getElementById('lp-badge');
           const phBadge = document.getElementById('ph-badge');
-          if (d.laptop && d.laptop.online) { dot.className = 'status-dot on'; status.textContent = 'Secured'; lpBadge.textContent = 'Online'; lpBadge.className = 'device-badge online'; }
-          else { dot.className = 'status-dot off'; status.textContent = 'Offline'; lpBadge.textContent = 'Offline'; lpBadge.className = 'device-badge offline'; }
-          if (d.phone && d.phone.online) { phBadge.textContent = 'Online'; phBadge.className = 'device-badge online'; }
-          else { phBadge.textContent = 'Offline'; phBadge.className = 'device-badge offline'; }
+          const lpOn = d.laptop && d.laptop.online;
+          const phOn = d.phone && d.phone.online;
+          dot.className = lpOn ? 'status-dot on' : 'status-dot off';
+          status.textContent = lpOn ? 'Secured' : 'Offline';
+          lpBadge.textContent = lpOn ? 'Online' : 'Offline';
+          lpBadge.className = 'device-badge ' + (lpOn ? 'online' : 'offline');
+          phBadge.textContent = phOn ? 'Online' : 'Offline';
+          phBadge.className = 'device-badge ' + (phOn ? 'online' : 'offline');
           if (d.laptop && d.laptop.systemInfo) {
-            document.getElementById('lp-name').textContent = d.laptop.systemInfo.hostname || 'Laptop';
+            document.getElementById('lp-name').textContent = '💻 ' + (d.laptop.systemInfo.hostname || 'Laptop');
             document.getElementById('lp-os').textContent = 'OS: ' + (d.laptop.systemInfo.platform || '--');
-            document.getElementById('lp-admin').textContent = d.laptop.systemInfo.isAdmin ? '🛡️ Admin' : '⚠️ User';
-            document.getElementById('lp-admin').style.color = d.laptop.systemInfo.isAdmin ? 'var(--green)' : '#ffaa00';
           }
-          if (d.laptopLocation) renderLaptop(d.laptopLocation);
-          if (d.phoneLocation) renderPhone(d.phoneLocation);
+          if (d.laptopLocation && d.laptopLocation.lat) renderLaptop(d.laptopLocation);
+          if (d.phoneLocation && d.phoneLocation.lat) renderPhone(d.phoneLocation);
         } catch (e) {}
       }, 3000);
-    }
-
-    function requestLocate() {
-      if (pairCode) cmd('locate');
     }
 
     // ============= MAP =============
@@ -448,9 +475,9 @@
       const pos = [loc.lat, loc.lng];
       if (pos[0] === 0 && pos[1] === 0) return;
       document.getElementById('lp-coords').textContent = `Coords: ${pos[0].toFixed(6)}, ${pos[1].toFixed(6)}`;
-      document.getElementById('lp-accuracy').textContent = `Accuracy: ±${Math.round(loc.accuracy || 0)}m`;
+      document.getElementById('lp-accuracy').textContent = `Accuracy: ±${Math.round(loc.accuracy||0)}m`;
       if (lpMarker) lpMarker.setLatLng(pos);
-      else { const icon = L.divIcon({ className: '', html: '<div class="marker-lp"><div class="marker-pulse lp"></div></div><div class="marker-label lp">💻 LAPTOP</div>', iconSize: [28, 28], iconAnchor: [14, 14] }); lpMarker = L.marker(pos, { icon }).addTo(map); }
+      else { lpMarker = L.marker(pos, { icon: L.divIcon({ className: '', html: '<div class="marker-lp"><div class="marker-pulse lp"></div></div><div class="marker-label lp">💻 LAPTOP</div>', iconSize: [28, 28], iconAnchor: [14, 14] }) }).addTo(map); }
       if (!phMarker) map.setView(pos, 16);
     }
 
@@ -460,15 +487,15 @@
       if (pos[0] === 0 && pos[1] === 0) return;
       document.getElementById('ph-coords').textContent = `Coords: ${pos[0].toFixed(6)}, ${pos[1].toFixed(6)}`;
       if (phMarker) phMarker.setLatLng(pos);
-      else { const icon = L.divIcon({ className: '', html: '<div class="marker-ph"><div class="marker-pulse ph"></div></div><div class="marker-label ph">📱 PHONE</div>', iconSize: [28, 28], iconAnchor: [14, 14] }); phMarker = L.marker(pos, { icon }).addTo(map); }
+      else { phMarker = L.marker(pos, { icon: L.divIcon({ className: '', html: '<div class="marker-ph"><div class="marker-pulse ph"></div></div><div class="marker-label ph">📱 PHONE</div>', iconSize: [28, 28], iconAnchor: [14, 14] }) }).addTo(map); }
     }
 
     // ============= UI =============
     function toggleSidebar() { const s = document.getElementById('sidebar'); sidebarOpen = !sidebarOpen; s.classList.toggle('collapsed', !sidebarOpen); setTimeout(() => map && map.invalidateSize(), 350); }
-    function togglePanel(id) { const p = document.getElementById(id + '-panel'); const btn = document.querySelector(`.panel-toggle-btn[onclick="togglePanel('${id}')"]`); panelsVisible[id] = !panelsVisible[id]; p.classList.toggle('hidden-panel', !panelsVisible[id]); btn.classList.toggle('active', panelsVisible[id]); }
+    function togglePanel(id) { const p = document.getElementById(id + '-panel'); const btn = document.querySelector(`[onclick="togglePanel('${id}')"]`); panelsVisible[id] = !panelsVisible[id]; p.classList.toggle('hidden-panel', !panelsVisible[id]); btn.classList.toggle('active', panelsVisible[id]); }
     function addLog(msg, tag) { const el = document.getElementById('log-box'); const ts = new Date().toLocaleTimeString('en-US', { hour12: false }); el.innerHTML = `<div class="log-line"><span style="color:#555">[${ts}]</span> <span style="color:var(--blue)">[${tag}]</span> ${msg}</div>` + el.innerHTML; }
-    async function toggleLost(active) { const res = await apiPost('/api/lost-mode', { deviceId: pairCode, active }); if (res.success) { toast(active ? 'LOST MODE ON' : 'RECOVERED'); document.getElementById('found-btn').classList.toggle('hidden', !active); } }
-    function rePair() { if (ws) ws.close(); if (statusTimer) clearInterval(statusTimer); localStorage.clear(); location.reload(); }
+    async function toggleLost(active) { const res = await apiPost('/api/lost-mode', { deviceId: pairCode, active }); if (res.success) { toast(active ? 'LOST MODE' : 'RECOVERED'); document.getElementById('found-btn').classList.toggle('hidden', !active); } }
+    function rePair() { if (ws) ws.close(); if (statusTimer) clearInterval(statusTimer); if (heartbeatTimer) clearInterval(heartbeatTimer); localStorage.clear(); location.reload(); }
 
     // ============= AUTO-LOGIN =============
     window.addEventListener('load', () => {
@@ -476,16 +503,13 @@
       const pc = localStorage.getItem('pairCode');
       const mid = localStorage.getItem('myId');
       if (role && pc && mid) {
-        pairCode = pc; myId = mid;
+        pairCode = pc; myId = mid; myRole = role;
         if (role === 'laptop') {
           document.getElementById('role-select').classList.add('hidden');
           document.getElementById('laptop-view').classList.remove('hidden');
           const el = document.getElementById('laptop-code');
           el.innerHTML = '';
           pc.split('').forEach(c => { const d = document.createElement('div'); d.className = 'code-digit'; d.textContent = c; el.appendChild(d); });
-          show('dashboard');
-          connectWS(myId);
-          startStatusPoll();
           startPairWatch();
         } else {
           enterDashboard();
