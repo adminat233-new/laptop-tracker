@@ -15,7 +15,15 @@ const agentSockets = new Map(); // deviceId -> ws (agent connection)
 const browserSockets = new Map(); // deviceId -> ws (browser connection)
 const lostDevices = new Set();
 
-app.use(express.json());
+app.use(express.json({ limit: '1mb' }));
+// Handle malformed JSON gracefully
+app.use((err, req, res, next) => {
+  if (err.type === 'entity.parse.failed') {
+    console.log(`Bad JSON from ${req.ip} on ${req.url}`);
+    return res.status(400).json({ success: false, error: 'Invalid JSON' });
+  }
+  next(err);
+});
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
