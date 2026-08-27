@@ -279,6 +279,17 @@ app.post('/api/lost-mode', (req, res) => {
   } catch (e) { res.json({ success: false, error: e.message }); }
 });
 
+// ============= APK DOWNLOAD =============
+app.get('/FIND.apk', (req, res) => {
+  const apkPath = path.join(__dirname, 'android-app', 'app', 'build', 'outputs', 'apk', 'debug', 'app-debug.apk');
+  const fs = require('fs');
+  if (fs.existsSync(apkPath)) {
+    res.download(apkPath, 'FIND.apk');
+  } else {
+    res.status(404).send('APK not built yet. Open android-app/ in Android Studio and build.');
+  }
+});
+
 // ============= STATIC =============
 app.use(express.static(path.join(__dirname, 'public')));
 app.get('*', (req, res) => { if (!req.url.startsWith('/api/')) res.sendFile(path.join(__dirname, 'public', 'index.html')); });
