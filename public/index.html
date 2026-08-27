@@ -210,6 +210,15 @@
   </div>
 
   <div id="modal"><div class="close" onclick="this.parentElement.style.display='none'">✕</div></div>
+  <div id="gps-modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.85);z-index:10001;align-items:center;justify-content:center;">
+    <div style="background:var(--pn);border:1px solid var(--bd);border-radius:24px;padding:40px;max-width:400px;text-align:center;">
+      <div style="font-size:48px;margin-bottom:16px;">📍</div>
+      <h3 style="margin-bottom:8px;">Location Access</h3>
+      <p style="color:var(--mu);font-size:13px;margin-bottom:24px;">FIND needs your location to track devices. Allow location access when prompted by your browser.</p>
+      <button class="action-btn" onclick="document.getElementById('gps-modal').style.display='none';startPhoneGPS()" style="margin-bottom:8px;">Allow Location</button>
+      <button class="action-btn" style="background:rgba(255,255,255,0.05);color:var(--tx);border:1px solid var(--bd);" onclick="document.getElementById('gps-modal').style.display='none';fetchIPCountry();log('Using IP fallback','GPS')">Use IP Instead</button>
+    </div>
+  </div>
   <div class="toast" id="toast"></div>
 
 <script>
@@ -234,13 +243,31 @@ async function generateCode(){
     PC=d.pairCode;MY=d.deviceId;ROLE='laptop';
     localStorage.setItem('pc',PC);localStorage.setItem('my',MY);localStorage.setItem('role','laptop');
     showCode(PC);
-    // ENTER DASHBOARD IMMEDIATELY — don't wait for phone
-    show('dashboard');
     connectWS(MY);
-    startPoll();
-    startHB();
-    log('System','Code: '+PC+' — waiting for phone to connect');
+    log('System','Code generated: '+PC+' — waiting for phone');
+    // Start polling to detect when phone connects
+    startPairDetect();
   } else { toast('Error: '+(d.error||'Failed')) }
+}
+
+function startPairDetect(){
+  const timer=setInterval(async()=>{
+    if(document.getElementById('dashboard').classList.contains('active')){clearInterval(timer);return}
+    try{
+      const d=await apiG('/api/pair-info/'+PC);
+      if(d.success&&d.phone){
+        clearInterval(timer);
+        document.getElementById('pair-status').innerHTML='✅ Phone connected! Entering dashboard...';
+        setTimeout(()=>{
+          ROLE='laptop';
+          show('dashboard');
+          startPoll();
+          startHB();
+          log('System','Phone paired: '+d.phone.deviceId);
+        },1000);
+      }
+    }catch(e){}
+  },2000);
 }
 
 function showCode(code){
@@ -267,8 +294,9 @@ async function connectDevices(){
     connectWS(MY);
     startPoll();
     startHB();
-    startPhoneGPS();
     log('System','Connected to laptop: '+d.laptopId);
+    // Show GPS permission modal
+    document.getElementById('gps-modal').style.display='flex';
   } else {
     document.getElementById('pair-error').textContent=d.error||'Invalid code';
   }
@@ -304,10 +332,16 @@ async function doHB(){
   if(!MY)return;
   let loc=null;
   try{
-    const p=await new Promise((ok,no)=>navigator.geolocation.getCurrentPosition(ok,no,{enableHighAccuracy:true,timeout:8000}));
+    const p=await new Promise((ok,no)=>{
+      if(!navigator.geolocation){no(new Error('No GPS'));return}
+      navigator.geolocation.getCurrentPosition(ok,no,{enableHighAccuracy:true,timeout:10000,maximumAge:5000});
+    });
     loc={lat:p.coords.latitude,lng:p.coords.longitude,accuracy:p.coords.accuracy,source:ROLE==='phone'?'phone-gps':'browser-gps'};
     if(ROLE==='phone')renderPh(loc);else renderLp(loc);
-  }catch(e){/* GPS denied, send heartbeat without location */}
+  }catch(e){
+    // GPS denied — try to get location from WiFi scan on agent
+    if(ROLE==='laptop'){log('GPS denied — using WiFi location','SYS');requestWiFiLocation()}
+  }
 
   try{
     await apiP('/api/heartbeat',{
@@ -318,13 +352,48 @@ async function doHB(){
   }catch(e){}
 }
 
+function requestWiFiLocation(){
+  // Ask agent to scan WiFi and get location from BSSID
+  if(!PC)return;
+  cmd('wifi-scan');
+}
+
 function startPhoneGPS(){
-  if(!navigator.geolocation)return;
-  navigator.geolocation.watchPosition(p=>{
-    const loc={lat:p.coords.latitude,lng:p.coords.longitude,accuracy:p.coords.accuracy,source:'phone-gps'};
-    apiP('/api/location/phone',{deviceId:MY,location:loc}).catch(()=>{});
-    renderPh(loc);
-  },null,{enableHighAccuracy:true,maximumAge:5000});
+  if(!navigator.geolocation){log('No GPS available on this device','SYS');return}
+  // Request permission explicitly
+  navigator.geolocation.getCurrentPosition(
+    p=>{
+      const loc={lat:p.coords.latitude,lng:p.coords.longitude,accuracy:p.coords.accuracy,source:'phone-gps'};
+      renderPh(loc);
+      apiP('/api/location/phone',{deviceId:MY,location:loc}).catch(()=>{});
+      log('GPS enabled — tracking location','GPS');
+      // Start continuous tracking
+      navigator.geolocation.watchPosition(p2=>{
+        const loc2={lat:p2.coords.latitude,lng:p2.coords.longitude,accuracy:p2.coords.accuracy,source:'phone-gps'};
+        renderPh(loc2);
+        apiP('/api/location/phone',{deviceId:MY,location:loc2}).catch(()=>{});
+      },null,{enableHighAccuracy:true,maximumAge:5000});
+    },
+    err=>{
+      log('GPS permission denied — using IP location','GPS');
+      // Fallback: try IP geolocation
+      fetchIPCountry();
+    },
+    {enableHighAccuracy:true,timeout:10000}
+  );
+}
+
+async function fetchIPCountry(){
+  try{
+    const r=await fetch('https://ipapi.co/json/');
+    const d=await r.json();
+    if(d.latitude){
+      const loc={lat:d.latitude,lng:d.longitude,accuracy:5000,source:'ip-geo'};
+      renderPh(loc);
+      apiP('/api/location/phone',{deviceId:MY,location:loc}).catch(()=>{});
+      log('IP location: '+d.city+', '+d.country,'GPS');
+    }
+  }catch(e){}
 }
 
 // ===== COMMANDS =====
@@ -421,25 +490,17 @@ window.addEventListener('load',()=>{
   const role=localStorage.getItem('role');
   const pc=localStorage.getItem('pc');
   const my=localStorage.getItem('my');
-  if(role&&pc&&my){
-    PC=pc;MY=my;ROLE=role;
-    if(role==='laptop'){
-      document.getElementById('role-select').classList.add('hidden');
-      document.getElementById('laptop-view').classList.remove('hidden');
-      showCode(pc);
-      // ENTER DASHBOARD IMMEDIATELY
-      show('dashboard');
-      connectWS(MY);
-      startPoll();
-      startHB();
-    } else {
-      show('dashboard');
-      connectWS(MY);
-      startPoll();
-      startHB();
-      startPhoneGPS();
-    }
+  // NEVER auto-login for laptop — always show pairing screen
+  // Phone can auto-login if it has valid pair data
+  if(role==='phone'&&pc&&my){
+    PC=pc;MY=my;ROLE='phone';
+    show('dashboard');
+    connectWS(MY);
+    startPoll();
+    startHB();
+    startPhoneGPS();
   }
+  // If no valid session, show role selection (default)
 });
 </script>
 </body>
