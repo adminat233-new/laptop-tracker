@@ -75,6 +75,14 @@
     .status-dot.off{background:var(--rd)}
 
     #map{flex:1;z-index:1}
+    .map-controls{position:absolute;top:72px;left:50%;transform:translateX(-50%);z-index:950;display:flex;gap:6px;background:rgba(18,18,18,0.9);border:1px solid var(--bd);border-radius:10px;padding:4px}
+    .map-ctrl{padding:6px 14px;border-radius:8px;border:none;background:transparent;color:var(--mu);cursor:pointer;font-size:11px;font-weight:700;font-family:'Inter',sans-serif;transition:0.2s}
+    .map-ctrl.active{background:var(--p);color:#000}
+    .map-ctrl:hover:not(.active){color:var(--tx)}
+    .track-info{position:absolute;bottom:20px;left:50%;transform:translateX(-50%);z-index:950;background:rgba(18,18,18,0.92);backdrop-filter:blur(20px);border:1px solid var(--bd);border-radius:14px;padding:12px 24px;display:none;align-items:center;gap:16px;font-size:13px}
+    .track-info.show{display:flex}
+    .track-dist{font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:800;color:var(--p)}
+    .track-label{color:var(--mu);font-size:11px}
     .panel-toggle-bar{position:absolute;top:72px;right:20px;z-index:950;display:flex;gap:6px}
     .ptb{width:32px;height:32px;border-radius:8px;border:1px solid var(--bd);background:rgba(18,18,18,0.9);color:var(--mu);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;transition:0.2s}
     .ptb:hover{border-color:var(--p);color:var(--tx)}
@@ -181,6 +189,15 @@
         <div class="status-pill"><div class="status-dot off" id="main-dot"></div><span id="main-status">Offline</span></div>
       </div>
       <div id="map"></div>
+      <div class="map-controls">
+        <button class="map-ctrl active" id="btn-street" onclick="setMapView('street')">🗺️ Street</button>
+        <button class="map-ctrl" id="btn-satellite" onclick="setMapView('satellite')">🛰️ Satellite</button>
+        <button class="map-ctrl" id="btn-terrain" onclick="setMapView('terrain')">🏔️ Terrain</button>
+      </div>
+      <div class="track-info" id="track-info">
+        <div><div class="track-label">Distance</div><div class="track-dist" id="track-dist">--</div></div>
+        <div><div class="track-label">Bearing</div><div id="track-bearing" style="font-weight:700">--</div></div>
+      </div>
       <div class="panel-toggle-bar">
         <button class="ptb active" onclick="togglePanel('cmd')">⚡</button>
         <button class="ptb active" onclick="togglePanel('intel')">📊</button>
@@ -713,10 +730,66 @@ function setBadge(prefix,online){
 }
 
 // ===== MAP =====
+let trackLine=null,trackLabel=null;
+let lpLatLng=null,phLatLng=null;
+const mapLayers={};
+
 function initMap(){
   if(map)return;
   map=L.map('map',{center:[51.5,-0.1],zoom:3,zoomControl:false,attributionControl:false});
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(map);
+  mapLayers.street=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19});
+  mapLayers.satellite=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:18});
+  mapLayers.terrain=L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',{maxZoom:17});
+  mapLayers.street.addTo(map);
+}
+
+function setMapView(type){
+  document.querySelectorAll('.map-ctrl').forEach(b=>b.classList.remove('active'));
+  document.getElementById('btn-'+type).classList.add('active');
+  Object.values(mapLayers).forEach(l=>{if(map.hasLayer(l))map.removeLayer(l)});
+  mapLayers[type].addTo(map);
+}
+
+function haversine(lat1,lng1,lat2,lng2){
+  const R=6371e3;
+  const toRad=d=>d*Math.PI/180;
+  const dLat=toRad(lat2-lat1),dLng=toRad(lng2-lng1);
+  const a=Math.sin(dLat/2)**2+Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLng/2)**2;
+  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+
+function bearing(lat1,lng1,lat2,lng2){
+  const toRad=d=>d*Math.PI/180;
+  const toDeg=r=>r*180/Math.PI;
+  const dLng=toRad(lng2-lng1);
+  const y=Math.sin(dLng)*Math.cos(toRad(lat2));
+  const x=Math.cos(toRad(lat1))*Math.sin(toRad(lat2))-Math.sin(toRad(lat1))*Math.cos(toRad(lat2))*Math.cos(dLng);
+  return(toDeg(Math.atan2(y,x))+360)%360;
+}
+
+function bearingToArrow(b){
+  const dirs=['N','NE','E','SE','S','SW','W','NW'];
+  return dirs[Math.round(b/45)%8];
+}
+
+function updateTrackLine(){
+  if(!lpLatLng||!phLatLng||!map)return;
+  if(trackLine)map.removeLayer(trackLine);
+  if(trackLabel)map.removeLayer(trackLabel);
+  trackLine=L.polyline([lpLatLng,phLatLng],{color:'#d4ff3f',weight:2,dashArray:'8,8',opacity:0.7}).addTo(map);
+  const mid=[(lpLatLng[0]+phLatLng[0])/2,(lpLatLng[1]+phLatLng[1])/2];
+  trackLabel=L.marker(mid,{icon:L.divIcon({className:'',html:'<div style="background:rgba(18,18,18,0.85);border:1px solid var(--p);border-radius:8px;padding:4px 8px;font-size:10px;font-weight:700;color:var(--p);white-space:nowrap;font-family:JetBrains Mono,monospace" id="track-mid-label"></div>',iconSize:[0,0],iconAnchor:[0,-10]})}).addTo(map);
+  // Distance
+  const d=haversine(lpLatLng[0],lpLatLng[1],phLatLng[0],phLatLng[1]);
+  const b=bearing(lpLatLng[0],lpLatLng[1],phLatLng[0],phLatLng[1]);
+  const arrow=bearingToArrow(b);
+  const distEl=document.getElementById('track-dist');
+  const bearEl=document.getElementById('track-bearing');
+  if(distEl)distEl.textContent=d>=1000?(d/1000).toFixed(1)+' km':Math.round(d)+' m';
+  if(bearEl)bearEl.textContent=arrow+' '+Math.round(b)+'°';
+  document.getElementById('track-info').classList.add('show');
+  // Update mid label on map
+  setTimeout(()=>{const el=document.getElementById('track-mid-label');if(el)el.textContent=(d>=1000?(d/1000).toFixed(1)+' km':Math.round(d)+' m')+' →';},100);
 }
 
 function renderLp(loc){
@@ -726,6 +799,8 @@ function renderLp(loc){
   document.getElementById('lp-acc').textContent='Accuracy: ±'+Math.round(loc.accuracy||0)+'m';
   if(lpM)lpM.setLatLng(p);
   else{lpM=L.marker(p,{icon:L.divIcon({className:'',html:'<div class="marker-lp"><div class="mp lp"></div></div><div class="ml lp">💻 LAPTOP</div>',iconSize:[28,28],iconAnchor:[14,14]})}).addTo(map)}
+  lpLatLng=p;
+  updateTrackLine();
   if(!phM)map.setView(p,16);
 }
 
@@ -735,6 +810,8 @@ function renderPh(loc){
   document.getElementById('ph-coords').textContent=`Coords: ${p[0].toFixed(6)}, ${p[1].toFixed(6)}`;
   if(phM)phM.setLatLng(p);
   else{phM=L.marker(p,{icon:L.divIcon({className:'',html:'<div class="marker-ph"><div class="mp ph"></div></div><div class="ml ph">📱 PHONE</div>',iconSize:[28,28],iconAnchor:[14,14]})}).addTo(map)}
+  phLatLng=p;
+  updateTrackLine();
 }
 
 // ===== UI =====
