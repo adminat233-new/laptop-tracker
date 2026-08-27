@@ -27,7 +27,7 @@
     .code-view{display:flex;gap:10px;justify-content:center;margin:32px 0}
     .code-digit{width:44px;height:56px;background:rgba(255,255,255,0.04);border:1px solid var(--bd);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:800;color:var(--p)}
     .code-inputs{display:flex;gap:8px;justify-content:center;margin:32px 0}
-    .digit-input{width:40px;height:50px;background:#000;border:1px solid var(--bd);border-radius:10px;text-align:center;font-size:20px;font-weight:800;color:#fff;outline:none}
+    .digit-input{width:40px;height:50px;background:#000;border:1px solid var(--bd);border-radius:10px;text-align:center;font-size:20px;font-weight:800;font-family:'JetBrains Mono',monospace;color:#fff;outline:none;caret-color:var(--p);transition:border-color 0.2s}
     .digit-input:focus{border-color:var(--p)}
     .action-btn{width:100%;padding:16px;background:var(--p);color:#000;border:none;border-radius:16px;font-weight:800;font-size:16px;cursor:pointer;margin-top:16px}
     .action-btn:disabled{opacity:0.5;cursor:not-allowed}
@@ -279,10 +279,44 @@ function showCode(code){
 function createInputs(){
   const el=document.getElementById('phone-inputs');el.innerHTML='';
   for(let i=0;i<8;i++){
-    const inp=document.createElement('input');inp.className='digit-input';inp.maxLength=1;
-    inp.oninput=()=>{if(inp.value&&i<7)el.children[i+1].focus();document.getElementById('connect-btn').disabled=!Array.from(el.children).every(c=>c.value)};
+    const inp=document.createElement('input');inp.className='digit-input';inp.maxLength=1;inp.type='text';inp.inputMode='text';inp.autocomplete='off';inp.autocapitalize='characters';inp.spellcheck=false;
+    inp.onkeydown=(e)=>{
+      if(e.key==='Backspace'){
+        if(!inp.value&&i>0){
+          el.children[i-1].focus();
+          el.children[i-1].value='';
+        }else{
+          inp.value='';
+        }
+        updateConnectBtn();e.preventDefault();
+      }
+      if(e.key==='ArrowLeft'&&i>0){el.children[i-1].focus();e.preventDefault()}
+      if(e.key==='ArrowRight'&&i<7){el.children[i+1].focus();e.preventDefault()}
+    };
+    inp.oninput=()=>{
+      inp.value=inp.value.toUpperCase().replace(/[^A-Z0-9]/g,'');
+      if(inp.value.length>=1&&i<7){el.children[i+1].focus();el.children[i+1].select()}
+      updateConnectBtn();
+    };
+    inp.onpaste=(e)=>{
+      const text=(e.clipboardData||window.clipboardData).getData('text').toUpperCase().replace(/[^A-Z0-9]/g,'').substring(0,8);
+      if(text.length>0){
+        for(let j=0;j<8;j++){
+          if(j<text.length)el.children[j].value=text[j];
+          else el.children[j].value='';
+        }
+        const focusIdx=Math.min(text.length,7);
+        el.children[focusIdx].focus();
+        updateConnectBtn();
+      }
+      e.preventDefault();
+    };
     el.appendChild(inp);
   }
+  el.children[0].focus();
+}
+function updateConnectBtn(){
+  document.getElementById('connect-btn').disabled=!Array.from(document.getElementById('phone-inputs').children).every(c=>c.value);
 }
 
 async function connectDevices(){
@@ -707,7 +741,6 @@ function renderPh(loc){
 function toggleSidebar(){const s=document.getElementById('sidebar');sbOpen=!sbOpen;s.classList.toggle('collapsed',!sbOpen);setTimeout(()=>map&&map.invalidateSize(),350)}
 function togglePanel(id){const p=document.getElementById(id+'-panel');const b=document.querySelector(`[onclick="togglePanel('${id}')"]`);pVis[id]=!pVis[id];p.classList.toggle('hidden-panel',!pVis[id]);b.classList.toggle('active',pVis[id])}
 function log(msg,tag){const el=document.getElementById('log-box');const ts=new Date().toLocaleTimeString('en-US',{hour12:false});el.innerHTML=`<div class="log-line"><span style="color:#555">[${ts}]</span> <span style="color:var(--bl)">[${tag||'SYS'}]</span> ${msg}</div>`+el.innerHTML}
-async function toggleLost(a){const r=await apiP('/api/lost-mode',{deviceId:PC,active:a});if(r.success){toast(a?'LOST MODE':'RECOVERED');document.getElementById('found-btn').classList.toggle('hidden',!a)}}
 function rePair(){if(ws)ws.close();if(statusT)clearInterval(statusT);if(hbT)clearInterval(hbT);localStorage.clear();location.reload()}
 
 // ===== AUTO-LOGIN =====
