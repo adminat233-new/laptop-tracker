@@ -377,16 +377,25 @@ function connectWS(id){
 }
 
 // ===== INCOMING COMMAND HANDLER =====
+// When THIS device receives a command from the other device, execute it HERE
 function handleIncomingCommand(msg){
-  const {commandType,commandId}=msg;
-  log('📥 Command received: '+commandType,'CMD');
+  const {commandType}=msg;
+  log('📥 Executing: '+commandType,'CMD');
   switch(commandType){
-    case 'lock': browserLock(); break;
-    case 'siren': browserSiren(); break;
-    case 'locate': browserLocate(); break;
-    case 'screenshot': browserScreenshot(); break;
+    case 'lock':
+      browserLock();
+      break;
+    case 'siren':
+      browserSiren();
+      break;
+    case 'locate':
+      browserLocate();
+      break;
+    case 'screenshot':
+      browserScreenshot();
+      break;
     case 'lost-mode-on':
-      log('🚨 LOST MODE — device is stolen','SYS');
+      log('🚨 LOST MODE — this device is stolen','SYS');
       toast('🚨 LOST MODE ACTIVATED');
       browserLock();browserSiren();
       break;
@@ -397,10 +406,8 @@ function handleIncomingCommand(msg){
       stopSiren();
       break;
     default:
-      // Commands that need the agent — send result back saying agent required
-      log('⏳ '+commandType+' requires agent — forwarding...','CMD');
-      // Try to forward to agent via server
-      apiP('/api/command',{deviceId:MY,commandType,commandId}).catch(()=>{});
+      // Commands like wifi-scan, arp-scan, etc. can't run in browser
+      log('⏳ '+commandType+' — requires native agent on this device','CMD');
       break;
   }
 }
@@ -484,18 +491,13 @@ async function fetchIPCountry(){
 let cmdTimer=null,cmdWaiting=null;
 
 function getTargetDevice(){
-  // Phone sends commands to laptop, laptop sends commands to phone
+  // Phone = controller, Laptop = target. Phone commands go to laptop.
   return ROLE==='phone'?PC:PC+'-phone';
 }
 
 async function cmd(type){
   if(!PC)return toast('Not paired');
-  // Browser-side commands (also execute locally)
-  if(type==='lock'){browserLock();return sendCmdToAgent(type)}
-  if(type==='siren'){browserSiren();return sendCmdToAgent(type)}
-  if(type==='locate'){browserLocate();return}
-  if(type==='screenshot'){browserScreenshot();return}
-  // All other commands go to the OTHER device
+  // Send command to the OTHER device — it executes there
   sendCmdToAgent(type);
 }
 
@@ -504,10 +506,10 @@ async function sendCmdToAgent(type){
   try{
     const r=await apiP('/api/command',{deviceId:target,commandType:type});
     if(r.success){
-      toast('Sent → '+type);log('CMD → '+type+' (to '+target+')','CMD');
+      toast('Sent → '+type);log('CMD → '+type,'CMD');
       cmdWaiting=type;
       if(cmdTimer)clearTimeout(cmdTimer);
-      cmdTimer=setTimeout(()=>{if(cmdWaiting===type){cmdWaiting=null;log('⏰ '+type+': No agent on target device','ERR');showIntel('⏳ '+type+': No response.\n\nTarget: '+target+'\nMake sure the agent is running:\n\n  node agent.js')}},10000);
+      cmdTimer=setTimeout(()=>{if(cmdWaiting===type){cmdWaiting=null;showIntel('⏳ '+type+': No response from target device.\n\nIs the agent running on the other device?')}},10000);
     }else toast('Failed: '+(r.error||'Unknown'));
   }catch(e){toast('Network error')}
 }
@@ -668,20 +670,16 @@ function stopSiren(){
 // ===== MARK AS LOST =====
 async function toggleLost(active){
   if(!PC)return toast('Not paired');
-  // Phone marks laptop as lost, laptop marks phone as lost
   const targetDevice=ROLE==='phone'?PC:PC+'-phone';
   try{
     const r=await apiP('/api/lost-mode',{deviceId:targetDevice,active});
     if(r.success){
       if(active){
-        toast('🚨 LOST MODE ACTIVATED');
-        log('🚨 Lost mode activated on '+(ROLE==='phone'?'laptop':'phone'),'SYS');
-        // Also play siren on local device
-        browserSiren();
+        toast('🚨 LOST MODE — sent to target');
+        log('🚨 Lost mode → '+targetDevice,'SYS');
       }else{
-        toast('✅ Device Recovered');
-        log('✅ Lost mode deactivated','SYS');
-        stopSiren();
+        toast('✅ Recovered — sent to target');
+        log('✅ Recovery → '+targetDevice,'SYS');
       }
       document.getElementById('found-btn').classList.toggle('hidden',!active);
     }
