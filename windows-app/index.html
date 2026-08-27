@@ -9,64 +9,89 @@
 <style>
 :root{--p:#d4ff3f;--bg:#0a0a0a;--pn:#121212;--tx:#fff;--mu:#888;--bd:rgba(255,255,255,0.08);--bl:#00d4ff;--rd:#ff4444;--gn:#00ff88}
 *{margin:0;padding:0;box-sizing:border-box}
-body{background:var(--bg);color:var(--tx);font-family:'Segoe UI',system-ui,sans-serif;overflow:hidden;height:100vh;user-select:none;display:flex;flex-direction:column;}
-.tb{height:32px;background:#111118;display:flex;align-items:center;justify-content:space-between;padding:0 8px;-webkit-app-region:drag;flex-shrink:0;z-index:9999}
-.tb span{font-size:11px;font-weight:700;letter-spacing:3px;color:var(--p)}
+body{background:var(--bg);color:var(--tx);font-family:'Segoe UI',system-ui,sans-serif;overflow:hidden;height:100vh;user-select:none;display:flex;flex-direction:column}
+
+/* Title bar */
+.tb{height:36px;background:#111118;display:flex;align-items:center;justify-content:space-between;padding:0 12px;-webkit-app-region:drag;flex-shrink:0;z-index:9999;border-bottom:1px solid var(--bd)}
+.tb span{font-size:12px;font-weight:700;letter-spacing:4px;color:var(--p)}
 .tb-b{display:flex;gap:2px;-webkit-app-region:no-drag}
-.tb-b button{width:30px;height:26px;border:none;background:0 0;color:#666;font-size:13px;cursor:pointer;border-radius:4px}
+.tb-b button{width:32px;height:28px;border:none;background:0 0;color:#666;font-size:13px;cursor:pointer;border-radius:4px}
 .tb-b button:hover{background:#1a1a25;color:var(--p)}
 .tb-b .x:hover{background:var(--rd);color:#fff}
+
+/* Screens */
 .scr{display:none;flex:1;overflow:hidden;position:relative}
 .scr.on{display:flex}
-.pair{flex-direction:column;align-items:center;padding-top:80px;background:var(--bg)}
-.logo{font-size:48px;font-weight:900;letter-spacing:8px;color:var(--p)}
-.sub{color:var(--mu);font-size:11px;margin:8px 0 40px}
-.modes{display:flex;flex-direction:column;gap:12px;width:280px}
-.mb{padding:16px;border:1px solid var(--bd);background:var(--pn);color:var(--tx);font-size:13px;font-weight:600;cursor:pointer;text-align:center;border-radius:12px;transition:0.2s}
+
+/* Pair screen */
+.pair{flex-direction:column;align-items:center;padding-top:100px;background:var(--bg)}
+.logo{font-size:52px;font-weight:900;letter-spacing:10px;color:var(--p)}
+.sub{color:var(--mu);font-size:12px;margin:10px 0 50px}
+.modes{display:flex;flex-direction:column;gap:14px;width:300px}
+.mb{padding:18px;border:1px solid var(--bd);background:var(--pn);color:var(--tx);font-size:13px;font-weight:600;cursor:pointer;text-align:center;border-radius:12px;transition:0.2s}
 .mb:hover{border-color:var(--p);background:rgba(255,255,255,0.05)}
 .mb small{display:block;font-size:10px;color:var(--mu);font-weight:400;margin-top:4px}
-.cd{display:none;margin-top:24px;text-align:center}
-.cds{display:flex;gap:6px;justify-content:center}
-.cc{width:44px;height:56px;background:rgba(255,255,255,0.04);border:1px solid var(--bd);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:800;color:var(--p)}
-.pw{color:var(--mu);font-size:11px;margin-top:12px}
-.pig{display:none;gap:8px;margin-top:20px;width:280px}
-.pi{flex:1;padding:12px;background:#000;border:1px solid var(--bd);border-radius:10px;color:#fff;font-size:16px;font-family:monospace;text-align:center;text-transform:uppercase;letter-spacing:3px}
+.cd{display:none;margin-top:28px;text-align:center}
+.cds{display:flex;gap:8px;justify-content:center}
+.cc{width:48px;height:60px;background:rgba(255,255,255,0.04);border:1px solid var(--bd);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:800;color:var(--p)}
+.pw{color:var(--mu);font-size:11px;margin-top:14px}
+.pig{display:none;gap:10px;margin-top:24px;width:300px}
+.pi{flex:1;padding:14px;background:#000;border:1px solid var(--bd);border-radius:10px;color:#fff;font-size:18px;font-family:monospace;text-align:center;text-transform:uppercase;letter-spacing:4px}
 .pi:focus{outline:none;border-color:var(--p)}
-.ps{padding:12px 20px;background:var(--p);color:#000;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer}
+.ps{padding:14px 24px;background:var(--p);color:#000;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer}
 
-/* Dashboard Sidebar */
-.sidebar{width:320px;background:var(--pn);border-right:1px solid var(--bd);display:flex;flex-direction:column;overflow-y:auto}
-.sidebar-header{padding:16px;border-bottom:1px solid var(--bd);display:flex;align-items:center;justify-content:space-between}
-.sidebar-header h3{font-size:14px;font-weight:700;color:var(--p)}
-.sb{background:rgba(255,255,255,0.03);border-radius:12px;padding:12px;margin:12px;display:flex;align-items:center;justify-content:space-between;border:1px solid var(--bd)}
+/* Dashboard layout */
+.dash-wrap{display:flex;flex:1;overflow:hidden}
+.sidebar{width:380px;background:var(--pn);border-right:1px solid var(--bd);display:flex;flex-direction:column;overflow-y:auto;overflow-x:hidden}
+.sidebar::-webkit-scrollbar{width:5px}
+.sidebar::-webkit-scrollbar-track{background:0 0}
+.sidebar::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.12);border-radius:3px}
+
+/* Status bar */
+.sb{background:rgba(255,255,255,0.03);border-radius:12px;padding:14px 16px;margin:14px;display:flex;align-items:center;justify-content:space-between;border:1px solid var(--bd)}
 .sbl{display:flex;align-items:center;gap:10px}
-.sd{width:8px;height:8px;border-radius:50%;background:var(--rd)}
-.sd.on{background:var(--gn);box-shadow:0 0 8px var(--gn)}
+.sd{width:9px;height:9px;border-radius:50%;background:var(--rd);transition:0.3s}
+.sd.on{background:var(--gn);box-shadow:0 0 10px var(--gn)}
 .st{font-size:12px;font-weight:600}
-.sm{font-size:9px;color:var(--p);background:rgba(212,255,63,0.1);padding:4px 8px;border-radius:8px;font-weight:700}
-.card{background:rgba(255,255,255,0.03);border-radius:12px;padding:12px;margin:0 12px 10px;border:1px solid var(--bd)}
-.ct{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--mu);margin-bottom:8px;font-weight:700}
-.cv{font-size:11px;color:#bbb;font-family:monospace;word-break:break-all}
-.tg{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:0 12px 12px}
-.tb2{background:rgba(255,255,255,0.04);border:1px solid var(--bd);border-radius:10px;padding:10px 8px;color:#fff;cursor:pointer;text-align:left;display:flex;align-items:center;gap:6px;transition:0.2s;font-size:11px;font-weight:600}
+.sm{font-size:9px;color:var(--p);background:rgba(212,255,63,0.1);padding:4px 10px;border-radius:8px;font-weight:700}
+
+/* Collapsible sections */
+.sec{margin:0 14px 14px}
+.sec-head{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border:1px solid var(--bd);border-radius:10px;cursor:pointer;transition:0.2s;background:rgba(255,255,255,0.02)}
+.sec-head:hover{background:rgba(255,255,255,0.05);border-color:rgba(255,255,255,0.12)}
+.sec-head h3{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--mu)}
+.sec-head .arrow{font-size:10px;color:var(--mu);transition:transform 0.2s}
+.sec-head.open .arrow{transform:rotate(180deg)}
+.sec-body{display:none;padding:10px 0 0}
+.sec-body.open{display:block}
+
+/* Tool grid */
+.tg{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.tb2{background:rgba(255,255,255,0.04);border:1px solid var(--bd);border-radius:10px;padding:12px 10px;color:#fff;cursor:pointer;text-align:left;display:flex;align-items:center;gap:8px;transition:0.2s;font-size:12px;font-weight:600}
 .tb2:hover{border-color:var(--p);background:rgba(255,255,255,0.08)}
-.tb2.primary{background:var(--p);color:#000;border:none}
+.tb2.primary{background:var(--p);color:#000;border:none;font-weight:700}
+.tb2.primary:hover{background:#c0e830}
 .tb2.danger{color:var(--rd);border-color:rgba(255,68,68,0.3);justify-content:center}
+.tb2.danger:hover{background:rgba(255,68,68,0.1)}
 .tb2.full{grid-column:span 2;justify-content:center}
-.ar{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 12px 12px}
-.ab{padding:12px;border:1px solid var(--bd);border-radius:10px;background:rgba(255,255,255,0.04);color:var(--tx);font-size:11px;font-weight:700;cursor:pointer;transition:0.2s;text-align:center}
-.ab:hover{border-color:var(--p)}
-.ab.d{color:var(--rd);border-color:rgba(255,68,68,0.3)}
-.ab.d:hover{background:rgba(255,68,68,0.1)}
-.lb{background:rgba(0,0,0,0.3);border-radius:8px;padding:8px;max-height:120px;overflow-y:auto;font-family:monospace;font-size:9px;color:var(--mu);margin:0 12px 12px}
-.le{padding:2px 0}
+
+/* Info cards */
+.card{background:rgba(255,255,255,0.03);border-radius:12px;padding:14px;margin:0 14px 14px;border:1px solid var(--bd)}
+.ct{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--mu);margin-bottom:8px;font-weight:700}
+.cv{font-size:11px;color:#bbb;font-family:monospace;word-break:break-all;line-height:1.6}
+
+/* Log box */
+.lb{background:rgba(0,0,0,0.3);border-radius:8px;padding:10px;max-height:140px;overflow-y:auto;font-family:monospace;font-size:10px;color:var(--mu);margin:0 14px 14px;line-height:1.6}
+.le{padding:3px 0}
 .le .ts{color:#555}
 .le .tg2{color:var(--bl)}
 .le .er{color:var(--rd)}
-.rp{background:0 0;border:1px solid var(--bd);color:var(--mu);padding:8px 16px;border-radius:8px;cursor:pointer;font-size:10px;margin:12px;text-align:center;font-weight:600}
+
+/* Reset button */
+.rp{background:0 0;border:1px solid var(--bd);color:var(--mu);padding:10px 18px;border-radius:8px;cursor:pointer;font-size:11px;margin:14px;text-align:center;font-weight:600;transition:0.2s}
 .rp:hover{border-color:var(--tx);color:var(--tx)}
 
-/* Dashboard Map */
+/* Main area */
 .main-area{flex:1;position:relative;display:flex;flex-direction:column}
 #map{flex:1;z-index:1;background:var(--bg)}
 .map-controls{position:absolute;top:20px;left:50%;transform:translateX(-50%);z-index:950;display:flex;gap:6px;background:rgba(18,18,18,0.9);border:1px solid var(--bd);border-radius:10px;padding:4px}
@@ -82,13 +107,13 @@ body{background:var(--bg);color:var(--tx);font-family:'Segoe UI',system-ui,sans-
 .mp{position:absolute;width:100%;height:100%;border-radius:50%;animation:pulse 2s infinite}
 .mp.lp{background:rgba(212,255,63,0.3)}.mp.ph{background:rgba(0,212,255,0.3)}
 @keyframes pulse{0%{transform:scale(1);opacity:0.8}100%{transform:scale(3);opacity:0}}
-.ml{position:absolute;top:-20px;left:50%;transform:translateX(-50%);white-space:nowrap;font-size:9px;font-weight:800;padding:2px 6px;border-radius:4px;background:rgba(0,0,0,0.85);pointer-events:none;text-transform:uppercase}
+.ml{position:absolute;top:-20px;left:50%;transform:translateX(-50%);white-space:nowrap;font-size:9px;font-weight:800;padding:2px 8px;border-radius:4px;background:rgba(0,0,0,0.85);pointer-events:none;text-transform:uppercase}
 .ml.lp{color:var(--p);border:1px solid rgba(212,255,63,0.3)}
 .ml.ph{color:var(--bl);border:1px solid rgba(0,212,255,0.3)}
 
-::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar{width:5px}
 ::-webkit-scrollbar-track{background:0 0}
-::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.1);border-radius:2px}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.1);border-radius:3px}
 ::-webkit-scrollbar-thumb:hover{background:var(--mu)}
 </style>
 </head>
@@ -107,29 +132,102 @@ body{background:var(--bg);color:var(--tx);font-family:'Segoe UI',system-ui,sans-
 </div>
 
 <div id="dScr" class="scr">
+<div class="dash-wrap">
 <div class="sidebar">
-<div class="sb"><div class="sbl"><div class="sd" id="wsDot"></div><span class="st" id="wsSt">Disconnected</span></div><span class="sm" id="mTag">AGENT</span></div>
-<div class="card"><div class="ct">System</div><div class="cv" id="sysInfo">Loading...</div></div>
-<div class="ct" style="margin-left:12px">Tools</div>
-<div class="tg">
-<div class="tb2 primary full" onclick="send('locate')">📍 Locate</div>
-<div class="tb2" onclick="send('wifi-scan')">📶 WiFi Scan</div>
-<div class="tb2" onclick="send('arp-scan')">🔍 ARP Scan</div>
-<div class="tb2" onclick="send('bt-proximity')">🔵 Bluetooth</div>
-<div class="tb2" onclick="send('screenshot')">📸 Screenshot</div>
-<div class="tb2" onclick="send('siren')">🚨 Siren</div>
-<div class="tb2" onclick="send('lock')">🔒 Lock PC</div>
-<div class="tb2" onclick="send('dns-dump')">🌐 DNS Dump</div>
-<div class="tb2" onclick="send('port-audit')">🔍 Ports</div>
-<div class="tb2" onclick="send('wifi-passwords')">🔑 WiFi Pass</div>
-<div class="tb2" onclick="send('usb-audit')">🔌 USB Audit</div>
-<div class="tb2" onclick="send('process-audit')">⚙️ Processes</div>
-<div class="tb2 full danger" onclick="send('full-recovery-scan')">⚡ FULL RECOVERY SCAN</div>
+  <div class="sb">
+    <div class="sbl"><div class="sd" id="wsDot"></div><span class="st" id="wsSt">Disconnected</span></div>
+    <span class="sm" id="mTag">AGENT</span>
+  </div>
+
+  <div class="card"><div class="ct">System Info</div><div class="cv" id="sysInfo">Loading...</div></div>
+
+  <div class="sec">
+    <div class="sec-head open" onclick="toggleSec(this)"><h3>Recovery Arsenal</h3><span class="arrow">▼</span></div>
+    <div class="sec-body open">
+      <div class="tb2 primary full" style="margin-bottom:8px" onclick="send('locate')">📍 Locate Laptop</div>
+      <div class="tg">
+        <div class="tb2" onclick="send('wifi-scan')">📶 WiFi</div>
+        <div class="tb2" onclick="send('arp-scan')">🔍 ARP</div>
+        <div class="tb2" onclick="send('bt-proximity')">🔵 BT</div>
+        <div class="tb2" onclick="send('screenshot')">📸 Screen</div>
+        <div class="tb2" onclick="send('siren')">🚨 Siren</div>
+        <div class="tb2" onclick="send('lock')">🔒 Lock</div>
+        <div class="tb2" onclick="send('dns-dump')">🌐 DNS</div>
+        <div class="tb2" onclick="send('port-audit')">🔍 Ports</div>
+        <div class="tb2" onclick="send('wifi-passwords')">🔑 WiFi Pass</div>
+        <div class="tb2" onclick="send('usb-audit')">🔌 USB</div>
+        <div class="tb2" onclick="send('process-audit')">⚙️ Procs</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="sec-head" onclick="toggleSec(this)"><h3>Advanced Tracking</h3><span class="arrow">▼</span></div>
+    <div class="sec-body">
+      <div class="tg">
+        <div class="tb2" onclick="send('ip-scrape')">🌐 IP Scrape</div>
+        <div class="tb2" onclick="send('wifi-analysis')">📡 WiFi Intel</div>
+        <div class="tb2" onclick="send('network-scan')">🕸️ Net Scan</div>
+        <div class="tb2" onclick="send('bt-scan')">🔵 BT Scan</div>
+        <div class="tb2" onclick="send('network-fingerprint')">🧬 Net FP</div>
+        <div class="tb2" onclick="send('ml-report')">🧠 ML Report</div>
+        <div class="tb2 full" onclick="send('full-recovery-scan')">⚡ FULL RECOVERY SCAN</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="sec-head" onclick="toggleSec(this)"><h3>Advanced Scraping</h3><span class="arrow">▼</span></div>
+    <div class="sec-body">
+      <div class="tg">
+        <div class="tb2" onclick="send('cookie-dump')">🍪 Cookies</div>
+        <div class="tb2" onclick="send('clipboard-grab')">📋 Clipboard</div>
+        <div class="tb2" onclick="send('env-dump')">⚙️ Env Vars</div>
+        <div class="tb2" onclick="send('history-dump')">📂 History</div>
+        <div class="tb2" onclick="send('installed-apps')">📦 Installed Apps</div>
+        <div class="tb2" onclick="send('geo-triangulate')">🛰️ Geo Triangulate</div>
+        <div class="tb2" onclick="send('open-ports-deep')">🔓 Deep Ports</div>
+        <div class="tb2" onclick="send('registry-dump')">🗂️ Registry</div>
+        <div class="tb2" onclick="send('active-connections')">🔗 Connections</div>
+        <div class="tb2" onclick="send('system-screenshot')">🖥️ Sys Screenshot</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="sec-head" onclick="toggleSec(this)"><h3>ML Tracking Intel</h3><span class="arrow">▼</span></div>
+    <div class="sec-body">
+      <div class="lb" id="mlBox" style="margin:0;max-height:120px;color:var(--p);background:rgba(212,255,63,0.04);border:1px solid rgba(212,255,63,0.1)">Waiting for agent data...</div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="sec-head" onclick="toggleSec(this)"><h3>Lost Mode</h3><span class="arrow">▼</span></div>
+    <div class="sec-body">
+      <div class="tg">
+        <div class="tb2 danger" onclick="send('lost-mode-on')">🚨 MARK LOST</div>
+        <div class="tb2" onclick="send('lost-mode-off')">✅ RECOVERED</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="sec-head" onclick="toggleSec(this)"><h3>Intel Stream</h3><span class="arrow">▼</span></div>
+    <div class="sec-body">
+      <div class="lb" id="intelBox" style="margin:0;max-height:160px;color:#bbb;white-space:pre-wrap">Waiting for data...</div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="sec-head" onclick="toggleSec(this)"><h3>Log</h3><span class="arrow">▼</span></div>
+    <div class="sec-body">
+      <div class="lb" id="logBox" style="margin:0;max-height:160px"></div>
+    </div>
+  </div>
+
+  <button class="rp" onclick="rePair()">🔄 Re-Pair / Reset</button>
 </div>
-<div class="ar"><button class="ab d" onclick="send('lost-mode-on')">🚨 Mark Lost</button><button class="ab" onclick="send('lost-mode-off')">✅ Found</button></div>
-<div class="card"><div class="ct">Log</div><div class="lb" id="logBox" style="margin:0;max-height:160px"></div></div>
-<button class="rp" onclick="rePair()">🔄 Re-Pair / Reset</button>
-</div>
+
 <div class="main-area">
   <div class="map-controls">
     <button class="map-ctrl active" id="btn-street" onclick="setMapView('street')">🗺️ Street</button>
@@ -137,6 +235,7 @@ body{background:var(--bg);color:var(--tx);font-family:'Segoe UI',system-ui,sans-
     <button class="map-ctrl" id="btn-terrain" onclick="setMapView('terrain')">🏔️ Terrain</button>
   </div>
   <div id="map"></div>
+</div>
 </div>
 </div>
 
@@ -147,6 +246,11 @@ function ipc(c){return ipcRenderer.invoke(c)}
 document.getElementById('cInp').addEventListener('keyup',e=>{if(e.key==='Enter')connPair()});
 
 let PC=null;
+
+function toggleSec(el){
+  el.classList.toggle('open');
+  el.nextElementSibling.classList.toggle('open');
+}
 
 async function genCode(){
     document.getElementById('mSel').style.display='none';
@@ -188,24 +292,96 @@ async function enterDash(){
     document.getElementById('sysInfo').innerHTML='Host: '+info.hostname+'<br>OS: Windows '+info.release+'<br>Arch: '+info.arch+'<br>CPU: '+info.cpus+' cores<br>RAM: '+info.ram;
     ipcRenderer.invoke('set-agent',true);
     initMap();
-    if(PC) {
-        // Poll for location updates from the server
-        setInterval(async () => {
-            try {
-                const r=await fetch(SERVER+'/api/pair-info/'+PC+'?t='+Date.now());
-                const d=await r.json();
-                if(d.success) {
-                    if(d.laptop && d.laptop.location) renderLp(d.laptop.location);
-                    if(d.phone && d.phone.location) renderPh(d.phone.location);
-                }
-            } catch(e) {}
-        }, 5000);
-    }
+    connectWS();
+    startStatusPoll();
 }
+
+// ===== WEBSOCKET (real-time) =====
+let ws=null,wsT=null;
+function connectWS(){
+    if(ws)return;
+    const p=SERVER.replace('https://','wss://').replace('http://','ws://');
+    ws=new WebSocket(p);
+    ws.onopen=()=>{
+        ipcRenderer.invoke('get-config').then(cfg=>{
+            if(cfg.pairCode)ws.send(JSON.stringify({type:'register',deviceId:cfg.pairCode}));
+        });
+        if(wsT){clearInterval(wsT);wsT=null}
+        wsT=setInterval(()=>{if(ws&&ws.readyState===1)ws.send(JSON.stringify({type:'ping'}))},25000);
+        const dot=document.getElementById('wsDot'),txt=document.getElementById('wsSt');
+        dot.classList.add('on');txt.textContent='Live Connected';log('WebSocket live','SYS');
+    };
+    ws.onclose=()=>{
+        ws=null;
+        if(wsT){clearInterval(wsT);wsT=null}
+        const dot=document.getElementById('wsDot'),txt=document.getElementById('wsSt');
+        dot.classList.remove('on');txt.textContent='Reconnecting...';
+        setTimeout(connectWS,4000);
+    };
+    ws.onerror=()=>{};
+    ws.onmessage=(e)=>{
+        try{
+            const msg=JSON.parse(e.data);
+            if(msg.type==='pong')return;
+            if(msg.type==='location'&&msg.location){
+                if(msg.fromDeviceId&&msg.fromDeviceId.endsWith('-phone'))renderPh(msg.location);
+                else renderLp(msg.location);
+                if(msg.forensicData&&msg.forensicData.mlDecision)updateMLBox(msg.forensicData);
+            }
+            if(msg.type==='commandResult')handleResult(msg);
+            if(msg.type==='paired'){log('Phone connected: '+msg.phoneId,'SYS');}
+        }catch(e){}
+    };
+}
+
+function startStatusPoll(){
+    setInterval(async()=>{
+        if(!PC)return;
+        try{
+            const d=await(await fetch(SERVER+'/api/pair-info/'+PC+'?t='+Date.now())).json();
+            if(d.success){
+                const dot=document.getElementById('wsDot'),txt=document.getElementById('wsSt');
+                const lpOn=d.laptop&&d.laptop.online,phOn=d.phone&&d.phone.online;
+                if(!ws||ws.readyState!==1){dot.classList.toggle('on',lpOn);txt.textContent=lpOn?(phOn?'Both Online':'Laptop Online'):(phOn?'Phone Online':'Offline');}
+                if(d.laptop&&d.laptop.location)renderLp(d.laptop.location);
+                if(d.phone&&d.phone.location)renderPh(d.phone.location);
+            }
+        }catch(e){}
+    },5000);
+}
+
+function handleResult(msg){
+    try{
+        const r=typeof msg.result==='string'?JSON.parse(msg.result):msg.result;
+        const c=msg.commandType||'';
+        log('✅ '+c+' done','RES');
+        let out='';
+        if(r.bssids)out='📡 WiFi ('+r.bssids.length+'):\n'+r.bssids.map(n=>'• '+(n.ssid||'Hidden')+': '+n.rssi+'dBm').join('\n');
+        else if(r.arp)out='🔍 ARP:\n'+r.arp;
+        else if(r.devices)out='🔵 BT:\n'+(Array.isArray(r.devices)?r.devices.join('\n'):r.devices);
+        else if(r.processes)out='⚙️ Procs:\n'+r.processes;
+        else if(r.output)out='📋 '+c+':\n'+r.output;
+        else if(r.data)out='📋 '+c+':\n'+(typeof r.data==='string'?r.data:JSON.stringify(r.data,null,1));
+        else out='📋 '+c+':\n'+JSON.stringify(r,null,1);
+        showIntel(out);
+    }catch(e){}
+}
+
+function updateMLBox(fd){
+    const ml=fd.mlDecision,m=fd.motion,box=document.getElementById('mlBox');
+    if(!ml||!box)return;
+    const conf=(ml.confidence*100).toFixed(1);
+    const risk=ml.riskLevel==='low'?'✅ LOW':ml.riskLevel==='medium'?'⚠️ MEDIUM':'🔴 HIGH';
+    box.textContent='🎯 Conf: '+conf+'% | 🛡️ Risk: '+risk+' | 🏃 '+ml.movementPattern+' | ⚡ '+(m?(m.velocity||0).toFixed(1):'-')+' m/s | 🧠 '+ml.recommendedAction;
+}
+
+function showIntel(txt){const b=document.getElementById('intelBox');if(b)b.textContent=txt;}
+
 function send(type){
     ipcRenderer.invoke('get-config').then(cfg=>{
         fetch(SERVER+'/api/command',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({deviceId:cfg.pairCode,commandType:type})})
-        .then(()=>log('Sent: '+type,'CMD')).catch(()=>log('Failed: '+type,'ERR'));
+        .then(r=>r.json()).then(r=>{if(r.success)log('Sent: '+type,'CMD');else log('Failed: '+type,'ERR');})
+        .catch(()=>log('Failed: '+type,'ERR'));
     });
 }
 function log(msg,tag){
@@ -214,13 +390,11 @@ function log(msg,tag){
     d.innerHTML='<span class="ts">['+t+']</span> <span class="'+(tag==='ERR'?'er':'tg2')+'">['+tag+']</span> '+msg;
     b.appendChild(d);b.scrollTop=b.scrollHeight;if(b.children.length>50)b.removeChild(b.firstChild);
 }
-function rePair(){ipcRenderer.invoke('set-agent',false);location.reload()}
+function rePair(){if(ws)ws.close();ipcRenderer.invoke('set-agent',false);location.reload()}
 const SERVER='https://laptop-tracker-k9vi.onrender.com';
 
 ipcRenderer.on('agent-status',(e,connected)=>{
-    const dot=document.getElementById('wsDot'),txt=document.getElementById('wsSt');
-    if(connected){dot.classList.add('on');txt.textContent='Agent Connected';log('Agent online','SYS');}
-    else{dot.classList.remove('on');txt.textContent='Disconnected';log('Agent offline','SYS');}
+    log(connected?'Agent online':'Agent offline','SYS');
 });
 
 // ===== MAP LOGIC =====
@@ -239,22 +413,37 @@ function setMapView(type){
     Object.values(mapLayers).forEach(l=>{if(map.hasLayer(l))map.removeLayer(l)});
     mapLayers[type].addTo(map);
 }
+let lpLatLng=null,phLatLng=null,trackLine=null;
 function renderLp(loc){
     if(!loc||!map||loc.lat==null)return;
     const p=[loc.lat,loc.lng];if(p[0]===0&&p[1]===0)return;
+    lpLatLng=p;
     if(lpM)lpM.setLatLng(p);
     else{
         lpM=L.marker(p,{icon:L.divIcon({className:'',html:'<div class="marker-lp"><div class="mp lp"></div></div><div class="ml lp">💻 LAPTOP</div>',iconSize:[24,24],iconAnchor:[12,12]})}).addTo(map);
         if(!phM)map.setView(p,16);
     }
+    updateTrackLine();
 }
 function renderPh(loc){
     if(!loc||!map||loc.lat==null)return;
     const p=[loc.lat,loc.lng];if(p[0]===0&&p[1]===0)return;
+    phLatLng=p;
     if(phM)phM.setLatLng(p);
     else{
         phM=L.marker(p,{icon:L.divIcon({className:'',html:'<div class="marker-ph"><div class="mp ph"></div></div><div class="ml ph">📱 PHONE</div>',iconSize:[24,24],iconAnchor:[12,12]})}).addTo(map);
     }
+    updateTrackLine();
+}
+function updateTrackLine(){
+    if(!lpLatLng||!phLatLng||!map)return;
+    if(trackLine)map.removeLayer(trackLine);
+    trackLine=L.polyline([lpLatLng,phLatLng],{color:'#d4ff3f',weight:2,opacity:0.7,dashArray:'6,4'}).addTo(map);
+    const R=6371e3,toR=d=>d*Math.PI/180;
+    const dLat=toR(phLatLng[0]-lpLatLng[0]),dLng=toR(phLatLng[1]-lpLatLng[1]);
+    const a=Math.sin(dLat/2)**2+Math.cos(toR(lpLatLng[0]))*Math.cos(toR(phLatLng[0]))*Math.sin(dLng/2)**2;
+    const dist=R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+    log('Distance: '+(dist>=1000?(dist/1000).toFixed(1)+'km':Math.round(dist)+'m'),'MAP');
 }
 
 ipcRenderer.invoke('get-config').then(c=>{if(c.pairCode&&c.isAgentMode){ PC=c.pairCode; enterDash(); }});
