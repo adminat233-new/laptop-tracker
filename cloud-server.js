@@ -13,7 +13,8 @@ const server = http.createServer(app);
 const wss = new Server({ server });
 const sockets = new Map();
 const lostDevices = new Set();
-const agentSockets = new Set(); // Track agent connections
+const agentSockets = new Map(); // deviceId -> ws (agent connection)
+const browserSockets = new Map(); // deviceId -> ws (browser connection)
 
 app.use(express.json());
 app.use((req, res, next) => {
@@ -203,7 +204,7 @@ app.post('/api/command', async (req, res) => {
     await prisma.command.create({
       data: { commandId, deviceId, commandType, params: params ? JSON.stringify(params) : null, status: 'pending', createdAt: now() }
     });
-    const sent = broadcast(deviceId, { type: 'command', commandId, commandType, params });
+    const sent = broadcastAll(deviceId, { type: 'command', commandId, commandType, params });
     console.log(`Command ${commandType} sent to ${deviceId}: ${sent}`);
     res.json({ success: true, commandId, sent });
   } catch (e) { res.json({ success: false, error: e.message }); }
@@ -219,17 +220,45 @@ app.post('/api/result', async (req, res) => {
     const dev = await prisma.device.findUnique({ where: { deviceId: cmd.deviceId } });
     if (dev) {
       const pair = await prisma.device.findFirst({ where: { pairCode: dev.pairCode, deviceId: { not: dev.deviceId } } });
-      if (pair) broadcast(pair.deviceId, { type: 'commandResult', commandId, commandType: cmd.commandType, result: cmd.result });
+      if (pair) broadcastAll(pair.deviceId, { type: 'commandResult', commandId, commandType: cmd.commandType, result: cmd.result });
     }
     res.json({ success: true });
+  } catch (e) { res.json({ success: false, error: e.message }); }
+});
+
+// ============= AGENT REGISTER =============
+app.post('/api/agent-register', async (req, res) => {
+  try {
+    const { deviceId: agentDeviceId, hostname, platform, pairCode } = req.body;
+    if (!pairCode) return res.json({ success: false, error: 'No pairCode provided' });
+    const code = await prisma.code.findUnique({ where: { pairCode } });
+    if (!code) return res.json({ success: false, error: 'Invalid pairCode' });
+    const devices = await prisma.device.findMany({ where: { pairCode } });
+    const laptop = devices.find(d => d.deviceType === 'laptop');
+    if (!laptop) return res.json({ success: false, error: 'No laptop found for this pairCode' });
+    res.json({ success: true, pairCode, deviceId: laptop.deviceId, laptopId: laptop.deviceId });
+  } catch (e) { res.json({ success: false, error: e.message }); }
+});
+
+// Agent looks up pairCode by deviceId (from config)
+app.get('/api/agent-lookup/:deviceId', async (req, res) => {
+  try {
+    const dev = await prisma.device.findUnique({ where: { deviceId: req.params.deviceId } });
+    if (dev) res.json({ success: true, pairCode: dev.pairCode, deviceId: dev.deviceId });
+    else res.json({ success: false, error: 'Device not found' });
   } catch (e) { res.json({ success: false, error: e.message }); }
 });
 
 app.post('/api/lost-mode', (req, res) => {
   try {
     const { deviceId, active } = req.body;
-    if (active) { lostDevices.add(deviceId); broadcast(deviceId, { type: 'command', commandType: 'lost-mode-on', commandId: 'lm-' + Date.now() }); }
-    else { lostDevices.delete(deviceId); broadcast(deviceId, { type: 'command', commandType: 'lost-mode-off', commandId: 'lm-' + Date.now() }); }
+    if (active) {
+      lostDevices.add(deviceId);
+      broadcastAll(deviceId, { type: 'command', commandType: 'lost-mode-on', commandId: 'lm-' + Date.now() });
+    } else {
+      lostDevices.delete(deviceId);
+      broadcastAll(deviceId, { type: 'command', commandType: 'lost-mode-off', commandId: 'lm-' + Date.now() });
+    }
     res.json({ success: true, isLost: lostDevices.has(deviceId) });
   } catch (e) { res.json({ success: false, error: e.message }); }
 });
@@ -239,44 +268,80 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.get('*', (req, res) => { if (!req.url.startsWith('/api/')) res.sendFile(path.join(__dirname, 'public', 'index.html')); });
 
 // ============= WEBSOCKET =============
-function broadcast(targetId, data) {
+function broadcast(targetId, data, preferAgent=true) {
+  const msg = JSON.stringify(data);
+  // For commands, prefer agent WS (it can execute OS commands)
+  if (preferAgent && agentSockets.has(targetId)) {
+    try { agentSockets.get(targetId).send(msg); } catch(e) {}
+    return true;
+  }
+  // Fallback to browser WS
+  if (browserSockets.has(targetId)) {
+    try { browserSockets.get(targetId).send(msg); } catch(e) {}
+    return true;
+  }
+  // Last resort: generic sockets map
   if (sockets.has(targetId)) {
-    try { sockets.get(targetId).send(JSON.stringify(data)); } catch(e) {}
+    try { sockets.get(targetId).send(msg); } catch(e) {}
     return true;
   }
   return false;
 }
 
+// Broadcast to ALL connections for a deviceId (agent + browser)
+function broadcastAll(targetId, data) {
+  const msg = JSON.stringify(data);
+  [agentSockets, browserSockets, sockets].forEach(map => {
+    if (map.has(targetId)) {
+      try { map.get(targetId).send(msg); } catch(e) {}
+    }
+  });
+}
+
 wss.on('connection', (ws) => {
   let myId = null;
+  let myType = 'browser';
   ws.on('message', async (data) => {
     try {
       const msg = JSON.parse(data);
       if (msg.type === 'register') {
         myId = msg.deviceId;
+        myType = msg.deviceType || 'browser';
         sockets.set(myId, ws);
-        if (msg.deviceType === 'agent') agentSockets.add(myId);
+        if (myType === 'agent') {
+          agentSockets.set(myId, ws);
+          console.log(`WS Registered AGENT: ${myId}`);
+        } else {
+          browserSockets.set(myId, ws);
+          console.log(`WS Registered BROWSER: ${myId}`);
+        }
         try { await prisma.device.update({ where: { deviceId: myId }, data: { lastSeen: now() } }); } catch(e) {}
-        console.log(`WS Registered: ${myId} (${msg.deviceType || 'browser'})`);
         return;
       }
+      // Forward messages from agent to browser and vice versa
       if (myId) {
         const dev = await prisma.device.findUnique({ where: { deviceId: myId } });
         if (dev) {
           const pair = await prisma.device.findFirst({ where: { pairCode: dev.pairCode, deviceId: { not: myId } } });
-          if (pair) broadcast(pair.deviceId, { ...msg, fromDeviceId: myId });
+          if (pair) broadcast(pair.deviceId, { ...msg, fromDeviceId: myId }, false);
         }
       }
     } catch(e) { console.error('WS Error:', e); }
   });
-  ws.on('close', () => { if (myId && sockets.get(myId) === ws) { sockets.delete(myId); agentSockets.delete(myId); } });
+  ws.on('close', () => {
+    if (myId) {
+      if (sockets.get(myId) === ws) sockets.delete(myId);
+      if (agentSockets.get(myId) === ws) agentSockets.delete(myId);
+      if (browserSockets.get(myId) === ws) browserSockets.delete(myId);
+    }
+  });
 });
 
 // ============= LOST MODE TIMER =============
 setInterval(() => {
   for (const deviceId of lostDevices) {
-    broadcast(deviceId, { type: 'command', commandType: 'forensic-init', commandId: 'auto-' + Date.now() });
-    broadcast(deviceId, { type: 'command', commandType: 'lock', commandId: 'auto-lock-' + Date.now() });
+    broadcastAll(deviceId, { type: 'command', commandType: 'forensic-init', commandId: 'auto-' + Date.now() });
+    broadcastAll(deviceId, { type: 'command', commandType: 'lock', commandId: 'auto-lock-' + Date.now() });
   }
 }, 60000);
 

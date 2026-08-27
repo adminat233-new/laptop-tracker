@@ -674,9 +674,37 @@ async function sendForensicHeartbeat() {
 }
 
 async function registerWithServer() {
-  // Register in DB with laptop's pairCode
+  // If no pairCode, try to look it up from the server using saved deviceId
+  if (!pairCode && deviceId) {
+    try {
+      const url = new URL(API_URL + '/agent-lookup/' + deviceId);
+      const client = url.protocol === 'https:' ? https : http;
+      await new Promise((resolve) => {
+        const req = client.request(url, { method: 'GET' }, (res) => {
+          let body = '';
+          res.on('data', (chunk) => body += chunk);
+          res.on('end', () => {
+            try {
+              const data = JSON.parse(body);
+              if (data.success && data.pairCode) {
+                pairCode = data.pairCode;
+                deviceId = data.deviceId || deviceId;
+                log('info', `Auto-discovered pairCode: ${pairCode}`);
+                try { fs.writeFileSync(CONFIG_FILE, JSON.stringify({ deviceId, pairCode, createdAt: Date.now() })); } catch(e) {}
+              }
+            } catch (e) {}
+            resolve();
+          });
+        });
+        req.on('error', () => resolve());
+        req.end();
+      });
+    } catch (e) {}
+  }
+
+  // Register with pairCode
   try {
-    const postData = JSON.stringify({ deviceId, hostname: os.hostname(), platform: os.platform() });
+    const postData = JSON.stringify({ deviceId, hostname: os.hostname(), platform: os.platform(), pairCode });
     const url = new URL(API_URL + '/agent-register');
     const client = url.protocol === 'https:' ? https : http;
     await new Promise((resolve) => {
@@ -688,15 +716,17 @@ async function registerWithServer() {
             const data = JSON.parse(body);
             if (data.success) {
               pairCode = data.pairCode;
-              log('info', `Registered with pairCode: ${pairCode}`);
+              deviceId = data.deviceId || deviceId;
+              log('info', `Registered: pairCode=${pairCode}, deviceId=${deviceId}`);
+              try { fs.writeFileSync(CONFIG_FILE, JSON.stringify({ deviceId, pairCode, createdAt: Date.now() })); } catch(e) {}
             } else {
-              log('warn', 'Register response:', data.error);
+              log('warn', 'Register:', data.error);
             }
           } catch (e) {}
           resolve();
         });
       });
-      req.on('error', (e) => { log('warn', 'Register HTTP failed:', e.message); resolve(); });
+      req.on('error', (e) => { log('warn', 'Register failed:', e.message); resolve(); });
       req.write(postData);
       req.end();
     });
@@ -762,17 +792,23 @@ async function start() {
   deviceId = generateDeviceId();
   log('info', `Device ID: ${deviceId}`);
 
-  // Try to load saved config, but generate if missing
+  // Try to load saved config (pairCode from browser pairing)
   if (fs.existsSync(CONFIG_FILE)) {
     try {
       const data = JSON.parse(fs.readFileSync(CONFIG_FILE));
       if (data.deviceId) deviceId = data.deviceId;
+      if (data.pairCode) { pairCode = data.pairCode; log('info', `Loaded pairCode: ${pairCode}`); }
     } catch (e) {}
-  } else {
-    // Save config for next time
-    try {
-      fs.writeFileSync(CONFIG_FILE, JSON.stringify({ deviceId, createdAt: Date.now() }));
-    } catch (e) {}
+  }
+
+  // Accept pairCode from command line or environment
+  const argPC = process.argv.find(a => a.startsWith('--pair='));
+  if (argPC) pairCode = argPC.split('=')[1];
+  if (process.env.PAIR_CODE) pairCode = process.env.PAIR_CODE;
+
+  if (!pairCode) {
+    log('warn', 'No pairCode found. Run the browser pairing first, or pass --pair=XXXXXXX');
+    log('warn', 'The agent will still connect and wait for registration.');
   }
 
   connect();

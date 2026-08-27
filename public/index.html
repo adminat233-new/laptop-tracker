@@ -483,28 +483,31 @@ async function fetchIPCountry(){
 // ===== COMMANDS =====
 let cmdTimer=null,cmdWaiting=null;
 
-// Commands that CAN run in the browser (no agent needed)
-const BROWSER_CMDS=['lock','siren','locate'];
+function getTargetDevice(){
+  // Phone sends commands to laptop, laptop sends commands to phone
+  return ROLE==='phone'?PC:PC+'-phone';
+}
 
 async function cmd(type){
   if(!PC)return toast('Not paired');
-  // Browser-side commands (work without agent)
+  // Browser-side commands (also execute locally)
   if(type==='lock'){browserLock();return sendCmdToAgent(type)}
   if(type==='siren'){browserSiren();return sendCmdToAgent(type)}
   if(type==='locate'){browserLocate();return}
   if(type==='screenshot'){browserScreenshot();return}
-  // All other commands need the agent
+  // All other commands go to the OTHER device
   sendCmdToAgent(type);
 }
 
 async function sendCmdToAgent(type){
+  const target=getTargetDevice();
   try{
-    const r=await apiP('/api/command',{deviceId:PC,commandType:type});
+    const r=await apiP('/api/command',{deviceId:target,commandType:type});
     if(r.success){
-      toast('Sent: '+type);log('CMD → '+type,'CMD');
+      toast('Sent → '+type);log('CMD → '+type+' (to '+target+')','CMD');
       cmdWaiting=type;
       if(cmdTimer)clearTimeout(cmdTimer);
-      cmdTimer=setTimeout(()=>{if(cmdWaiting===type){cmdWaiting=null;log('⏰ '+type+': No agent response','ERR');showIntel('⏳ '+type+': No response from agent.\n\nThis command requires the native agent.\nStart it on the laptop:\n\n  node agent.js\n\nBrowser-only commands: lock, siren, screenshot, locate')}},10000);
+      cmdTimer=setTimeout(()=>{if(cmdWaiting===type){cmdWaiting=null;log('⏰ '+type+': No agent on target device','ERR');showIntel('⏳ '+type+': No response.\n\nTarget: '+target+'\nMake sure the agent is running:\n\n  node agent.js')}},10000);
     }else toast('Failed: '+(r.error||'Unknown'));
   }catch(e){toast('Network error')}
 }
