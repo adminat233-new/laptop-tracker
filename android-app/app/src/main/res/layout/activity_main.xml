@@ -1,0 +1,168 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#0A0A0A"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_horizontal"
+        android:orientation="vertical"
+        android:padding="32dp">
+
+        <View
+            android:layout_width="42dp"
+            android:layout_height="42dp"
+            android:layout_marginTop="40dp"
+            android:layout_marginBottom="24dp"
+            android:background="@drawable/icon_bg" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="FIND"
+            android:textColor="#FFFFFF"
+            android:textSize="32sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:layout_marginBottom="32dp"
+            android:text="Secure global tracking and recovery."
+            android:textColor="#888888"
+            android:textSize="14sp" />
+
+        <!-- ROLE SELECTION -->
+        <LinearLayout
+            android:id="@+id/roleSelect"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:weightSum="2">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginEnd="8dp"
+                android:background="@drawable/card_bg"
+                android:gravity="center"
+                android:orientation="vertical"
+                android:padding="24dp"
+                android:clickable="true"
+                android:focusable="true"
+                android:onClick="onLaptopClick">
+
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="💻" android:textSize="32sp" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp" android:text="Target Laptop"
+                    android:textColor="#FFFFFF" android:textStyle="bold" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/card_bg"
+                android:gravity="center"
+                android:orientation="vertical"
+                android:padding="24dp"
+                android:clickable="true"
+                android:focusable="true"
+                android:onClick="onPhoneClick">
+
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="📱" android:textSize="32sp" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp" android:text="Control Hub"
+                    android:textColor="#FFFFFF" android:textStyle="bold" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- LAPTOP VIEW -->
+        <LinearLayout
+            android:id="@+id/laptopView"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="center_horizontal"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/codeDisplay"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="24dp"
+                android:fontFamily="monospace"
+                android:textColor="#D4FF3F"
+                android:textSize="28sp"
+                android:textStyle="bold"
+                android:letterSpacing="0.15"
+                android:text="--------" />
+
+            <Button
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:layout_marginTop="24dp"
+                android:background="@drawable/btn_bg"
+                android:text="REFRESH CODE"
+                android:textColor="#000000"
+                android:textStyle="bold"
+                android:onClick="onLaptopClick" />
+
+            <TextView
+                android:id="@+id/pairStatus"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="Show this code to your phone"
+                android:textColor="#888888"
+                android:textSize="13sp" />
+        </LinearLayout>
+
+        <!-- PHONE VIEW -->
+        <LinearLayout
+            android:id="@+id/phoneView"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="center_horizontal"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:id="@+id/codeInputContainer"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="24dp"
+                android:orientation="horizontal"
+                android:gravity="center" />
+
+            <Button
+                android:id="@+id/connectBtn"
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:layout_marginTop="24dp"
+                android:background="@drawable/btn_bg"
+                android:text="CONNECT"
+                android:textColor="#000000"
+                android:textStyle="bold"
+                android:enabled="false"
+                android:onClick="onConnectClick" />
+
+            <TextView
+                android:id="@+id/pairError"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:textColor="#FF4444"
+                android:textSize="13sp" />
+        </LinearLayout>
+
+    </LinearLayout>
+</ScrollView>
