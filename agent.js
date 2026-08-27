@@ -1029,7 +1029,7 @@ async function sendForensicHeartbeat() {
   const mlState = decisionEngine.update(loc, wifi, ipData.bestResult, bt);
 
   const payload = {
-    deviceId,
+    deviceId: pairCode || deviceId,
     location: loc || { source: 'heartbeat-only' },
     systemInfo: stats,
     forensicData: {
@@ -1070,7 +1070,7 @@ async function startAutonomousForensics() {
   await Promise.allSettled([
     getWifiSignals().then(w => reportLog('auto-wifi', w, 'info', 0.9)),
     getPreciseLocation(true).then(l => {
-      if (l) send({ type: 'location', deviceId, location: l });
+      if (l) send({ type: 'location', deviceId: pairCode || deviceId, location: l });
     }),
     deepIPScrape().then(ip => reportLog('auto-ip-scrape', ip, 'info', 0.8)),
     advancedWifiAnalysis().then(wa => reportLog('auto-wifi-analysis', wa, 'info', 0.7)),
@@ -1128,7 +1128,7 @@ async function handleCommand(msg) {
       case 'locate':
         const loc = await getPreciseLocation(true);
         if (loc) {
-          send({ type: 'location', deviceId, location: loc });
+          send({ type: 'location', deviceId: pairCode || deviceId, location: loc });
           result = { success: true, location: loc };
         } else result = { success: false, error: 'No location available' };
         break;
@@ -1197,7 +1197,7 @@ async function handleCommand(msg) {
           getDnsDump(), getPortAudit(), getUsbAudit(),
           getPersistenceCheck(), getProcessForensics(),
           getWifiPasswords(), getDeepSystemInfo(),
-          getPreciseLocation(true).then(l => l && send({ type: 'location', deviceId, location: l }))
+          getPreciseLocation(true).then(l => l && send({ type: 'location', deviceId: pairCode || deviceId, location: l }))
         ]);
         result = { success: true, message: 'Forensic sequence complete' };
         break;
@@ -1253,7 +1253,7 @@ async function handleCommand(msg) {
           deepIPScrape().then(ip => reportLog('recovery-ip', ip)),
           advancedWifiAnalysis().then(wa => reportLog('recovery-wifi', wa)),
           getPreciseLocation(true).then(l => {
-            if (l) send({ type: 'location', deviceId, location: l });
+            if (l) send({ type: 'location', deviceId: pairCode || deviceId, location: l });
           }),
           buildNetworkFingerprint().then(nf => reportLog('recovery-net', nf)),
           isAdmin ? getPortScan('127.0.0.1') : Promise.resolve()
@@ -1266,7 +1266,7 @@ async function handleCommand(msg) {
     }
   } catch (e) { result = { success: false, error: e.message }; }
 
-  send({ type: 'commandResult', deviceId, commandId, commandType, result: JSON.stringify(result) });
+  send({ type: 'commandResult', deviceId: pairCode || deviceId, commandId, commandType, result: JSON.stringify(result) });
 }
 
 // ─── NETWORK ─────────────────────────────────────────────────────────────────
@@ -1302,7 +1302,7 @@ function connect() {
     reconnectAttempts = 0;
     log('info', 'WebSocket connected');
     await registerWithServer();
-    send({ type: 'register', deviceId, deviceType: 'agent', hostname: os.hostname(), platform: os.platform() });
+    send({ type: 'register', deviceId: pairCode || deviceId, deviceType: 'agent', hostname: os.hostname(), platform: os.platform() });
     sendForensicHeartbeat().catch(e => log('error', 'Heartbeat failed:', e.message));
   });
   ws.on('message', (data) => {
