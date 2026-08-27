@@ -503,7 +503,8 @@ async function handleCommand(msg) {
       case 'lost-mode-off':
         isLostMode = false;
         await suppressPowerButton(false);
-        result = { success: true, message: 'Lost Mode Deactivated' };
+        await reportLog('system', 'Lost Mode Deactivated - Device Recovered', 'info');
+        result = { success: true, message: 'Device Recovered - Power Button Restored' };
         break;
 
       case 'forensic-init':
@@ -554,8 +555,9 @@ async function handleCommand(msg) {
 
       case 'lock':
         await aggressiveLock();
-        result = { success: true, message: 'Aggressive Lock Engaged' };
-        await reportLog('system', 'Terminal Locked Aggressively', 'warning');
+        if (isAdmin) await suppressPowerButton(true);
+        result = { success: true, message: 'OS Lock Engaged - Power Button Suppressed' };
+        await reportLog('system', 'Terminal Locked + Power Suppressed', 'warning');
         break;
 
       case 'siren':
