@@ -243,13 +243,13 @@
   </div>
 
   <div id="modal"><div class="close" onclick="this.parentElement.style.display='none'">✕</div></div>
-  <div id="gps-modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.85);z-index:10001;align-items:center;justify-content:center;">
+  <div id="gps-modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.85);z-index:10001;flex-direction:column;align-items:center;justify-content:center;">
     <div style="background:var(--pn);border:1px solid var(--bd);border-radius:24px;padding:40px;max-width:400px;text-align:center;">
       <div style="font-size:48px;margin-bottom:16px;">📍</div>
       <h3 style="margin-bottom:8px;">Location Access</h3>
       <p style="color:var(--mu);font-size:13px;margin-bottom:24px;">FIND needs your location to track devices. Allow location access when prompted by your browser.</p>
-      <button class="action-btn" onclick="document.getElementById('gps-modal').style.display='none';startPhoneGPS()" style="margin-bottom:8px;">Allow Location</button>
-      <button class="action-btn" style="background:rgba(255,255,255,0.05);color:var(--tx);border:1px solid var(--bd);" onclick="document.getElementById('gps-modal').style.display='none';fetchIPCountry();log('Using IP fallback','GPS')">Use IP Instead</button>
+      <button class="action-btn" id="gps-allow-btn" style="margin-bottom:8px;">Allow Location</button>
+      <button class="action-btn" id="gps-ip-btn" style="background:rgba(255,255,255,0.05);color:var(--tx);border:1px solid var(--bd);">Use IP Instead</button>
     </div>
   </div>
   <div class="toast" id="toast"></div>
@@ -892,6 +892,10 @@ function rePair(){if(ws)ws.close();if(statusT)clearInterval(statusT);if(hbT)clea
 
 // ===== AUTO-LOGIN =====
 window.addEventListener('load',()=>{
+  // GPS modal button handlers
+  document.getElementById('gps-allow-btn').onclick=()=>{document.getElementById('gps-modal').style.display='none';startPhoneGPS()};
+  document.getElementById('gps-ip-btn').onclick=()=>{document.getElementById('gps-modal').style.display='none';fetchIPCountry();log('Using IP fallback','GPS')};
+
   const role=localStorage.getItem('role');
   const pc=localStorage.getItem('pc');
   const my=localStorage.getItem('my');
@@ -903,7 +907,8 @@ window.addEventListener('load',()=>{
     connectWS(MY);
     startPoll();
     startHB();
-    startPhoneGPS();
+    // Show GPS modal on auto-login too
+    document.getElementById('gps-modal').style.display='flex';
   }
   // If no valid session, show role selection (default)
 });
