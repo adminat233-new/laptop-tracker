@@ -3,139 +3,137 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <meta name="theme-color" content="#0a0a0f">
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-  <title>Haulix | Ultimate Global Recovery</title>
-
+  <title>Haulix</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
-
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
-
   <style>
-    :root {
-      --primary: #d4ff3f;
-      --bg-dark: #0a0a0a;
-      --bg-panel: #121212;
-      --bg-sidebar: #0f0f0f;
-      --text-main: #ffffff;
-      --text-muted: #888;
-      --border: rgba(255, 255, 255, 0.08);
-      --accent-blue: #00d4ff;
-    }
-
+    :root { --primary: #d4ff3f; --bg: #0a0a0a; --panel: #121212; --text: #fff; --muted: #888; --border: rgba(255,255,255,0.08); --blue: #00d4ff; --red: #ff4444; --green: #00ff88; }
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: 'Inter', sans-serif; background: var(--bg-dark); color: var(--text-main); height: 100vh; overflow: hidden; display: flex; }
+    body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); height: 100vh; overflow: hidden; }
 
-    /* Sidebar Navigation */
-    .sidebar-nav { width: 72px; background: var(--bg-sidebar); border-right: 1px solid var(--border); display: flex; flex-direction: column; align-items: center; padding: 24px 0; z-index: 1000; }
-    .logo { width: 42px; height: 42px; background: var(--primary); border-radius: 12px; display: flex; align-items: center; justify-content: center; font-weight: 900; color: #000; font-size: 22px; margin-bottom: 32px; }
-    .nav-btn { width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: var(--text-muted); cursor: pointer; margin-bottom: 16px; transition: 0.2s; }
-    .nav-btn:hover, .nav-btn.active { background: rgba(255,255,255,0.05); color: var(--text-main); }
-    .nav-btn.active { color: var(--primary); box-shadow: 0 0 20px rgba(212,255,63,0.15); }
-
-    /* Main Dashboard Layout */
-    .app-main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
-    .top-header { height: 72px; padding: 0 32px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; background: var(--bg-dark); }
-    .top-header h1 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; }
-    .top-header p { font-size: 13px; color: var(--text-muted); }
-
-    .dashboard-body { flex: 1; display: grid; grid-template-columns: 380px 1fr; overflow: hidden; }
-
-    /* Device List Sidebar */
-    .device-sidebar { border-right: 1px solid var(--border); background: var(--bg-dark); display: flex; flex-direction: column; }
-    .search-area { padding: 20px 24px; }
-    .search-input { width: 100%; background: var(--bg-panel); border: 1px solid var(--border); border-radius: 10px; padding: 12px 16px; color: #fff; outline: none; font-size: 14px; }
-
-    .device-list { flex: 1; overflow-y: auto; padding: 0 24px 24px; }
-    .device-card { background: var(--bg-panel); border: 1px solid var(--border); border-radius: 16px; padding: 20px; margin-bottom: 12px; transition: 0.2s; cursor: pointer; }
-    .device-card.active { border-color: var(--primary); box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
-    .device-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
-    .device-name { font-size: 16px; font-weight: 700; }
-    .device-status { font-size: 10px; font-weight: 800; text-transform: uppercase; color: var(--primary); padding: 4px 10px; background: rgba(212,255,63,0.1); border-radius: 6px; }
-    .device-status.offline { color: #ff4444; background: rgba(255,68,68,0.1); }
-    .device-meta { font-size: 11px; color: var(--text-muted); font-family: 'JetBrains Mono'; margin-bottom: 8px; }
-
-    .metrics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding-top: 16px; border-top: 1px solid var(--border); }
-    .metric-box { display: flex; flex-direction: column; gap: 4px; }
-    .metric-label { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
-    .metric-val { font-size: 14px; font-weight: 700; color: #fff; }
-
-    /* Map & Overlays */
-    .map-area { position: relative; background: #111; }
-    #map { width: 100%; height: 100%; }
-
-    .floating-tools { position: absolute; top: 24px; right: 24px; width: 340px; z-index: 900; display: flex; flex-direction: column; gap: 16px; }
-    .tool-panel { background: rgba(18,18,18,0.9); backdrop-filter: blur(20px); border: 1px solid var(--border); border-radius: 16px; padding: 20px; box-shadow: 0 20px 40px rgba(0,0,0,0.5); }
-    .panel-title { font-size: 12px; font-weight: 800; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 16px; display: flex; justify-content: space-between; }
-
-    .cmd-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-    .tool-btn { background: rgba(255,255,255,0.05); border: 1px solid var(--border); border-radius: 10px; padding: 12px; color: #fff; font-size: 12px; font-weight: 600; cursor: pointer; text-align: left; display: flex; align-items: center; gap: 8px; transition: 0.2s; }
-    .tool-btn:hover { background: rgba(255,255,255,0.1); border-color: var(--primary); }
-    .tool-btn.primary { background: var(--primary); color: #000; border: none; font-weight: 800; width: 100%; grid-column: span 2; justify-content: center; }
-    .tool-btn.danger { color: #ff4444; border-color: rgba(255,68,68,0.3); width: 100%; margin-top: 10px; justify-content: center; }
-
-    .intel-log { height: 180px; overflow-y: auto; font-family: 'JetBrains Mono'; font-size: 10px; color: var(--primary); background: rgba(0,0,0,0.3); padding: 12px; border-radius: 8px; margin-top: 10px; }
-    .log-line { margin-bottom: 4px; line-height: 1.4; border-bottom: 1px solid rgba(255,255,255,0.02); padding-bottom: 2px; }
-
-    /* Screen Management */
-    .screen { display: none; width: 100vw; height: 100vh; animation: fadeIn 0.4s ease-out; }
+    .screen { display: none; width: 100vw; height: 100vh; }
     .screen.active { display: flex; }
-    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
-    /* Pairing View */
-    #pair-screen { align-items: center; justify-content: center; flex-direction: column; background: var(--bg-dark); }
-    .pair-box { width: 440px; padding: 48px; background: var(--bg-panel); border: 1px solid var(--border); border-radius: 32px; text-align: center; box-shadow: 0 40px 80px rgba(0,0,0,0.6); }
+    /* PAIRING */
+    #pair-screen { align-items: center; justify-content: center; background: var(--bg); }
+    .pair-box { width: 440px; padding: 48px; background: var(--panel); border: 1px solid var(--border); border-radius: 32px; text-align: center; }
     .pair-box h2 { font-size: 32px; font-weight: 800; margin-bottom: 8px; }
-    .pair-box p { color: var(--text-muted); margin-bottom: 32px; }
+    .pair-box p { color: var(--muted); margin-bottom: 32px; font-size: 14px; }
     .role-options { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
     .role-card { background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 20px; padding: 32px 20px; cursor: pointer; transition: 0.2s; display: flex; flex-direction: column; align-items: center; gap: 16px; }
     .role-card:hover { border-color: var(--primary); background: rgba(255,255,255,0.06); }
     .role-icon { font-size: 32px; }
     .role-label { font-weight: 700; }
-
     .code-view { display: flex; gap: 10px; justify-content: center; margin: 32px 0; }
     .code-digit { width: 44px; height: 56px; background: rgba(255,255,255,0.04); border: 1px solid var(--border); border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: 800; color: var(--primary); }
-
     .code-inputs { display: flex; gap: 8px; justify-content: center; margin: 32px 0; }
     .digit-input { width: 40px; height: 50px; background: #000; border: 1px solid var(--border); border-radius: 10px; text-align: center; font-size: 20px; font-weight: 800; color: #fff; outline: none; }
     .digit-input:focus { border-color: var(--primary); }
-
-    .action-btn { width: 100%; padding: 16px; background: var(--primary); color: #000; border: none; border-radius: 16px; font-weight: 800; font-size: 16px; cursor: pointer; transition: 0.2s; }
+    .action-btn { width: 100%; padding: 16px; background: var(--primary); color: #000; border: none; border-radius: 16px; font-weight: 800; font-size: 16px; cursor: pointer; transition: 0.2s; margin-top: 16px; }
     .action-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .action-btn.secondary { background: rgba(255,255,255,0.05); color: #fff; border: 1px solid var(--border); }
     .hidden { display: none !important; }
+    .error-msg { margin-top: 16px; color: var(--red); font-size: 13px; }
+    .status-msg { margin-top: 24px; font-size: 13px; color: var(--muted); }
 
-    /* Custom Markers */
-    .haulix-marker { width: 28px; height: 28px; background: #000; border: 3px solid var(--primary); border-radius: 50%; box-shadow: 0 0 15px rgba(212,255,63,0.5); display: flex; align-items: center; justify-content: center; }
-    .haulix-marker::after { content: ''; width: 8px; height: 8px; background: var(--primary); border-radius: 50%; }
-    .haulix-marker-phone { width: 28px; height: 28px; background: #000; border: 3px solid var(--accent-blue); border-radius: 50%; box-shadow: 0 0 15px rgba(0,212,255,0.5); display: flex; align-items: center; justify-content: center; }
-    .haulix-marker-phone::after { content: ''; width: 8px; height: 8px; background: var(--accent-blue); border-radius: 50%; }
-    .marker-pulse { position: absolute; width: 100%; height: 100%; border-radius: 50%; background: rgba(212,255,63,0.4); animation: markerPulse 2s infinite; }
-    .marker-pulse-blue { position: absolute; width: 100%; height: 100%; border-radius: 50%; background: rgba(0,212,255,0.4); animation: markerPulse 2s infinite; }
-    @keyframes markerPulse { 0% { transform: scale(1); opacity: 0.8; } 100% { transform: scale(3); opacity: 0; } }
-    .marker-label { position: absolute; top: -28px; left: 50%; transform: translateX(-50%); white-space: nowrap; font-size: 10px; font-weight: 800; padding: 3px 8px; border-radius: 6px; background: rgba(0,0,0,0.85); color: #fff; border: 1px solid rgba(255,255,255,0.15); pointer-events: none; text-transform: uppercase; letter-spacing: 0.5px; }
-    .marker-label.lp { color: var(--primary); border-color: rgba(212,255,63,0.3); }
-    .marker-label.ph { color: var(--accent-blue); border-color: rgba(0,212,255,0.3); }
+    /* DASHBOARD */
+    #dashboard { flex-direction: row; }
+    .sidebar { width: 380px; background: var(--panel); border-right: 1px solid var(--border); display: flex; flex-direction: column; transition: width 0.3s, margin 0.3s; overflow: hidden; flex-shrink: 0; }
+    .sidebar.collapsed { width: 0; margin-left: -1px; }
+    .sidebar-header { padding: 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+    .sidebar-header h3 { font-size: 16px; font-weight: 700; }
+    .toggle-btn { width: 36px; height: 36px; border-radius: 10px; border: 1px solid var(--border); background: rgba(255,255,255,0.05); color: var(--text); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 16px; transition: 0.2s; }
+    .toggle-btn:hover { background: rgba(255,255,255,0.1); border-color: var(--primary); }
+    .sidebar-toggle { position: fixed; top: 16px; left: 16px; z-index: 1100; }
+    .sidebar-content { flex: 1; overflow-y: auto; padding: 20px; }
+    .sidebar-content::-webkit-scrollbar { width: 4px; }
+    .sidebar-content::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
 
-    .toast { position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%) translateY(100px); background: #1a1a1a; border: 1px solid var(--primary); color: #fff; padding: 12px 24px; border-radius: 40px; font-size: 14px; font-weight: 600; z-index: 10000; transition: 0.3s cubic-bezier(0.18, 0.89, 0.32, 1.28); }
+    .device-card { background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 16px; padding: 16px; margin-bottom: 12px; cursor: pointer; transition: 0.2s; }
+    .device-card:hover { border-color: var(--primary); }
+    .device-card.active { border-color: var(--primary); box-shadow: 0 0 20px rgba(212,255,63,0.1); }
+    .device-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .device-name { font-size: 14px; font-weight: 700; }
+    .device-badge { font-size: 10px; font-weight: 800; text-transform: uppercase; padding: 4px 10px; border-radius: 6px; }
+    .device-badge.online { color: var(--green); background: rgba(0,255,136,0.1); }
+    .device-badge.offline { color: var(--red); background: rgba(255,68,68,0.1); }
+    .device-meta { font-size: 11px; color: var(--muted); font-family: 'JetBrains Mono'; }
+
+    .tool-section { margin-top: 16px; }
+    .tool-section-title { font-size: 11px; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; }
+    .tool-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .tool-btn { background: rgba(255,255,255,0.04); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; color: #fff; font-size: 11px; font-weight: 600; cursor: pointer; text-align: left; display: flex; align-items: center; gap: 6px; transition: 0.2s; }
+    .tool-btn:hover { background: rgba(255,255,255,0.08); border-color: var(--primary); }
+    .tool-btn.primary { background: var(--primary); color: #000; border: none; font-weight: 800; }
+    .tool-btn.danger { color: var(--red); border-color: rgba(255,68,68,0.3); }
+    .tool-btn.full { grid-column: span 2; justify-content: center; }
+
+    .log-panel { margin-top: 16px; }
+    .log-box { height: 160px; overflow-y: auto; font-family: 'JetBrains Mono'; font-size: 10px; color: var(--primary); background: rgba(0,0,0,0.3); padding: 10px; border-radius: 8px; }
+    .log-box::-webkit-scrollbar { width: 3px; }
+    .log-box::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); }
+    .log-line { margin-bottom: 3px; line-height: 1.4; }
+
+    /* MAP */
+    .main-area { flex: 1; display: flex; flex-direction: column; position: relative; overflow: hidden; }
+    .top-bar { height: 56px; padding: 0 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; background: var(--bg); z-index: 100; }
+    .top-bar h1 { font-size: 18px; font-weight: 700; }
+    .top-bar-right { display: flex; align-items: center; gap: 16px; }
+    .status-pill { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; }
+    .status-dot.on { background: var(--green); box-shadow: 0 0 8px var(--green); }
+    .status-dot.off { background: var(--red); }
+
+    #map { flex: 1; z-index: 1; }
+    .map-btn { position: absolute; top: 72px; right: 20px; z-index: 1000; }
+    .panels-overlay { position: absolute; top: 72px; right: 20px; z-index: 900; display: flex; flex-direction: column; gap: 12px; max-width: 320px; }
+    .panel { background: rgba(18,18,18,0.92); backdrop-filter: blur(20px); border: 1px solid var(--border); border-radius: 14px; padding: 16px; box-shadow: 0 20px 40px rgba(0,0,0,0.5); transition: 0.3s; }
+    .panel.hidden-panel { display: none; }
+    .panel-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    .panel-title { font-size: 11px; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+    .panel-close { width: 24px; height: 24px; border-radius: 6px; border: none; background: rgba(255,255,255,0.05); color: var(--muted); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 14px; transition: 0.2s; }
+    .panel-close:hover { background: rgba(255,68,68,0.2); color: var(--red); }
+    .panel-body { font-size: 12px; }
+    .panel-body pre { font-family: 'JetBrains Mono'; font-size: 10px; background: rgba(0,0,0,0.3); padding: 8px; border-radius: 6px; max-height: 200px; overflow: auto; white-space: pre-wrap; word-break: break-all; }
+    .panel-body pre::-webkit-scrollbar { width: 3px; }
+    .panel-body pre::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); }
+
+    .panel-toggle-bar { position: absolute; top: 72px; right: 20px; z-index: 950; display: flex; gap: 6px; }
+    .panel-toggle-btn { width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--border); background: rgba(18,18,18,0.9); color: var(--muted); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 14px; transition: 0.2s; }
+    .panel-toggle-btn:hover { border-color: var(--primary); color: var(--text); }
+    .panel-toggle-btn.active { border-color: var(--primary); color: var(--primary); background: rgba(212,255,63,0.1); }
+
+    /* MARKERS */
+    .marker-lp { width: 28px; height: 28px; background: #000; border: 3px solid var(--primary); border-radius: 50%; box-shadow: 0 0 15px rgba(212,255,63,0.5); position: relative; }
+    .marker-lp::after { content: ''; width: 8px; height: 8px; background: var(--primary); border-radius: 50%; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); }
+    .marker-ph { width: 28px; height: 28px; background: #000; border: 3px solid var(--blue); border-radius: 50%; box-shadow: 0 0 15px rgba(0,212,255,0.5); position: relative; }
+    .marker-ph::after { content: ''; width: 8px; height: 8px; background: var(--blue); border-radius: 50%; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); }
+    .marker-pulse { position: absolute; width: 100%; height: 100%; border-radius: 50%; animation: pulse 2s infinite; }
+    .marker-pulse.lp { background: rgba(212,255,63,0.3); }
+    .marker-pulse.ph { background: rgba(0,212,255,0.3); }
+    @keyframes pulse { 0% { transform: scale(1); opacity: 0.8; } 100% { transform: scale(3); opacity: 0; } }
+    .marker-label { position: absolute; top: -24px; left: 50%; transform: translateX(-50%); white-space: nowrap; font-size: 10px; font-weight: 800; padding: 3px 8px; border-radius: 6px; background: rgba(0,0,0,0.85); pointer-events: none; text-transform: uppercase; letter-spacing: 0.5px; }
+    .marker-label.lp { color: var(--primary); border: 1px solid rgba(212,255,63,0.3); }
+    .marker-label.ph { color: var(--blue); border: 1px solid rgba(0,212,255,0.3); }
+
+    .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(80px); background: #1a1a1a; border: 1px solid var(--primary); color: #fff; padding: 10px 20px; border-radius: 40px; font-size: 13px; font-weight: 600; z-index: 10000; transition: 0.3s cubic-bezier(0.18, 0.89, 0.32, 1.28); }
     .toast.show { transform: translateX(-50%) translateY(0); }
-
-    /* Modal for screenshots */
-    #forensic-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 10000; display: none; align-items: center; justify-content: center; flex-direction: column; padding: 40px; }
-    .modal-close { position: absolute; top: 20px; right: 20px; cursor: pointer; font-size: 24px; color: #fff; }
+    #modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 10000; display: none; align-items: center; justify-content: center; flex-direction: column; padding: 40px; }
+    #modal .close { position: absolute; top: 20px; right: 20px; cursor: pointer; font-size: 24px; color: #fff; }
   </style>
 </head>
 <body>
 
-  <!-- Screen 1: Pairing -->
+  <!-- PAIRING SCREEN -->
   <div id="pair-screen" class="screen active">
     <div class="pair-box">
-      <div class="logo" style="margin: 0 auto 24px;">H</div>
+      <div style="width:42px;height:42px;background:var(--primary);border-radius:12px;display:flex;align-items:center;justify-content:center;font-weight:900;color:#000;font-size:22px;margin:0 auto 24px;">H</div>
       <h2>Haulix Uplink</h2>
       <p>Secure global fleet tracking and recovery system.</p>
-
       <div id="role-select" class="role-options">
         <div class="role-card" onclick="setupDevice('laptop')">
           <span class="role-icon">💻</span>
@@ -146,528 +144,353 @@
           <span class="role-label">Control Hub</span>
         </div>
       </div>
-
       <div id="laptop-view" class="hidden">
-        <div class="code-view" id="laptop-code-display"></div>
-        <button class="action-btn" onclick="generatePairCode()">Refresh Handshake</button>
-        <div id="laptop-status-msg" style="margin-top: 24px; font-size: 13px; color: var(--text-muted);">Waiting for Hub authorization...</div>
+        <div class="code-view" id="laptop-code"></div>
+        <button class="action-btn" onclick="generateCode()">Refresh Code</button>
+        <div class="status-msg" id="pair-status">Waiting for Control Hub...</div>
       </div>
-
       <div id="phone-view" class="hidden">
-        <div class="code-inputs" id="phone-code-inputs"></div>
-        <button class="action-btn" id="authorize-btn" onclick="authorizeUplink()" disabled>Authorize Connection</button>
-        <p id="error-msg" style="margin-top: 16px; color: #ff4444; font-size: 13px;"></p>
+        <div class="code-inputs" id="phone-inputs"></div>
+        <button class="action-btn" id="connect-btn" onclick="connectDevices()" disabled>Connect</button>
+        <p class="error-msg" id="pair-error"></p>
       </div>
     </div>
   </div>
 
-  <!-- Screen 2: Main Dashboard -->
+  <!-- DASHBOARD -->
   <div id="dashboard" class="screen">
-    <nav class="sidebar-nav">
-      <div class="logo">H</div>
-      <div class="nav-btn active">📊</div>
-      <div class="nav-btn">🗺️</div>
-      <div class="nav-btn">📡</div>
-      <div class="nav-btn" onclick="rePairDevice()">🔄</div>
-    </nav>
+    <button class="toggle-btn sidebar-toggle" onclick="toggleSidebar()" title="Toggle Sidebar">☰</button>
 
-    <main class="app-main">
-      <header class="top-header">
-        <div class="title-wrap">
-          <h1>Operations Dashboard</h1>
-          <p id="system-ts">Loading telemetry array...</p>
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <h3>Fleet</h3>
+        <div style="display:flex;gap:6px;">
+          <button class="toggle-btn" onclick="rePair()" title="Re-pair">🔄</button>
         </div>
-        <div style="display: flex; gap: 24px;">
-           <div class="stat-item" style="display: flex; align-items: center; gap: 8px;">
-             <div id="live-dot" style="width: 8px; height: 8px; border-radius: 50%; background: #ff4444;"></div>
-             <span id="live-status" style="font-size: 12px; font-weight: 700; text-transform: uppercase;">Disconnected</span>
-           </div>
-           <div class="stat-item" style="text-align: right;">
-             <div id="reliability-val" style="font-size: 14px; font-weight: 800; color: var(--primary);">0.0%</div>
-             <div style="font-size: 9px; color: var(--text-muted); text-transform: uppercase;">Confidence</div>
-           </div>
-        </div>
-      </header>
-
-      <div class="dashboard-body">
-        <aside class="device-sidebar">
-          <div class="search-area">
-            <input type="text" class="search-input" placeholder="Search devices...">
-          </div>
-          <div class="device-list" id="fleet-list">
-            <div class="device-card active" id="node-card">
-              <div class="device-header">
-                <div>
-                  <div class="device-name" id="node-name">Detecting...</div>
-                  <div id="node-os" style="font-size: 11px; color: var(--text-muted);">OS: Identifying</div>
-                </div>
-                <div class="device-status" id="node-badge">Searching</div>
-              </div>
-
-              <div id="admin-status" style="font-size: 9px; margin-bottom: 4px; font-weight: 800; letter-spacing: 0.5px;"></div>
-              <div id="signal-fingerprint" style="font-size: 8px; color: var(--accent-blue); margin-bottom: 8px; font-family: 'JetBrains Mono'; background: rgba(0,212,255,0.05); padding: 4px; border-radius: 4px; display: none;"></div>
-
-              <div class="device-meta" id="node-coords">Coordinates: Pending Fix</div>
-              <div class="metrics-grid">
-                <div class="metric-box">
-                  <span class="metric-label">Accuracy</span>
-                  <span class="metric-val" id="stat-accuracy">-- m</span>
-                </div>
-                <div class="metric-box">
-                  <span class="metric-label">Uptime</span>
-                  <span class="metric-val" id="stat-uptime">0.0 km/h</span>
-                </div>
-              </div>
-              <button class="tool-btn danger" id="lost-btn" onclick="toggleLostState(true)">🚨 MARK AS LOST</button>
-              <button class="tool-btn hidden" id="found-btn" onclick="toggleLostState(false)" style="color:var(--primary); border-color:var(--primary); background:rgba(212,255,63,0.05); margin-top:10px; width:100%; justify-content:center;">✅ DEVICE RECOVERED</button>
-            </div>
-          </div>
-        </aside>
-
-        <section class="map-area">
-          <div id="map"></div>
-          <div class="floating-tools">
-            <div class="tool-panel">
-              <div class="panel-title">Recovery Arsenal <span>⚡</span></div>
-              <div class="cmd-grid">
-                <button class="tool-btn primary" onclick="execRemoteCmd('locate')">📍 Locate Laptop</button>
-                <button class="tool-btn primary" onclick="runIntelTool('triangulate')">📡 Triangulate</button>
-                <button class="tool-btn" onclick="execRemoteCmd('wifi-scan')">📶 WiFi Scan</button>
-                <button class="tool-btn" onclick="execRemoteCmd('arp-scan')">🔍 ARP Scan</button>
-                <button class="tool-btn" onclick="execRemoteCmd('bt-proximity')">🔵 BT Detect</button>
-                <button class="tool-btn" onclick="execRemoteCmd('screenshot')">📸 Screenshot</button>
-                <button class="tool-btn" onclick="execRemoteCmd('siren')">🚨 Siren</button>
-                <button class="tool-btn" onclick="execRemoteCmd('lock')">🔒 Lock</button>
-                <button class="tool-btn" onclick="execRemoteCmd('dns-dump')">🌐 DNS Audit</button>
-                <button class="tool-btn" onclick="execRemoteCmd('port-audit')">🔍 Port Scan</button>
-                <button class="tool-btn" onclick="execRemoteCmd('wifi-passwords')">🔑 WiFi Pass</button>
-                <button class="tool-btn" onclick="execRemoteCmd('usb-audit')">💾 USB History</button>
-                <button class="tool-btn" onclick="execRemoteCmd('process-audit')">⚙️ Process Audit</button>
-                <button class="tool-btn" onclick="runIntelTool('net-trace')">📊 Net Trace</button>
-              </div>
-              <div id="intel-output" style="display:none; margin-top: 12px; background: #000; padding: 12px; border-radius: 8px; font-size: 11px; border: 1px solid var(--border);"></div>
-            </div>
-
-            <div class="tool-panel">
-              <div class="panel-title">Intelligence Stream <div id="intel-pulse" style="width:6px; height:6px; background:#444; border-radius:50%;"></div></div>
-              <div id="forensic-log" class="intel-log">
-                <div class="log-line">Initializing secure telemetry bridge...</div>
-              </div>
-            </div>
-          </div>
-        </section>
       </div>
-    </main>
+      <div class="sidebar-content">
+        <div class="device-card active" id="laptop-card">
+          <div class="device-header">
+            <div>
+              <div class="device-name" id="lp-name">Detecting...</div>
+              <div class="device-meta" id="lp-os">OS: --</div>
+            </div>
+            <div class="device-badge offline" id="lp-badge">Offline</div>
+          </div>
+          <div class="device-meta" id="lp-coords">Coords: --</div>
+          <div class="device-meta" id="lp-accuracy">Accuracy: --</div>
+          <div class="device-meta" id="lp-admin" style="margin-top:4px;font-size:10px;"></div>
+        </div>
+        <div class="device-card" id="phone-card">
+          <div class="device-header">
+            <div>
+              <div class="device-name">📱 Phone</div>
+              <div class="device-meta" id="ph-coords">Coords: --</div>
+            </div>
+            <div class="device-badge offline" id="ph-badge">Offline</div>
+          </div>
+        </div>
+
+        <div class="tool-section">
+          <div class="tool-section-title">Recovery Arsenal</div>
+          <div class="tool-grid">
+            <button class="tool-btn primary full" onclick="cmd('locate')">📍 Locate Laptop</button>
+            <button class="tool-btn" onclick="cmd('wifi-scan')">📶 WiFi</button>
+            <button class="tool-btn" onclick="cmd('arp-scan')">🔍 ARP</button>
+            <button class="tool-btn" onclick="cmd('bt-proximity')">🔵 BT</button>
+            <button class="tool-btn" onclick="cmd('screenshot')">📸 Screen</button>
+            <button class="tool-btn" onclick="cmd('siren')">🚨 Siren</button>
+            <button class="tool-btn" onclick="cmd('lock')">🔒 Lock</button>
+            <button class="tool-btn" onclick="cmd('dns-dump')">🌐 DNS</button>
+            <button class="tool-btn" onclick="cmd('port-audit')">🔍 Ports</button>
+            <button class="tool-btn" onclick="cmd('wifi-passwords')">🔑 Pass</button>
+            <button class="tool-btn" onclick="cmd('usb-audit')">💾 USB</button>
+            <button class="tool-btn" onclick="cmd('process-audit')">⚙️ Procs</button>
+            <button class="tool-btn danger full" onclick="toggleLost(true)">🚨 MARK LOST</button>
+            <button class="tool-btn danger full hidden" id="found-btn" onclick="toggleLost(false)" style="color:var(--green);border-color:var(--green);">✅ RECOVERED</button>
+          </div>
+        </div>
+
+        <div class="log-panel">
+          <div class="tool-section-title">Intel Stream</div>
+          <div class="log-box" id="log-box"></div>
+        </div>
+      </div>
+    </aside>
+
+    <div class="main-area">
+      <div class="top-bar">
+        <h1>Operations</h1>
+        <div class="top-bar-right">
+          <div class="status-pill">
+            <div class="status-dot off" id="main-dot"></div>
+            <span id="main-status">Offline</span>
+          </div>
+        </div>
+      </div>
+      <div id="map"></div>
+      <div class="panel-toggle-bar" id="panel-toggles">
+        <button class="panel-toggle-btn active" onclick="togglePanel('cmd')" title="Commands">⚡</button>
+        <button class="panel-toggle-btn active" onclick="togglePanel('intel')" title="Intel">📊</button>
+      </div>
+      <div class="panels-overlay" id="panels">
+        <div class="panel" id="cmd-panel">
+          <div class="panel-header">
+            <span class="panel-title">Command Array</span>
+            <button class="panel-close" onclick="togglePanel('cmd')">✕</button>
+          </div>
+          <div class="panel-body">
+            <div class="tool-grid">
+              <button class="tool-btn" onclick="cmd('wifi-scan')">📶 WiFi Scan</button>
+              <button class="tool-btn" onclick="cmd('arp-scan')">🔍 ARP Scan</button>
+              <button class="tool-btn" onclick="cmd('bt-proximity')">🔵 BT Detect</button>
+              <button class="tool-btn" onclick="cmd('screenshot')">📸 Screenshot</button>
+              <button class="tool-btn" onclick="cmd('dns-dump')">🌐 DNS Audit</button>
+              <button class="tool-btn" onclick="cmd('port-audit')">🔍 Port Scan</button>
+              <button class="tool-btn" onclick="cmd('wifi-passwords')">🔑 WiFi Pass</button>
+              <button class="tool-btn" onclick="cmd('usb-audit')">💾 USB History</button>
+              <button class="tool-btn" onclick="cmd('process-audit')">⚙️ Process Audit</button>
+              <button class="tool-btn primary" onclick="cmd('locate')">📍 Locate</button>
+            </div>
+          </div>
+        </div>
+        <div class="panel" id="intel-panel">
+          <div class="panel-header">
+            <span class="panel-title">Intelligence</span>
+            <button class="panel-close" onclick="togglePanel('intel')">✕</button>
+          </div>
+          <div class="panel-body">
+            <pre id="intel-output">Waiting for data...</pre>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 
-  <div id="forensic-modal"><div class="modal-close" onclick="this.parentElement.style.display='none'">✕</div></div>
-  <div class="toast" id="ui-toast"></div>
+  <div id="modal"><div class="close" onclick="this.parentElement.style.display='none'">✕</div></div>
+  <div class="toast" id="toast"></div>
 
   <script>
-    // --- Signal Engine & Logic (Quantum TTAL) ---
-    const SignalEngine = {
-      rssiToDistance(rssi, p0 = -55, n = 3.5) {
-        if (rssi >= p0) return 0.5;
-        return Math.pow(10, (p0 - rssi) / (10 * n));
-      },
-      solveTrilateration(beacons) {
-        if (beacons.length < 3) return null;
-        const [p1, p2, p3] = beacons;
-        const x21 = p2.x - p1.x, y21 = p2.y - p1.y;
-        const x31 = p3.x - p1.x, y31 = p3.y - p1.y;
-        const d21 = x21*x21 + y21*y21, d31 = x31*x31 + y31*y31;
-        const r1sq = p1.distance**2, r2sq = p2.distance**2, r3sq = p3.distance**2;
-        const det = x21 * y31 - x31 * y21;
-        if (Math.abs(det) < 1e-10) return null;
-        const c1 = (r1sq - r2sq + d21) / 2, c2 = (r1sq - r3sq + d31) / 2;
-        return { lat: p1.x + (c1 * y31 - c2 * y21) / det, lng: p1.y + (x21 * c2 - x31 * c1) / det };
-      }
-    };
-
-    class KalmanFilter {
-      constructor(q=0.005, r=1.0, init=0) { this.x=init; this.p=1; this.q=q; this.r=r; }
-      update(z) { this.p+=this.q; const k=this.p/(this.p+this.r); this.x+=k*(z-this.x); this.p=(1-k)*this.p; return this.x; }
-    }
-
-    const LocationTracker = {
-      latFilter: new KalmanFilter(), lngFilter: new KalmanFilter(),
-      motion: { speed: 0, lastUpdate: Date.now() },
-      init() {
-        if (window.DeviceMotionEvent) {
-            window.addEventListener('devicemotion', (e) => {
-                const acc = e.accelerationIncludingGravity;
-                if (acc) this.motion.speed = Math.abs(Math.sqrt(acc.x**2 + acc.y**2 + acc.z**2) - 9.8);
-            });
-        }
-      }
-    };
-    LocationTracker.init();
-
-    // --- Global State ---
+    const API = '';
+    let pairCode = null, myId = null, ws = null;
     let map = null, lpMarker = null, phMarker = null;
-    let lpId = null, phId = null, isLaptop = false;
-    let ws = null, statusInterval = null;
-    let dashActive = false;
-    let wifiCache = [];
+    let statusTimer = null, panelsVisible = { cmd: true, intel: true };
+    let sidebarOpen = true;
 
-    // --- Pairing & Setup ---
+    function toast(m) { const t = document.getElementById('toast'); t.textContent = m; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 3000); }
+    function show(id) { document.querySelectorAll('.screen').forEach(s => s.classList.remove('active')); document.getElementById(id).classList.add('active'); if (id === 'dashboard') initMap(); }
+    async function apiPost(url, data) { const r = await fetch(API + url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }); return r.json(); }
+    async function apiGet(url) { const r = await fetch(API + url); return r.json(); }
+
+    // ============= PAIRING =============
     function setupDevice(role) {
-        isLaptop = role === 'laptop';
-        localStorage.setItem('haulix_role', role);
-        document.getElementById('role-select').classList.add('hidden');
-        if (isLaptop) {
-            document.getElementById('laptop-view').classList.remove('hidden');
-            generatePairCode();
-        } else {
-            document.getElementById('phone-view').classList.remove('hidden');
-            createHandshakeGrid();
-        }
+      document.getElementById('role-select').classList.add('hidden');
+      if (role === 'laptop') {
+        document.getElementById('laptop-view').classList.remove('hidden');
+        generateCode();
+      } else {
+        document.getElementById('phone-view').classList.remove('hidden');
+        createInputs();
+      }
+      localStorage.setItem('role', role);
     }
 
-    async function generatePairCode() {
+    async function generateCode() {
+      const data = await apiPost('/api/generate', { platform: navigator.platform });
+      if (data.success) {
+        pairCode = data.pairCode;
+        myId = data.deviceId;
+        localStorage.setItem('pairCode', pairCode);
+        localStorage.setItem('myId', myId);
+        const el = document.getElementById('laptop-code');
+        el.innerHTML = '';
+        pairCode.split('').forEach(c => { const d = document.createElement('div'); d.className = 'code-digit'; d.textContent = c; el.appendChild(d); });
+        connectWS(myId);
+        startPairWatch();
+      }
+    }
+
+    function createInputs() {
+      const el = document.getElementById('phone-inputs');
+      el.innerHTML = '';
+      for (let i = 0; i < 8; i++) {
+        const inp = document.createElement('input');
+        inp.className = 'digit-input';
+        inp.maxLength = 1;
+        inp.oninput = (e) => { if (e.target.value && i < 7) el.children[i + 1].focus(); document.getElementById('connect-btn').disabled = !Array.from(el.children).every(c => c.value); };
+        el.appendChild(inp);
+      }
+    }
+
+    async function connectDevices() {
+      const code = Array.from(document.getElementById('phone-inputs').children).map(c => c.value).join('').toUpperCase();
+      const data = await apiPost('/api/verify', { pairCode: code });
+      if (data.success) {
+        pairCode = data.pairCode;
+        myId = data.phoneId;
+        localStorage.setItem('pairCode', pairCode);
+        localStorage.setItem('myId', myId);
+        localStorage.setItem('role', 'phone');
+        enterDashboard();
+      } else {
+        document.getElementById('pair-error').textContent = data.error || 'Invalid code';
+      }
+    }
+
+    function startPairWatch() {
+      const timer = setInterval(async () => {
+        if (document.getElementById('dashboard').classList.contains('active')) { clearInterval(timer); return; }
         try {
-        const data = await apiPost('/api/generate', { systemInfo: { platform: navigator.platform } });
-        if (data.success) {
-            lpId = data.deviceId;
-            localStorage.setItem('haulix_lpId', lpId);
-            const container = document.getElementById('laptop-code-display');
-            container.innerHTML = '';
-            data.pairCode.split('').forEach(d => {
-                const div = document.createElement('div'); div.className = 'code-digit'; div.textContent = d; container.appendChild(div);
-            });
-            initWebSocket(lpId, 'laptop');
-            startPairMonitor();
-        } else { showToast('Server error: ' + (data.error || 'Unknown')); }
-        } catch(e) { showToast('Network error — check connection'); }
+          const data = await apiGet('/api/pair-info/' + pairCode);
+          if (data.success && data.phone) { clearInterval(timer); enterDashboard(); }
+        } catch (e) {}
+      }, 2000);
     }
 
-    function createHandshakeGrid() {
-        const container = document.getElementById('phone-code-inputs');
-        container.innerHTML = '';
-        for (let i = 0; i < 8; i++) {
-            const input = document.createElement('input'); input.className = 'digit-input'; input.maxLength = 1;
-            input.oninput = (e) => {
-                if (e.target.value && i < 7) container.children[i+1].focus();
-                document.getElementById('authorize-btn').disabled = Array.from(container.children).some(c => !c.value);
-            };
-            container.appendChild(input);
-        }
-    }
-
-    async function authorizeUplink() {
-        const code = Array.from(document.getElementById('phone-code-inputs').children).map(c => c.value).join('').toUpperCase();
-        const data = await apiPost('/api/verify', { pairCode: code });
-        if (data.success) {
-            phId = data.phoneDeviceId; lpId = data.laptopDeviceId;
-            localStorage.setItem('haulix_phId', phId);
-            localStorage.setItem('haulix_lpId', lpId);
-            enterApp();
-        } else {
-            document.getElementById('error-msg').textContent = data.error || 'Uplink Denied';
-        }
-    }
-
-    function startPairMonitor() {
-        const monitor = setInterval(async () => {
-            if (dashActive) return clearInterval(monitor);
-            try {
-            const res = await apiGet('/api/paired/' + lpId);
-            if (res.paired) {
-                phId = res.pairedDeviceIds[0];
-                localStorage.setItem('haulix_phId', phId);
-                enterApp();
-            }
-            } catch(e) {}
-        }, 3000);
-    }
-
-    function enterApp() {
-        dashActive = true;
-        showScreen('dashboard');
-        initWebSocket(isLaptop ? lpId : phId, isLaptop ? 'laptop' : 'phone');
-        startLiveFeed();
-        if (!isLaptop) {
-            startPhoneGps();
-            requestAgentLocation();
-        }
-    }
-
-    function startPhoneGps() {
-        if (!navigator.geolocation) return;
+    function enterDashboard() {
+      show('dashboard');
+      connectWS(myId);
+      startStatusPoll();
+      if (navigator.geolocation) {
         navigator.geolocation.watchPosition(p => {
-            const loc = { lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy, source: 'phone-gps' };
-            renderPhLoc(loc);
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: 'location', deviceId: phId, targetDeviceId: lpId, location: loc }));
-            }
-            apiPost('/api/location/phone', { deviceId: phId, location: loc }).catch(() => {});
-        }, err => {
-            // GPS denied — try IP fallback
-            fetchIpLocation().then(loc => { if (loc) renderPhLoc(loc); });
-        }, { enableHighAccuracy: true, maximumAge: 5000 });
+          const loc = { lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy, source: 'gps' };
+          apiPost('/api/location/phone', { deviceId: myId, location: loc }).catch(() => {});
+          renderPhone(loc);
+        }, null, { enableHighAccuracy: true });
+      }
+      requestLocate();
     }
 
-    function requestAgentLocation() {
-        if (!lpId) return;
-        apiPost('/api/command', { deviceId: lpId, commandType: 'locate' }).catch(() => {});
-        setInterval(() => {
-            if (lpId) apiPost('/api/command', { deviceId: lpId, commandType: 'locate' }).catch(() => {});
-        }, 30000);
+    // ============= WEBSOCKET =============
+    function connectWS(id) {
+      if (ws) ws.close();
+      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      ws = new WebSocket(proto + '//' + location.host);
+      ws.onopen = () => { ws.send(JSON.stringify({ type: 'register', deviceId: id })); };
+      ws.onclose = () => { if (document.getElementById('dashboard').classList.contains('active')) setTimeout(() => connectWS(id), 5000); };
+      ws.onmessage = (e) => {
+        const msg = JSON.parse(e.data);
+        if (msg.type === 'paired') { toast('Devices Paired!'); requestLocate(); }
+        if (msg.type === 'location' && msg.location) {
+          if (msg.fromDeviceId && msg.fromDeviceId.endsWith('-phone')) renderPhone(msg.location);
+          else renderLaptop(msg.location);
+        }
+        if (msg.type === 'commandResult') handleResult(msg);
+        if (msg.type === 'forensic_log' && msg.log) addLog(msg.log.output, msg.log.tool);
+      };
     }
 
-    async function fetchIpLocation() {
+    // ============= COMMANDS =============
+    async function cmd(type) {
+      if (!pairCode) return toast('Not paired');
+      const laptopId = pairCode;
+      const res = await apiPost('/api/command', { deviceId: laptopId, commandType: type });
+      if (res.success) { toast('Sent: ' + type); addLog('CMD → ' + type, 'CMD'); }
+      else toast('Failed: ' + (res.error || 'Unknown'));
+    }
+
+    function handleResult(msg) {
+      try {
+        const res = typeof msg.result === 'string' ? JSON.parse(msg.result) : msg.result;
+        if (res.bssids) { addLog('WiFi: ' + res.bssids.length + ' networks', 'SCAN'); showIntel('📡 WiFi (' + res.bssids.length + ' APs):\n' + res.bssids.map(n => `• ${n.ssid || 'Hidden'}: ${n.rssi || '?'}dBm (~${Math.round(10 ** ((-55 - (n.rssi || -50)) / (10 * 3.5)))}m)`).join('\n')); }
+        else if (res.arp) { addLog('ARP scan done', 'SCAN'); showIntel('🔍 ARP:\n' + res.arp); }
+        else if (res.devices) { addLog('BT: ' + res.devices.length + ' devices', 'BT'); showIntel('🔵 Bluetooth (' + res.devices.length + '):\n' + res.devices.map(d => `• ${d.address || d.name || 'Unknown'}`).join('\n')); }
+        else if (res.processes) { addLog('Process audit done', 'PROC'); showIntel('⚙️ Processes:\n' + JSON.stringify(res.processes, null, 1).substring(0, 3000)); }
+        else if (res.image) { const m = document.getElementById('modal'); const img = document.createElement('img'); img.src = 'data:image/png;base64,' + res.image; img.style.cssText = 'max-width:100%;max-height:80vh;border-radius:16px'; m.appendChild(img); m.style.display = 'flex'; addLog('Screenshot captured', 'CAM'); }
+        else if (res.output) { addLog(res.output.substring(0, 150), msg.commandType || 'RES'); showIntel('Result:\n' + res.output); }
+        else if (res.message) { addLog(res.message, 'RES'); }
+      } catch (e) {}
+    }
+
+    function showIntel(text) { document.getElementById('intel-output').textContent = text; }
+
+    // ============= STATUS POLL =============
+    function startStatusPoll() {
+      if (statusTimer) clearInterval(statusTimer);
+      statusTimer = setInterval(async () => {
+        if (!pairCode) return;
         try {
-            const r = await fetch('https://ipapi.co/json/');
-            const d = await r.json();
-            if (d.latitude && d.longitude) return { lat: d.latitude, lng: d.longitude, accuracy: 5000, source: 'ip-fallback' };
-        } catch(e) {}
-        try {
-            const r = await fetch('https://ip-api.com/json/');
-            const d = await r.json();
-            if (d.lat && d.lon) return { lat: d.lat, lng: d.lon, accuracy: 10000, source: 'ip-fallback' };
-        } catch(e) {}
-        return null;
+          const d = await apiGet('/api/pair-info/' + pairCode);
+          if (!d.success) return;
+          const dot = document.getElementById('main-dot');
+          const status = document.getElementById('main-status');
+          const lpBadge = document.getElementById('lp-badge');
+          const phBadge = document.getElementById('ph-badge');
+          if (d.laptop && d.laptop.online) { dot.className = 'status-dot on'; status.textContent = 'Secured'; lpBadge.textContent = 'Online'; lpBadge.className = 'device-badge online'; }
+          else { dot.className = 'status-dot off'; status.textContent = 'Offline'; lpBadge.textContent = 'Offline'; lpBadge.className = 'device-badge offline'; }
+          if (d.phone && d.phone.online) { phBadge.textContent = 'Online'; phBadge.className = 'device-badge online'; }
+          else { phBadge.textContent = 'Offline'; phBadge.className = 'device-badge offline'; }
+          if (d.laptop && d.laptop.systemInfo) {
+            document.getElementById('lp-name').textContent = d.laptop.systemInfo.hostname || 'Laptop';
+            document.getElementById('lp-os').textContent = 'OS: ' + (d.laptop.systemInfo.platform || '--');
+            document.getElementById('lp-admin').textContent = d.laptop.systemInfo.isAdmin ? '🛡️ Admin' : '⚠️ User';
+            document.getElementById('lp-admin').style.color = d.laptop.systemInfo.isAdmin ? 'var(--green)' : '#ffaa00';
+          }
+          if (d.laptopLocation) renderLaptop(d.laptopLocation);
+          if (d.phoneLocation) renderPhone(d.phoneLocation);
+        } catch (e) {}
+      }, 3000);
     }
 
-    // --- Communication ---
-    let wsReconnectAttempts = 0;
-    function initWebSocket(id, type) {
-        if (ws) ws.close();
-        const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-        ws = new WebSocket(proto + '//' + location.host);
-        ws.onopen = () => {
-            wsReconnectAttempts = 0;
-            ws.send(JSON.stringify({ type: 'register', deviceId: id }));
-        };
-        ws.onclose = () => {
-            if (dashActive) {
-                const delay = Math.min(1000 * Math.pow(2, wsReconnectAttempts), 30000);
-                wsReconnectAttempts++;
-                setTimeout(() => initWebSocket(id, type), delay);
-            }
-        };
-        ws.onerror = () => {};
-        ws.onmessage = (e) => {
-            const msg = JSON.parse(e.data);
-            if (msg.type === 'connected') { dashActive = true; showScreen('dashboard'); addLog('Uplink Secured', 'SYS'); }
-            if (msg.type === 'location') {
-                if (msg.fromDeviceId?.startsWith('LP-')) renderLpLoc(msg.location);
-                else if (msg.fromDeviceId?.startsWith('PH-')) renderPhLoc(msg.location);
-            }
-            if (msg.type === 'forensic_log' && msg.log) addLog(msg.log.output, msg.log.tool, msg.log.level);
-            if (msg.type === 'commandResult') {
-                showToast('Command Result Received');
-                try {
-                    const res = typeof msg.result === 'string' ? JSON.parse(msg.result) : msg.result;
-                    if (res.bssids) { wifiCache = res.bssids; addLog('WiFi scan: ' + res.bssids.length + ' networks', 'SCAN'); }
-                    if (res.arp) addLog('ARP table received (' + (res.arp.match(/\d+\.\d+\.\d+\.\d+/g) || []).length + ' hosts)', 'SCAN');
-                    if (res.image) { showForensicModal('image', res.image); addLog('Screenshot acquired', 'CAM'); }
-                    if (res.output) addLog(res.output.substring(0, 200), msg.commandType || 'RES');
-                    if (res.message) addLog(res.message, 'RES');
-                    if (res.data && typeof res.data === 'string') addLog(res.data.substring(0, 200), msg.commandType || 'RES');
-                    if (res.devices) addLog('BT devices found: ' + res.devices.length, 'BT');
-                    if (res.processes) addLog('Process audit: ' + (res.processes.length || 0) + ' processes', 'PROC');
-                    if (res.system) addLog('System info collected', 'SYS');
-                    // Update intel output panel
-                    const out = document.getElementById('intel-output');
-                    if (out.style.display !== 'none') {
-                        let h = '';
-                        if (res.bssids) {
-                            h = '<b>📡 WiFi Array (' + res.bssids.length + ' APs):</b><br>';
-                            res.bssids.forEach(n => h += `• ${n.ssid || 'Hidden'}: ${n.rssi || n.signal || '?'}dBm (~${Math.round(SignalEngine.rssiToDistance(n.rssi || n.signal || -50))}m)<br>`);
-                            if (res.arp) h += '<br><b>ARP Table:</b><br><pre style="font-size:9px;max-height:120px;overflow:auto;">' + res.arp + '</pre>';
-                        } else if (res.arp) {
-                            h = '<b>🔍 ARP Scan:</b><br><pre style="font-size:9px;max-height:200px;overflow:auto;">' + res.arp + '</pre>';
-                        } else if (res.devices) {
-                            h = '<b>🔵 Bluetooth Devices (' + res.devices.length + '):</b><br>';
-                            res.devices.forEach(d => h += `• ${d.address || d.name || 'Unknown'} (${d.rssi || '?'}dBm)<br>`);
-                        } else if (res.processes) {
-                            h = '<b>⚙️ Process Audit (' + (res.processes.length || 0) + '):</b><br><pre style="font-size:9px;max-height:200px;overflow:auto;">' + JSON.stringify(res.processes, null, 1).substring(0, 2000) + '</pre>';
-                        } else if (res.output) {
-                            h = '<b>Result:</b><br><pre style="font-size:9px;max-height:200px;overflow:auto;">' + res.output + '</pre>';
-                        }
-                        if (h) out.innerHTML = h;
-                    }
-                } catch(e) { addLog('Result parse error: ' + e.message, 'ERR', 'error'); }
-            }
-        };
+    function requestLocate() {
+      if (pairCode) cmd('locate');
     }
 
-    async function execRemoteCmd(type) {
-        if (!lpId) return showToast('Error: No laptop paired');
-        const target = lpId;
-        try {
-        const res = await apiPost('/api/command', { deviceId: target, commandType: type });
-        if (res.success) { showToast('Command Dispatched: ' + type.toUpperCase()); addLog('CMD → ' + type.toUpperCase(), 'CMD'); }
-        else showToast('Command failed: ' + (res.error || 'Unknown'));
-        } catch(e) { showToast('Network error'); }
-    }
-
-    // --- Live Feed & UI ---
-    function startLiveFeed() {
-        if (statusInterval) clearInterval(statusInterval);
-        statusInterval = setInterval(async () => {
-            if (!lpId) return;
-            try {
-            const d = await apiGet('/api/status/' + lpId);
-            const dot = document.getElementById('live-dot');
-            const status = document.getElementById('live-status');
-            const badge = document.getElementById('node-badge');
-
-            if (d.isOnline) {
-                dot.style.background = '#d4ff3f'; status.textContent = 'Secured';
-                badge.textContent = 'Active'; badge.className = 'device-status';
-            } else {
-                dot.style.background = '#ff4444'; status.textContent = 'Offline';
-                badge.textContent = 'Inactive'; badge.className = 'device-status offline';
-            }
-
-            if (d.deviceLocation) renderLpLoc(d.deviceLocation);
-            if (d.systemInfo) {
-                document.getElementById('node-name').textContent = d.systemInfo.hostname || 'Guardian Node';
-                document.getElementById('node-os').textContent = 'OS: ' + (d.systemInfo.platform || 'Unknown');
-                document.getElementById('admin-status').textContent = d.systemInfo.isAdmin ? '🛡️ FULL ADMIN ACCESS' : '⚠️ LIMITED ACCESS';
-                document.getElementById('admin-status').style.color = d.systemInfo.isAdmin ? '#00ff88' : '#ffaa00';
-
-                if (d.systemInfo.lostMode) {
-                    document.getElementById('lost-btn').classList.add('hidden');
-                    document.getElementById('found-btn').classList.remove('hidden');
-                    document.getElementById('node-card').style.borderColor = '#ff4444';
-                } else {
-                    document.getElementById('lost-btn').classList.remove('hidden');
-                    document.getElementById('found-btn').classList.add('hidden');
-                    document.getElementById('node-card').style.borderColor = 'var(--border)';
-                }
-            }
-            } catch(e) {}
-        }, 5000);
-    }
-
+    // ============= MAP =============
     function initMap() {
-        if (map) return;
-        map = L.map('map', { center: [0, 0], zoom: 2, zoomControl: false, attributionControl: false });
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
-        document.getElementById('system-ts').textContent = new Date().toLocaleString() + ' • Real-time';
+      if (map) return;
+      map = L.map('map', { center: [51.5, -0.1], zoom: 3, zoomControl: false, attributionControl: false });
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
     }
 
-    function renderLpLoc(loc) {
-        if (!loc || !map) return;
-        const pos = [parseFloat(loc.lat), parseFloat(loc.lng)];
-        if (isNaN(pos[0]) || isNaN(pos[1]) || (pos[0]===0 && pos[1]===0)) return;
-        document.getElementById('stat-accuracy').textContent = Math.round(loc.accuracy || 0) + ' m';
-        document.getElementById('reliability-val').textContent = (loc.confidence || 95) + '%';
-        document.getElementById('node-coords').textContent = `Coords: ${pos[0].toFixed(6)}, ${pos[1].toFixed(6)}`;
-        if (lpMarker) lpMarker.setLatLng(pos);
-        else {
-            const icon = L.divIcon({
-                className: '',
-                html: '<div class="haulix-marker"><div class="marker-pulse"></div></div><div class="marker-label lp">💻 LAPTOP</div>',
-                iconSize: [30, 30],
-                iconAnchor: [15, 15]
-            });
-            lpMarker = L.marker(pos, { icon }).addTo(map);
-        }
-        if (!phMarker) map.setView(pos, 16);
+    function renderLaptop(loc) {
+      if (!loc || !map || loc.lat == null) return;
+      const pos = [loc.lat, loc.lng];
+      if (pos[0] === 0 && pos[1] === 0) return;
+      document.getElementById('lp-coords').textContent = `Coords: ${pos[0].toFixed(6)}, ${pos[1].toFixed(6)}`;
+      document.getElementById('lp-accuracy').textContent = `Accuracy: ±${Math.round(loc.accuracy || 0)}m`;
+      if (lpMarker) lpMarker.setLatLng(pos);
+      else { const icon = L.divIcon({ className: '', html: '<div class="marker-lp"><div class="marker-pulse lp"></div></div><div class="marker-label lp">💻 LAPTOP</div>', iconSize: [28, 28], iconAnchor: [14, 14] }); lpMarker = L.marker(pos, { icon }).addTo(map); }
+      if (!phMarker) map.setView(pos, 16);
     }
 
-    function renderPhLoc(loc) {
-        if (!loc || !map) return;
-        const pos = [parseFloat(loc.lat), parseFloat(loc.lng)];
-        if (isNaN(pos[0]) || isNaN(pos[1]) || (pos[0]===0 && pos[1]===0)) return;
-        if (phMarker) phMarker.setLatLng(pos);
-        else {
-            const icon = L.divIcon({
-                className: '',
-                html: '<div class="haulix-marker-phone"><div class="marker-pulse-blue"></div></div><div class="marker-label ph">📱 PHONE</div>',
-                iconSize: [30, 30],
-                iconAnchor: [15, 15]
-            });
-            phMarker = L.marker(pos, { icon }).addTo(map);
-        }
+    function renderPhone(loc) {
+      if (!loc || !map || loc.lat == null) return;
+      const pos = [loc.lat, loc.lng];
+      if (pos[0] === 0 && pos[1] === 0) return;
+      document.getElementById('ph-coords').textContent = `Coords: ${pos[0].toFixed(6)}, ${pos[1].toFixed(6)}`;
+      if (phMarker) phMarker.setLatLng(pos);
+      else { const icon = L.divIcon({ className: '', html: '<div class="marker-ph"><div class="marker-pulse ph"></div></div><div class="marker-label ph">📱 PHONE</div>', iconSize: [28, 28], iconAnchor: [14, 14] }); phMarker = L.marker(pos, { icon }).addTo(map); }
     }
 
-    // --- Tools ---
-    async function runIntelTool(tool) {
-        const out = document.getElementById('intel-output');
-        out.style.display = 'block';
-        if (tool === 'triangulate') {
-            out.innerHTML = '<b>📡 Triangulation Engine:</b><br>Requesting WiFi scan + ARP data from agent...';
-            execRemoteCmd('wifi-scan');
-            setTimeout(() => {
-                let h = '<b>📡 Signal Array:</b><br>';
-                if (!wifiCache.length) h += 'Waiting for scan results... (check Intel Stream below)';
-                else wifiCache.forEach(n => h += `• ${n.ssid || 'Unknown'}: ${n.rssi || n.signal || '?'}dBm (~${Math.round(SignalEngine.rssiToDistance(n.rssi || n.signal || -50))}m)<br>`);
-                out.innerHTML = h;
-            }, 3000);
-        } else if (tool === 'net-trace') {
-            out.innerHTML = '<b>📊 Network Trace:</b><br>Running traceroute...';
-            execRemoteCmd('ping');
-        }
-    }
+    // ============= UI =============
+    function toggleSidebar() { const s = document.getElementById('sidebar'); sidebarOpen = !sidebarOpen; s.classList.toggle('collapsed', !sidebarOpen); setTimeout(() => map && map.invalidateSize(), 350); }
+    function togglePanel(id) { const p = document.getElementById(id + '-panel'); const btn = document.querySelector(`.panel-toggle-btn[onclick="togglePanel('${id}')"]`); panelsVisible[id] = !panelsVisible[id]; p.classList.toggle('hidden-panel', !panelsVisible[id]); btn.classList.toggle('active', panelsVisible[id]); }
+    function addLog(msg, tag) { const el = document.getElementById('log-box'); const ts = new Date().toLocaleTimeString('en-US', { hour12: false }); el.innerHTML = `<div class="log-line"><span style="color:#555">[${ts}]</span> <span style="color:var(--blue)">[${tag}]</span> ${msg}</div>` + el.innerHTML; }
+    async function toggleLost(active) { const res = await apiPost('/api/lost-mode', { deviceId: pairCode, active }); if (res.success) { toast(active ? 'LOST MODE ON' : 'RECOVERED'); document.getElementById('found-btn').classList.toggle('hidden', !active); } }
+    function rePair() { if (ws) ws.close(); if (statusTimer) clearInterval(statusTimer); localStorage.clear(); location.reload(); }
 
-    async function toggleLostState(active) {
-        const res = await apiPost('/api/lost-mode', { deviceId: lpId, active });
-        if (res.success) {
-            showToast(active ? 'LOST MODE ENGAGED' : 'NODE RECOVERED');
-            addLog(active ? 'LOST MODE ACTIVE' : 'SECURED', 'SYS', active ? 'error' : 'info');
-        }
-    }
-
-    function showForensicModal(type, data) {
-        const el = document.getElementById('forensic-modal');
-        el.innerHTML = '<div class="modal-close" onclick="this.parentElement.style.display=\'none\'">✕</div>';
-        if (type === 'image') {
-            const img = document.createElement('img'); img.src = 'data:image/png;base64,' + data;
-            img.style.maxWidth = '100%'; img.style.maxHeight = '80vh'; img.style.borderRadius = '16px';
-            el.appendChild(img);
-        }
-        el.style.display = 'flex';
-    }
-
-    // --- Helpers ---
-    function showToast(m) { const t = document.getElementById('ui-toast'); t.textContent = m; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 3000); }
-    function showScreen(id) { document.querySelectorAll('.screen').forEach(s => s.classList.remove('active')); document.getElementById(id).classList.add('active'); if(id==='dashboard') initMap(); }
-    function addLog(m, t='sys', l='info') {
-        const el = document.getElementById('forensic-log');
-        const ts = new Date().toLocaleTimeString('en-US', { hour12: false });
-        const line = document.createElement('div'); line.className = 'log-line';
-        line.innerHTML = `<span style="color:#555">[${ts}]</span> <span style="color:var(--accent-blue)">[${t.toUpperCase()}]</span> <span style="${l=='error'?'color:#ff4444':''}">${m}</span>`;
-        el.insertBefore(line, el.firstChild);
-        document.getElementById('intel-pulse').style.background = '#d4ff3f';
-        setTimeout(() => document.getElementById('intel-pulse').style.background = '#444', 500);
-    }
-    function rePairDevice() {
-        if (ws) ws.close();
-        if (statusInterval) clearInterval(statusInterval);
-        localStorage.clear();
-        location.reload();
-    }
-    async function apiPost(u, d) { return (await fetch(u, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(d) })).json(); }
-    async function apiGet(u) { return (await fetch(u)).json(); }
-
+    // ============= AUTO-LOGIN =============
     window.addEventListener('load', () => {
-        const r = localStorage.getItem('haulix_role');
-        const lid = localStorage.getItem('haulix_lpId');
-        const pid = localStorage.getItem('haulix_phId');
-        if (r && lid) {
-            isLaptop = r === 'laptop';
-            lpId = lid;
-            phId = pid;
-            // Only auto-enter dashboard if both devices are paired
-            if (phId) {
-                enterApp();
-            } else if (isLaptop) {
-                // Laptop waiting for phone — show pairing screen with code
-                document.getElementById('role-select').classList.add('hidden');
-                document.getElementById('laptop-view').classList.remove('hidden');
-                generatePairCode();
-            } else {
-                // Phone with no laptop paired — show code entry
-                document.getElementById('role-select').classList.add('hidden');
-                document.getElementById('phone-view').classList.remove('hidden');
-                createHandshakeGrid();
-            }
+      const role = localStorage.getItem('role');
+      const pc = localStorage.getItem('pairCode');
+      const mid = localStorage.getItem('myId');
+      if (role && pc && mid) {
+        pairCode = pc; myId = mid;
+        if (role === 'laptop') {
+          document.getElementById('role-select').classList.add('hidden');
+          document.getElementById('laptop-view').classList.remove('hidden');
+          const el = document.getElementById('laptop-code');
+          el.innerHTML = '';
+          pc.split('').forEach(c => { const d = document.createElement('div'); d.className = 'code-digit'; d.textContent = c; el.appendChild(d); });
+          show('dashboard');
+          connectWS(myId);
+          startStatusPoll();
+          startPairWatch();
+        } else {
+          enterDashboard();
         }
+      }
     });
   </script>
 </body>
