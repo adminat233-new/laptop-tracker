@@ -6,4 +6,4 @@ RUN npm ci --only=production
 RUN npx prisma generate
 COPY . .
 EXPOSE 9999
-CMD ["sh", "-c", "npx prisma db push --skip-generate && node cloud-server.js"]
+CMD ["sh", "-c", "npx prisma db push --skip-generate --accept-data-loss && node cloud-server.js"]
