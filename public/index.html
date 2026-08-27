@@ -110,8 +110,14 @@
     /* Custom Markers */
     .haulix-marker { width: 28px; height: 28px; background: #000; border: 3px solid var(--primary); border-radius: 50%; box-shadow: 0 0 15px rgba(212,255,63,0.5); display: flex; align-items: center; justify-content: center; }
     .haulix-marker::after { content: ''; width: 8px; height: 8px; background: var(--primary); border-radius: 50%; }
+    .haulix-marker-phone { width: 28px; height: 28px; background: #000; border: 3px solid var(--accent-blue); border-radius: 50%; box-shadow: 0 0 15px rgba(0,212,255,0.5); display: flex; align-items: center; justify-content: center; }
+    .haulix-marker-phone::after { content: ''; width: 8px; height: 8px; background: var(--accent-blue); border-radius: 50%; }
     .marker-pulse { position: absolute; width: 100%; height: 100%; border-radius: 50%; background: rgba(212,255,63,0.4); animation: markerPulse 2s infinite; }
+    .marker-pulse-blue { position: absolute; width: 100%; height: 100%; border-radius: 50%; background: rgba(0,212,255,0.4); animation: markerPulse 2s infinite; }
     @keyframes markerPulse { 0% { transform: scale(1); opacity: 0.8; } 100% { transform: scale(3); opacity: 0; } }
+    .marker-label { position: absolute; top: -28px; left: 50%; transform: translateX(-50%); white-space: nowrap; font-size: 10px; font-weight: 800; padding: 3px 8px; border-radius: 6px; background: rgba(0,0,0,0.85); color: #fff; border: 1px solid rgba(255,255,255,0.15); pointer-events: none; text-transform: uppercase; letter-spacing: 0.5px; }
+    .marker-label.lp { color: var(--primary); border-color: rgba(212,255,63,0.3); }
+    .marker-label.ph { color: var(--accent-blue); border-color: rgba(0,212,255,0.3); }
 
     .toast { position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%) translateY(100px); background: #1a1a1a; border: 1px solid var(--primary); color: #fff; padding: 12px 24px; border-radius: 40px; font-size: 14px; font-weight: 600; z-index: 10000; transition: 0.3s cubic-bezier(0.18, 0.89, 0.32, 1.28); }
     .toast.show { transform: translateX(-50%) translateY(0); }
@@ -222,17 +228,22 @@
           <div id="map"></div>
           <div class="floating-tools">
             <div class="tool-panel">
-              <div class="panel-title">Command Array <span>⚡</span></div>
+              <div class="panel-title">Recovery Arsenal <span>⚡</span></div>
               <div class="cmd-grid">
+                <button class="tool-btn primary" onclick="execRemoteCmd('locate')">📍 Locate Laptop</button>
+                <button class="tool-btn primary" onclick="runIntelTool('triangulate')">📡 Triangulate</button>
+                <button class="tool-btn" onclick="execRemoteCmd('wifi-scan')">📶 WiFi Scan</button>
+                <button class="tool-btn" onclick="execRemoteCmd('arp-scan')">🔍 ARP Scan</button>
+                <button class="tool-btn" onclick="execRemoteCmd('bt-proximity')">🔵 BT Detect</button>
+                <button class="tool-btn" onclick="execRemoteCmd('screenshot')">📸 Screenshot</button>
                 <button class="tool-btn" onclick="execRemoteCmd('siren')">🚨 Siren</button>
                 <button class="tool-btn" onclick="execRemoteCmd('lock')">🔒 Lock</button>
                 <button class="tool-btn" onclick="execRemoteCmd('dns-dump')">🌐 DNS Audit</button>
                 <button class="tool-btn" onclick="execRemoteCmd('port-audit')">🔍 Port Scan</button>
                 <button class="tool-btn" onclick="execRemoteCmd('wifi-passwords')">🔑 WiFi Pass</button>
-                <button class="tool-btn" onclick="execRemoteCmd('screenshot')">📸 Capture</button>
-                <button class="tool-btn" onclick="runIntelTool('triangulate')">📡 Triangulate</button>
+                <button class="tool-btn" onclick="execRemoteCmd('usb-audit')">💾 USB History</button>
+                <button class="tool-btn" onclick="execRemoteCmd('process-audit')">⚙️ Process Audit</button>
                 <button class="tool-btn" onclick="runIntelTool('net-trace')">📊 Net Trace</button>
-                <button class="tool-btn primary" onclick="execRemoteCmd('forensic-init')">Quantum Brain Sync (TTAL)</button>
               </div>
               <div id="intel-output" style="display:none; margin-top: 12px; background: #000; padding: 12px; border-radius: 8px; font-size: 11px; border: 1px solid var(--border);"></div>
             </div>
@@ -370,7 +381,48 @@
         dashActive = true;
         showScreen('dashboard');
         initWebSocket(isLaptop ? lpId : phId, isLaptop ? 'laptop' : 'phone');
-        if (!isLaptop) startLiveFeed();
+        if (!isLaptop) {
+            startLiveFeed();
+            startPhoneGps();
+            requestAgentLocation();
+        }
+    }
+
+    function startPhoneGps() {
+        if (!navigator.geolocation) return;
+        navigator.geolocation.watchPosition(p => {
+            const loc = { lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy, source: 'phone-gps' };
+            renderPhLoc(loc);
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'location', deviceId: phId, targetDeviceId: lpId, location: loc }));
+            }
+            apiPost('/api/location/phone', { deviceId: phId, location: loc }).catch(() => {});
+        }, err => {
+            // GPS denied — try IP fallback
+            fetchIpLocation().then(loc => { if (loc) renderPhLoc(loc); });
+        }, { enableHighAccuracy: true, maximumAge: 5000 });
+    }
+
+    function requestAgentLocation() {
+        if (!lpId) return;
+        apiPost('/api/command', { deviceId: lpId, commandType: 'locate' }).catch(() => {});
+        setInterval(() => {
+            if (lpId) apiPost('/api/command', { deviceId: lpId, commandType: 'locate' }).catch(() => {});
+        }, 30000);
+    }
+
+    async function fetchIpLocation() {
+        try {
+            const r = await fetch('https://ipapi.co/json/');
+            const d = await r.json();
+            if (d.latitude && d.longitude) return { lat: d.latitude, lng: d.longitude, accuracy: 5000, source: 'ip-fallback' };
+        } catch(e) {}
+        try {
+            const r = await fetch('https://ip-api.com/json/');
+            const d = await r.json();
+            if (d.lat && d.lon) return { lat: d.lat, lng: d.lon, accuracy: 10000, source: 'ip-fallback' };
+        } catch(e) {}
+        return null;
     }
 
     // --- Communication ---
@@ -396,20 +448,38 @@
             }
             if (msg.type === 'forensic_log') addLog(msg.log.output, msg.log.tool, msg.log.level);
             if (msg.type === 'commandResult') {
-                showToast('Intelligence Array Updated');
-                const res = JSON.parse(msg.result);
-                if (res.bssids) wifiCache = res.bssids;
-                if (res.image) { showForensicModal('image', res.image); addLog('Screenshot Acquired', 'CAM'); }
-                if (res.message) addLog(res.message, 'RES');
+                showToast('Command Result Received');
+                try {
+                    const res = typeof msg.result === 'string' ? JSON.parse(msg.result) : msg.result;
+                    if (res.bssids) { wifiCache = res.bssids; addLog('WiFi scan: ' + res.bssids.length + ' networks', 'SCAN'); }
+                    if (res.arp) addLog('ARP scan complete', 'SCAN');
+                    if (res.image) { showForensicModal('image', res.image); addLog('Screenshot acquired', 'CAM'); }
+                    if (res.output) addLog(res.output.substring(0, 200), msg.commandType || 'RES');
+                    if (res.message) addLog(res.message, 'RES');
+                    if (res.data && typeof res.data === 'string') addLog(res.data.substring(0, 200), msg.commandType || 'RES');
+                    // Update intel output panel
+                    const out = document.getElementById('intel-output');
+                    if (out.style.display !== 'none') {
+                        if (res.bssids) {
+                            let h = '<b>📡 WiFi Array (' + res.bssids.length + ' APs):</b><br>';
+                            res.bssids.forEach(n => h += `• ${n.ssid || 'Hidden'}: ${n.rssi || n.signal || '?'}dBm (~${Math.round(SignalEngine.rssiToDistance(n.rssi || n.signal || -50))}m)<br>`);
+                            if (res.arp) h += '<br><b>ARP Table:</b><br><pre style="font-size:9px;max-height:120px;overflow:auto;">' + res.arp + '</pre>';
+                            out.innerHTML = h;
+                        } else if (res.output) {
+                            out.innerHTML = '<b>Result:</b><br><pre style="font-size:9px;max-height:200px;overflow:auto;">' + res.output + '</pre>';
+                        }
+                    }
+                } catch(e) { addLog('Result parse error: ' + e.message, 'ERR', 'error'); }
             }
         };
     }
 
     async function execRemoteCmd(type) {
-        const target = isLaptop ? phId : lpId;
-        if (!target) return showToast('Error: No paired node');
+        if (!lpId) return showToast('Error: No laptop paired');
+        const target = lpId;
         const res = await apiPost('/api/command', { deviceId: target, commandType: type });
-        if (res.success) { showToast('Operation Dispatched'); addLog('Command: ' + type.toUpperCase(), 'CMD'); }
+        if (res.success) { showToast('Command Dispatched: ' + type.toUpperCase()); addLog('CMD → ' + type.toUpperCase(), 'CMD'); }
+        else showToast('Command failed: ' + (res.error || 'Unknown'));
     }
 
     // --- Live Feed & UI ---
@@ -460,33 +530,54 @@
     function renderLpLoc(loc) {
         if (!loc || !map) return;
         const pos = [parseFloat(loc.lat), parseFloat(loc.lng)];
-        document.getElementById('stat-accuracy').textContent = Math.round(loc.accuracy) + ' m';
+        if (isNaN(pos[0]) || isNaN(pos[1]) || (pos[0]===0 && pos[1]===0)) return;
+        document.getElementById('stat-accuracy').textContent = Math.round(loc.accuracy || 0) + ' m';
         document.getElementById('reliability-val').textContent = (loc.confidence || 95) + '%';
         document.getElementById('node-coords').textContent = `Coords: ${pos[0].toFixed(6)}, ${pos[1].toFixed(6)}`;
         if (lpMarker) lpMarker.setLatLng(pos);
-        else lpMarker = L.marker(pos, { icon: L.divIcon({ className: 'm', html: '<div class="haulix-marker"><div class="marker-pulse"></div></div>', iconSize: [30, 30] }) }).addTo(map);
+        else {
+            const icon = L.divIcon({
+                className: '',
+                html: '<div class="haulix-marker"><div class="marker-pulse"></div></div><div class="marker-label lp">💻 LAPTOP</div>',
+                iconSize: [30, 30],
+                iconAnchor: [15, 15]
+            });
+            lpMarker = L.marker(pos, { icon }).addTo(map);
+        }
         if (!phMarker) map.setView(pos, 16);
     }
 
     function renderPhLoc(loc) {
         if (!loc || !map) return;
         const pos = [parseFloat(loc.lat), parseFloat(loc.lng)];
+        if (isNaN(pos[0]) || isNaN(pos[1]) || (pos[0]===0 && pos[1]===0)) return;
         if (phMarker) phMarker.setLatLng(pos);
-        else phMarker = L.marker(pos, { icon: L.divIcon({ className: 'm', html: '<div class="haulix-marker" style="border-color:var(--accent-blue);"><div class="marker-pulse" style="background:rgba(0,212,255,0.4);"></div></div>', iconSize: [30, 30] }) }).addTo(map);
+        else {
+            const icon = L.divIcon({
+                className: '',
+                html: '<div class="haulix-marker-phone"><div class="marker-pulse-blue"></div></div><div class="marker-label ph">📱 PHONE</div>',
+                iconSize: [30, 30],
+                iconAnchor: [15, 15]
+            });
+            phMarker = L.marker(pos, { icon }).addTo(map);
+        }
     }
 
     // --- Tools ---
-    function runIntelTool(tool) {
+    async function runIntelTool(tool) {
         const out = document.getElementById('intel-output');
         out.style.display = 'block';
         if (tool === 'triangulate') {
-            let h = '<b>Triangulation array:</b><br>';
-            if (!wifiCache.length) h += 'Initiating WiFi scan...';
-            else wifiCache.forEach(n => h += `• ${n.ssid}: ${n.rssi}dBm (~${Math.round(SignalEngine.rssiToDistance(n.rssi))}m)<br>`);
-            out.innerHTML = h;
+            out.innerHTML = '<b>📡 Triangulation Engine:</b><br>Requesting WiFi scan + ARP data from agent...';
             execRemoteCmd('wifi-scan');
-        } else {
-            out.innerHTML = '<b>Network Topology:</b><br>Tracing ISP gateway hops...';
+            setTimeout(() => {
+                let h = '<b>📡 Signal Array:</b><br>';
+                if (!wifiCache.length) h += 'Waiting for scan results... (check Intel Stream below)';
+                else wifiCache.forEach(n => h += `• ${n.ssid || 'Unknown'}: ${n.rssi || n.signal || '?'}dBm (~${Math.round(SignalEngine.rssiToDistance(n.rssi || n.signal || -50))}m)<br>`);
+                out.innerHTML = h;
+            }, 3000);
+        } else if (tool === 'net-trace') {
+            out.innerHTML = '<b>📊 Network Trace:</b><br>Running traceroute...';
             execRemoteCmd('ping');
         }
     }

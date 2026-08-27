@@ -1,4 +1,4 @@
-const CACHE_NAME = 'laptop-tracker-v28-forensic-fix';
+const CACHE_NAME = 'laptop-tracker-v29-haulix-ui';
 const LOCATION_INTERVAL = 10000;
 let locationTimer = null;
 let trackedDeviceId = null;
