@@ -325,6 +325,7 @@
     }
 
     async function generatePairCode() {
+        try {
         const data = await apiPost('/api/generate', { systemInfo: { platform: navigator.platform } });
         if (data.success) {
             lpId = data.deviceId;
@@ -336,7 +337,8 @@
             });
             initWebSocket(lpId, 'laptop');
             startPairMonitor();
-        }
+        } else { showToast('Server error: ' + (data.error || 'Unknown')); }
+        } catch(e) { showToast('Network error — check connection'); }
     }
 
     function createHandshakeGrid() {
@@ -368,12 +370,14 @@
     function startPairMonitor() {
         const monitor = setInterval(async () => {
             if (dashActive) return clearInterval(monitor);
+            try {
             const res = await apiGet('/api/paired/' + lpId);
             if (res.paired) {
                 phId = res.pairedDeviceIds[0];
                 localStorage.setItem('haulix_phId', phId);
                 enterApp();
             }
+            } catch(e) {}
         }, 3000);
     }
 
@@ -381,8 +385,8 @@
         dashActive = true;
         showScreen('dashboard');
         initWebSocket(isLaptop ? lpId : phId, isLaptop ? 'laptop' : 'phone');
+        startLiveFeed();
         if (!isLaptop) {
-            startLiveFeed();
             startPhoneGps();
             requestAgentLocation();
         }
@@ -426,19 +430,23 @@
     }
 
     // --- Communication ---
+    let wsReconnectAttempts = 0;
     function initWebSocket(id, type) {
         if (ws) ws.close();
         const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
         ws = new WebSocket(proto + '//' + location.host);
         ws.onopen = () => {
+            wsReconnectAttempts = 0;
             ws.send(JSON.stringify({ type: 'register', deviceId: id }));
-            if (type === 'phone') {
-                navigator.geolocation.watchPosition(p => {
-                    const loc = { lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy, source: 'phone-gps' };
-                    ws.send(JSON.stringify({ type: 'location', location: loc }));
-                }, null, { enableHighAccuracy: true });
+        };
+        ws.onclose = () => {
+            if (dashActive) {
+                const delay = Math.min(1000 * Math.pow(2, wsReconnectAttempts), 30000);
+                wsReconnectAttempts++;
+                setTimeout(() => initWebSocket(id, type), delay);
             }
         };
+        ws.onerror = () => {};
         ws.onmessage = (e) => {
             const msg = JSON.parse(e.data);
             if (msg.type === 'connected') { dashActive = true; showScreen('dashboard'); addLog('Uplink Secured', 'SYS'); }
@@ -446,7 +454,7 @@
                 if (msg.fromDeviceId?.startsWith('LP-')) renderLpLoc(msg.location);
                 else if (msg.fromDeviceId?.startsWith('PH-')) renderPhLoc(msg.location);
             }
-            if (msg.type === 'forensic_log') addLog(msg.log.output, msg.log.tool, msg.log.level);
+            if (msg.type === 'forensic_log' && msg.log) addLog(msg.log.output, msg.log.tool, msg.log.level);
             if (msg.type === 'commandResult') {
                 showToast('Command Result Received');
                 try {
@@ -488,9 +496,11 @@
     async function execRemoteCmd(type) {
         if (!lpId) return showToast('Error: No laptop paired');
         const target = lpId;
+        try {
         const res = await apiPost('/api/command', { deviceId: target, commandType: type });
         if (res.success) { showToast('Command Dispatched: ' + type.toUpperCase()); addLog('CMD → ' + type.toUpperCase(), 'CMD'); }
         else showToast('Command failed: ' + (res.error || 'Unknown'));
+        } catch(e) { showToast('Network error'); }
     }
 
     // --- Live Feed & UI ---
@@ -498,6 +508,7 @@
         if (statusInterval) clearInterval(statusInterval);
         statusInterval = setInterval(async () => {
             if (!lpId) return;
+            try {
             const d = await apiGet('/api/status/' + lpId);
             const dot = document.getElementById('live-dot');
             const status = document.getElementById('live-status');
@@ -528,6 +539,7 @@
                     document.getElementById('node-card').style.borderColor = 'var(--border)';
                 }
             }
+            } catch(e) {}
         }, 5000);
     }
 

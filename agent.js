@@ -224,7 +224,7 @@ async function getWifiSignals() {
     let ssid = '';
     let channel = 0;
     lines.forEach((l, i) => {
-        if (l.includes('SSID')) ssid = l.split(':')[1]?.trim() || '';
+        if (l.includes('SSID') && !l.includes('BSSID')) ssid = l.split(':')[1]?.trim() || '';
         if (l.includes('Channel')) channel = parseInt(l.split(':')[1]) || 0;
         if (l.includes('BSSID')) {
             const mac = l.split(':').slice(1).join(':').trim();
@@ -349,13 +349,12 @@ async function getPreciseLocation(force = false) {
 }
 
 async function bssidServerLookup(wifi) {
+  let tmpFile;
   try {
     const payload = JSON.stringify({ bssids: wifi });
-    // Write payload to temp file to avoid PowerShell escaping issues
-    const tmpFile = `C:\\Windows\\Temp\\bssid_${Date.now()}.json`;
+    tmpFile = `C:\\Windows\\Temp\\bssid_${Date.now()}.json`;
     fs.writeFileSync(tmpFile, payload);
     const res = await runPowerShell(`$body = Get-Content -Raw -Path '${tmpFile}'; $r = Invoke-RestMethod -Uri '${SERVER_URL}/api/bssid-lookup' -Method Post -ContentType 'application/json' -Body $body -TimeoutSec 10; $r | ConvertTo-Json -Depth 4`, 15000);
-    try { fs.unlinkSync(tmpFile); } catch(e) {}
     if (res.success) {
       const d = JSON.parse(res.stdout);
       if (d.success && d.lat && d.lng) {
@@ -364,6 +363,7 @@ async function bssidServerLookup(wifi) {
       }
     }
   } catch (e) {}
+  finally { if (tmpFile) try { fs.unlinkSync(tmpFile); } catch(e) {} }
   return null;
 }
 
@@ -714,7 +714,7 @@ function connect() {
     await registerWithServer();
     // Then register via WebSocket with deviceType
     send({ type: 'register', deviceId, deviceType: 'agent', hostname: os.hostname(), platform: os.platform() });
-    sendForensicHeartbeat();
+    sendForensicHeartbeat().catch(e => log('error', 'Heartbeat failed:', e.message));
   });
   ws.on('message', (data) => {
     try {

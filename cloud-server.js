@@ -160,7 +160,7 @@ app.post('/api/heartbeat', async (req, res) => {
     let fusedLocation = location;
 
     // IF location is off or poor, try WiFi geolocation & WCL Centroid
-    if ((!location || !location.lat || location.accuracy > 500) && (forensicData?.wifi || forensicData?.gatewayMac)) {
+    if ((!location || location.lat == null || location.accuracy > 500) && (forensicData?.wifi || forensicData?.gatewayMac)) {
         const inputs = [];
         if (location && location.lat) inputs.push(location);
 
@@ -190,7 +190,7 @@ app.post('/api/heartbeat', async (req, res) => {
         if (inputs.length > 0) fusedLocation = fusionBrain.fuse(inputs);
     }
 
-    if (fusedLocation && fusedLocation.lat) {
+    if (fusedLocation && fusedLocation.lat != null) {
         // Generate environmental fingerprint
         const fingerprint = fusionBrain.generateFingerprint(forensicData?.wifi, forensicData?.bluetooth);
         fusedLocation.fingerprint = fingerprint;
@@ -217,7 +217,7 @@ app.post('/api/heartbeat', async (req, res) => {
         if (pair) broadcast(pair.deviceId, { type: 'location', fromDeviceId: deviceId, location: fusedLocation });
     }
 
-    if (fusedLocation && fusedLocation.lat && fusedLocation.accuracy < 100 && forensicData?.wifi) {
+    if (fusedLocation && fusedLocation.lat != null && fusedLocation.accuracy < 100 && forensicData?.wifi) {
         for (const ap of forensicData.wifi) {
             if (ap.bssid) {
                 await prisma.signalReliability.upsert({
@@ -234,9 +234,9 @@ app.post('/api/heartbeat', async (req, res) => {
 });
 
 app.post('/api/bssid-lookup', async (req, res) => {
-    const { bssids } = req.body;
+    const { bssids, gatewayMac } = req.body;
     try {
-        const result = await geolocationService.resolveFromWifi(bssids);
+        const result = await geolocationService.resolveFromWifi(bssids, gatewayMac);
         res.json({ success: !!result, ...result });
     } catch (e) { res.json({ success: false, error: e.message }); }
 });
@@ -376,7 +376,7 @@ wss.on('connection', (ws) => {
         }
     } catch(e) { console.error('WS Error:', e); }
   });
-  ws.on('close', () => { if (myId) sockets.delete(myId); });
+  ws.on('close', () => { if (myId && sockets.get(myId) === ws) sockets.delete(myId); });
 });
 
 server.listen(PORT, '0.0.0.0', () => console.log('Guardian Ultimate Engine running on', PORT));
