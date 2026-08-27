@@ -289,12 +289,16 @@ app.post('/api/lost-mode', (req, res) => {
 
 // ============= APK DOWNLOAD =============
 app.get('/FIND.apk', (req, res) => {
-  const apkPath = path.join(__dirname, 'android-app', 'app', 'build', 'outputs', 'apk', 'debug', 'app-debug.apk');
   const fs = require('fs');
-  if (fs.existsSync(apkPath)) {
-    res.download(apkPath, 'FIND.apk');
+  const apkPath = path.join(__dirname, 'public', 'FIND.apk');
+  const altPath = path.join(__dirname, 'android-app', 'app', 'build', 'outputs', 'apk', 'debug', 'app-debug.apk');
+  const file = fs.existsSync(apkPath) ? apkPath : (fs.existsSync(altPath) ? altPath : null);
+  if (file) {
+    res.setHeader('Content-Disposition', 'attachment; filename="FIND.apk"');
+    res.setHeader('Content-Type', 'application/vnd.android.package-archive');
+    fs.createReadStream(file).pipe(res);
   } else {
-    res.status(404).send('APK not built yet. Open android-app/ in Android Studio and build.');
+    res.status(404).send('APK not found');
   }
 });
 
