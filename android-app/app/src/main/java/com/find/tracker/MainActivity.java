@@ -7,6 +7,7 @@ import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.Looper;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.view.View;
@@ -51,15 +52,12 @@ public class MainActivity extends AppCompatActivity {
         codeInputContainer = findViewById(R.id.codeInputContainer);
         connectBtn = findViewById(R.id.connectBtn);
 
-        requestPermissions();
-
         // Check if already paired
         String savedRole = prefs.getString("role", null);
         String savedPc = prefs.getString("pairCode", null);
         String savedMy = prefs.getString("deviceId", null);
         if (savedRole != null && savedPc != null && savedMy != null) {
             if (savedRole.equals("phone")) {
-                // Auto-login phone
                 pairCode = savedPc;
                 deviceId = savedMy;
                 role = savedRole;
@@ -69,6 +67,9 @@ public class MainActivity extends AppCompatActivity {
         }
 
         setupCodeInputs();
+
+        // Request permissions after a short delay so UI loads first
+        new Handler(Looper.getMainLooper()).postDelayed(this::requestPermissions, 500);
     }
 
     private void requestPermissions() {
@@ -78,7 +79,16 @@ public class MainActivity extends AppCompatActivity {
             Manifest.permission.CAMERA,
             Manifest.permission.VIBRATE
         };
-        ActivityCompat.requestPermissions(this, perms, PERM_REQ);
+        boolean needRequest = false;
+        for (String p : perms) {
+            if (ActivityCompat.checkSelfPermission(this, p) != PackageManager.PERMISSION_GRANTED) {
+                needRequest = true;
+                break;
+            }
+        }
+        if (needRequest) {
+            ActivityCompat.requestPermissions(this, perms, PERM_REQ);
+        }
     }
 
     public void onLaptopClick(View v) {
@@ -95,6 +105,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void generateCode() {
+        pairStatus.setText("Generating code...");
         JSONObject body = new JSONObject();
         try {
             body.put("platform", "Android " + android.os.Build.MODEL);
@@ -108,16 +119,18 @@ public class MainActivity extends AppCompatActivity {
                         deviceId = response.getString("deviceId");
                         saveSession();
                         showCode(pairCode);
-                        connectWs();
                         startPairDetection();
                         pairStatus.setText("Show this code to your phone");
                     } else {
-                        Toast.makeText(MainActivity.this, "Error: " + response.optString("error"), Toast.LENGTH_SHORT).show();
+                        pairStatus.setText("Error: " + response.optString("error"));
                     }
-                } catch (Exception e) { Toast.makeText(MainActivity.this, "Error", Toast.LENGTH_SHORT).show(); }
+                } catch (Exception e) { pairStatus.setText("Error parsing response"); }
             }
             @Override
-            public void onError(String error) { Toast.makeText(MainActivity.this, "Network error", Toast.LENGTH_SHORT).show(); }
+            public void onError(String error) {
+                pairStatus.setText("Network error - retrying...");
+                new Handler(Looper.getMainLooper()).postDelayed(() -> generateCode(), 3000);
+            }
         });
     }
 
