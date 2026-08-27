@@ -1,342 +1,502 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.drawerlayout.widget.DrawerLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/drawerLayout"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:background="@color/bg">
+    android:background="#0a0a0a">
 
-    <!-- TOP BAR -->
-    <LinearLayout
+    <!-- MAIN CONTENT: Full-screen map with floating controls -->
+    <FrameLayout
         android:layout_width="match_parent"
-        android:layout_height="52dp"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:paddingHorizontal="16dp"
-        android:background="@color/panel">
+        android:layout_height="match_parent">
 
-        <LinearLayout
-            android:layout_width="36dp"
-            android:layout_height="36dp"
+        <!-- MAP (WebView with Leaflet) -->
+        <WebView
+            android:id="@+id/mapView"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+
+        <!-- Floating nav toggle button (top-left) -->
+        <Button
+            android:id="@+id/btnToggleNav"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:layout_gravity="top|start"
+            android:layout_marginTop="12dp"
+            android:layout_marginStart="12dp"
             android:background="@drawable/icon_bg"
+            android:text="☰"
+            android:textColor="#d4ff3f"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:elevation="6dp" />
+
+        <!-- Floating status pill (top-center) -->
+        <LinearLayout
+            android:id="@+id/statusPill"
+            android:layout_width="wrap_content"
+            android:layout_height="32dp"
+            android:layout_gravity="top|center_horizontal"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/card_bg"
             android:gravity="center"
-            android:layout_marginEnd="10dp">
+            android:paddingHorizontal="14dp"
+            android:elevation="6dp">
+
+            <View
+                android:id="@+id/statusDot"
+                android:layout_width="8dp"
+                android:layout_height="8dp"
+                android:background="@drawable/dot_red"
+                android:layout_marginEnd="6dp" />
             <TextView
+                android:id="@+id/mainStatus"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="F"
-                android:textColor="#000"
-                android:textSize="18sp"
+                android:text="Offline"
+                android:textColor="#888"
+                android:textSize="11sp"
                 android:textStyle="bold" />
         </LinearLayout>
 
-        <TextView
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="FIND"
-            android:textColor="@color/accent"
-            android:textSize="16sp"
-            android:textStyle="bold"
-            android:letterSpacing="0.1" />
-
-        <TextView
-            android:id="@+id/mainStatus"
+        <!-- Floating map controls (top-right) -->
+        <LinearLayout
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Offline"
-            android:textColor="@color/muted"
-            android:textSize="11sp"
+            android:layout_height="32dp"
+            android:layout_gravity="top|end"
+            android:layout_marginTop="12dp"
+            android:layout_marginEnd="12dp"
             android:background="@drawable/card_bg"
-            android:paddingHorizontal="10dp"
-            android:paddingVertical="4dp" />
-    </LinearLayout>
+            android:padding="3dp"
+            android:elevation="6dp">
 
-    <!-- MAP -->
-    <fragment
-        android:id="@+id/map"
-        android:name="com.google.android.gms.maps.SupportMapFragment"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1" />
+            <Button
+                android:id="@+id/btnStreet"
+                android:layout_width="wrap_content"
+                android:layout_height="26dp"
+                android:background="@drawable/btn_bg"
+                android:text="🗺️"
+                android:textSize="12sp"
+                android:minWidth="0dp"
+                android:paddingHorizontal="8dp"
+                android:onClick="onMapStreetClick" />
+            <Button
+                android:id="@+id/btnSat"
+                android:layout_width="wrap_content"
+                android:layout_height="26dp"
+                android:background="@drawable/tool_bg"
+                android:text="🛰️"
+                android:textSize="12sp"
+                android:minWidth="0dp"
+                android:paddingHorizontal="8dp"
+                android:layout_marginStart="3dp"
+                android:onClick="onMapSatelliteClick" />
+            <Button
+                android:id="@+id/btnTerrain"
+                android:layout_width="wrap_content"
+                android:layout_height="26dp"
+                android:background="@drawable/tool_bg"
+                android:text="🏔️"
+                android:textSize="12sp"
+                android:minWidth="0dp"
+                android:paddingHorizontal="8dp"
+                android:layout_marginStart="3dp"
+                android:onClick="onMapTerrainClick" />
+        </LinearLayout>
 
-    <!-- MAP TYPE CONTROLS -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="40dp"
-        android:orientation="horizontal"
-        android:background="@color/panel"
-        android:gravity="center">
-
-        <Button
-            android:id="@+id/btnMapStreet"
-            android:layout_width="0dp"
-            android:layout_height="32dp"
-            android:layout_weight="1"
-            android:layout_marginHorizontal="4dp"
-            android:background="@drawable/btn_bg"
-            android:text="🗺️ Street"
-            android:textColor="#000"
-            android:textSize="10sp"
-            android:textStyle="bold"
-            android:onClick="onMapStreetClick" />
-
-        <Button
-            android:id="@+id/btnMapSatellite"
-            android:layout_width="0dp"
-            android:layout_height="32dp"
-            android:layout_weight="1"
-            android:layout_marginHorizontal="4dp"
-            android:background="@drawable/tool_bg"
-            android:text="🛰️ Satellite"
-            android:textColor="#FFFFFF"
-            android:textSize="10sp"
-            android:onClick="onMapSatelliteClick" />
-
-        <Button
-            android:id="@+id/btnMapTerrain"
-            android:layout_width="0dp"
-            android:layout_height="32dp"
-            android:layout_weight="1"
-            android:layout_marginHorizontal="4dp"
-            android:background="@drawable/tool_bg"
-            android:text="🏔️ Terrain"
-            android:textColor="#FFFFFF"
-            android:textSize="10sp"
-            android:onClick="onMapTerrainClick" />
-    </LinearLayout>
-
-    <!-- TRACK INFO BAR -->
-    <LinearLayout
-        android:id="@+id/trackInfo"
-        android:layout_width="match_parent"
-        android:layout_height="40dp"
-        android:orientation="horizontal"
-        android:gravity="center"
-        android:background="@color/panel"
-        android:paddingHorizontal="16dp"
-        android:visibility="gone">
-
-        <TextView
-            android:id="@+id/trackDist"
+        <!-- Floating track info (bottom-center) -->
+        <LinearLayout
+            android:id="@+id/trackInfo"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:textColor="@color/accent"
-            android:textSize="16sp"
-            android:textStyle="bold"
-            android:text="---"
-            android:layout_marginEnd="16dp" />
-        <TextView
-            android:id="@+id/trackBearing"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:textColor="@color/muted"
-            android:textSize="12sp"
-            android:text="---" />
-    </LinearLayout>
+            android:layout_height="32dp"
+            android:layout_gravity="bottom|center_horizontal"
+            android:layout_marginBottom="16dp"
+            android:background="@drawable/card_bg"
+            android:gravity="center"
+            android:paddingHorizontal="14dp"
+            android:elevation="6dp"
+            android:visibility="gone">
 
-    <!-- SCROLL CONTENT BELOW MAP -->
-    <ScrollView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_weight="0"
-        android:background="@color/bg">
+            <TextView
+                android:id="@+id/trackDist"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="#d4ff3f"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:text="---"
+                android:layout_marginEnd="12dp" />
+            <TextView
+                android:id="@+id/trackBearing"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="#888"
+                android:textSize="11sp"
+                android:text="---" />
+        </LinearLayout>
 
+        <!-- Floating intel output (bottom, scrollable) -->
+        <ScrollView
+            android:id="@+id/intelScroll"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom"
+            android:layout_marginBottom="56dp"
+            android:layout_marginHorizontal="12dp"
+            android:maxHeight="140dp"
+            android:background="@drawable/card_bg"
+            android:padding="10dp"
+            android:elevation="6dp"
+            android:visibility="gone">
+            <TextView
+                android:id="@+id/intelOutput"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textColor="#d4ff3f"
+                android:textSize="10sp"
+                android:fontFamily="monospace"
+                android:textIsSelectable="true" />
+        </ScrollView>
+
+        <!-- Bottom action bar -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_gravity="bottom"
+            android:background="#121212"
+            android:gravity="center"
+            android:orientation="horizontal"
+            android:paddingHorizontal="8dp"
+            android:elevation="8dp">
+
+            <Button
+                android:layout_width="0dp"
+                android:layout_height="36dp"
+                android:layout_weight="1"
+                android:background="@drawable/tool_bg"
+                android:text="📍 Locate"
+                android:textColor="#d4ff3f"
+                android:textSize="9sp"
+                android:textStyle="bold"
+                android:layout_marginEnd="4dp"
+                android:onClick="onLocateClick" />
+            <Button
+                android:layout_width="0dp"
+                android:layout_height="36dp"
+                android:layout_weight="1"
+                android:background="@drawable/tool_bg"
+                android:text="📸 Screen"
+                android:textColor="#FFF"
+                android:textSize="9sp"
+                android:layout_marginEnd="4dp"
+                android:onClick="onScreenshotClick" />
+            <Button
+                android:layout_width="0dp"
+                android:layout_height="36dp"
+                android:layout_weight="1"
+                android:background="@drawable/danger_bg"
+                android:text="🚨 Siren"
+                android:textColor="#ff4444"
+                android:textSize="9sp"
+                android:layout_marginEnd="4dp"
+                android:onClick="onSirenClick" />
+            <Button
+                android:layout_width="0dp"
+                android:layout_height="36dp"
+                android:layout_weight="1"
+                android:background="@drawable/tool_bg"
+                android:text="🔒 Lock"
+                android:textColor="#FFF"
+                android:textSize="9sp"
+                android:onClick="onLockClick" />
+        </LinearLayout>
+    </FrameLayout>
+
+    <!-- SIDEBAR NAVIGATION -->
+    <LinearLayout
+        android:id="@+id/sidebar"
+        android:layout_width="280dp"
+        android:layout_height="match_parent"
+        android:layout_gravity="start"
+        android:orientation="vertical"
+        android:background="#121212"
+        android:paddingTop="0dp"
+        android:elevation="12dp">
+
+        <!-- Sidebar header -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:gravity="center_vertical"
+            android:paddingHorizontal="16dp"
+            android:background="#111118"
+            android:layout_marginBottom="4dp">
+
+            <LinearLayout
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:background="@drawable/icon_bg"
+                android:gravity="center"
+                android:layout_marginEnd="10dp">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="F"
+                    android:textColor="#000"
+                    android:textSize="16sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="FIND"
+                android:textColor="#d4ff3f"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:letterSpacing="0.1" />
+            <Button
+                android:id="@+id/btnCloseNav"
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:background="@drawable/tool_bg"
+                android:text="✕"
+                android:textColor="#888"
+                android:textSize="12sp"
+                android:minWidth="0dp" />
+        </LinearLayout>
+
+        <!-- Status cards -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:padding="12dp">
+            android:paddingHorizontal="12dp"
+            android:layout_marginBottom="8dp">
 
-            <!-- STATUS CARDS -->
+            <!-- Laptop card -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:layout_marginBottom="10dp">
-
-                <LinearLayout
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:orientation="vertical"
-                    android:background="@drawable/card_bg"
-                    android:padding="10dp"
-                    android:layout_marginEnd="6dp">
-
-                    <TextView android:id="@+id/lpName" android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:text="💻 Laptop" android:textColor="@color/accent" android:textSize="12sp" android:textStyle="bold"/>
-                    <TextView android:id="@+id/lpOs" android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:text="OS: --" android:textColor="@color/muted" android:textSize="10sp" android:layout_marginTop="2dp"/>
-                    <TextView android:id="@+id/lpCoords" android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:text="Coords: --" android:textColor="@color/muted" android:textSize="10sp"
-                        android:fontFamily="monospace"/>
-                    <TextView android:id="@+id/lpAcc" android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:text="Accuracy: --" android:textColor="@color/muted" android:textSize="10sp"/>
-                    <TextView android:id="@+id/agentStatus" android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:text="Agent: checking..." android:textColor="@color/muted" android:textSize="10sp"/>
-                </LinearLayout>
-
-                <LinearLayout
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:orientation="vertical"
-                    android:background="@drawable/card_bg"
-                    android:padding="10dp"
-                    android:layout_marginStart="6dp">
-
-                    <TextView android:id="@+id/phName" android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:text="📱 Phone" android:textColor="#00D4FF" android:textSize="12sp" android:textStyle="bold"/>
-                    <TextView android:id="@+id/phCoords" android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:text="Coords: --" android:textColor="@color/muted" android:textSize="10sp"
-                        android:fontFamily="monospace" android:layout_marginTop="2dp"/>
-                </LinearLayout>
+                android:background="@drawable/card_bg"
+                android:orientation="vertical"
+                android:padding="10dp"
+                android:layout_marginBottom="6dp">
+                <TextView android:id="@+id/lpName"
+                    android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="💻 Laptop" android:textColor="#d4ff3f" android:textSize="12sp" android:textStyle="bold"/>
+                <TextView android:id="@+id/lpOs"
+                    android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="OS: --" android:textColor="#888" android:textSize="10sp" android:layout_marginTop="2dp"/>
+                <TextView android:id="@+id/lpCoords"
+                    android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="Coords: --" android:textColor="#888" android:textSize="9sp" android:fontFamily="monospace"/>
+                <TextView android:id="@+id/lpAcc"
+                    android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="Accuracy: --" android:textColor="#888" android:textSize="9sp"/>
+                <TextView android:id="@+id/agentStatus"
+                    android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="Agent: checking..." android:textColor="#888" android:textSize="9sp"/>
             </LinearLayout>
 
-            <!-- TOOL BUTTONS -->
-            <GridLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:columnCount="4"
-                android:layout_marginBottom="10dp">
-
-                <Button android:layout_width="0dp" android:layout_height="44dp" android:layout_columnWeight="1"
-                    android:layout_margin="2dp" android:background="@drawable/tool_bg" android:text="📍 Locate" android:textColor="@color/accent" android:textSize="9sp" android:textStyle="bold"
-                    android:onClick="onLocateClick"/>
-                <Button android:layout_width="0dp" android:layout_height="44dp" android:layout_columnWeight="1"
-                    android:layout_margin="2dp" android:background="@drawable/tool_bg" android:text="📶 WiFi" android:textColor="#FFF" android:textSize="9sp"
-                    android:onClick="onWifiClick"/>
-                <Button android:layout_width="0dp" android:layout_height="44dp" android:layout_columnWeight="1"
-                    android:layout_margin="2dp" android:background="@drawable/tool_bg" android:text="🔍 ARP" android:textColor="#FFF" android:textSize="9sp"
-                    android:onClick="onArpClick"/>
-                <Button android:layout_width="0dp" android:layout_height="44dp" android:layout_columnWeight="1"
-                    android:layout_margin="2dp" android:background="@drawable/tool_bg" android:text="🔵 BT" android:textColor="#FFF" android:textSize="9sp"
-                    android:onClick="onBtClick"/>
-
-                <Button android:layout_width="0dp" android:layout_height="44dp" android:layout_columnWeight="1"
-                    android:layout_margin="2dp" android:background="@drawable/tool_bg" android:text="📸 Screen" android:textColor="#FFF" android:textSize="9sp"
-                    android:onClick="onScreenshotClick"/>
-                <Button android:layout_width="0dp" android:layout_height="44dp" android:layout_columnWeight="1"
-                    android:layout_margin="2dp" android:background="@drawable/danger_bg" android:text="🚨 Siren" android:textColor="@color/red" android:textSize="9sp"
-                    android:onClick="onSirenClick"/>
-                <Button android:layout_width="0dp" android:layout_height="44dp" android:layout_columnWeight="1"
-                    android:layout_margin="2dp" android:background="@drawable/tool_bg" android:text="🔒 Lock" android:textColor="#FFF" android:textSize="9sp"
-                    android:onClick="onLockClick"/>
-                <Button android:layout_width="0dp" android:layout_height="44dp" android:layout_columnWeight="1"
-                    android:layout_margin="2dp" android:background="@drawable/tool_bg" android:text="🌐 DNS" android:textColor="#FFF" android:textSize="9sp"
-                    android:onClick="onDnsClick"/>
-
-                <Button android:layout_width="0dp" android:layout_height="44dp" android:layout_columnWeight="1"
-                    android:layout_margin="2dp" android:background="@drawable/tool_bg" android:text="🔍 Ports" android:textColor="#FFF" android:textSize="9sp"
-                    android:onClick="onPortClick"/>
-                <Button android:layout_width="0dp" android:layout_height="44dp" android:layout_columnWeight="1"
-                    android:layout_margin="2dp" android:background="@drawable/tool_bg" android:text="🔑 Pass" android:textColor="#FFF" android:textSize="9sp"
-                    android:onClick="onPassClick"/>
-                <Button android:layout_width="0dp" android:layout_height="44dp" android:layout_columnWeight="1"
-                    android:layout_margin="2dp" android:background="@drawable/tool_bg" android:text="💾 USB" android:textColor="#FFF" android:textSize="9sp"
-                    android:onClick="onUsbClick"/>
-                <Button android:layout_width="0dp" android:layout_height="44dp" android:layout_columnWeight="1"
-                    android:layout_margin="2dp" android:background="@drawable/tool_bg" android:text="⚙️ Procs" android:textColor="#FFF" android:textSize="9sp"
-                    android:onClick="onProcClick"/>
-            </GridLayout>
-
-            <!-- FULL RECOVERY SCAN -->
-            <Button
-                android:layout_width="match_parent"
-                android:layout_height="50dp"
-                android:layout_marginBottom="10dp"
-                android:background="@drawable/btn_bg"
-                android:text="⚡ FULL RECOVERY SCAN"
-                android:textColor="#000000"
-                android:textStyle="bold"
-                android:onClick="onFullRecoveryClick" />
-
-            <!-- LOST / FOUND -->
+            <!-- Phone card -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:layout_marginBottom="10dp">
-
-                <Button
-                    android:id="@+id/markLostBtn"
-                    android:layout_width="0dp"
-                    android:layout_height="48dp"
-                    android:layout_weight="1"
-                    android:layout_marginEnd="6dp"
-                    android:background="@drawable/danger_bg"
-                    android:text="🚨 MARK LOST"
-                    android:textColor="@color/red"
-                    android:textStyle="bold"
-                    android:onClick="onMarkLostClick" />
-
-                <Button
-                    android:id="@+id/foundBtn"
-                    android:layout_width="0dp"
-                    android:layout_height="48dp"
-                    android:layout_weight="1"
-                    android:layout_marginStart="6dp"
-                    android:background="@drawable/recovered_bg"
-                    android:text="✅ RECOVERED"
-                    android:textColor="@color/green"
-                    android:textStyle="bold"
-                    android:visibility="gone"
-                    android:onClick="onRecoveredClick" />
+                android:background="@drawable/card_bg"
+                android:orientation="vertical"
+                android:padding="10dp">
+                <TextView android:id="@+id/phName"
+                    android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="📱 Phone" android:textColor="#00D4FF" android:textSize="12sp" android:textStyle="bold"/>
+                <TextView android:id="@+id/phCoords"
+                    android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="Coords: --" android:textColor="#888" android:textSize="9sp" android:fontFamily="monospace"/>
             </LinearLayout>
+        </LinearLayout>
 
-            <!-- LOG -->
+        <!-- Scrollable tools list -->
+        <ScrollView
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:paddingHorizontal="12dp">
+
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
-                android:background="@drawable/card_bg"
-                android:padding="10dp"
-                android:layout_marginBottom="6dp">
+                android:paddingBottom="16dp">
 
+                <!-- Recovery Arsenal -->
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Intel Stream"
-                    android:textColor="@color/muted"
-                    android:textSize="10sp"
+                    android:text="RECOVERY ARSENAL"
+                    android:textColor="#888"
+                    android:textSize="9sp"
                     android:textStyle="bold"
                     android:letterSpacing="0.1"
-                    android:layout_marginBottom="6dp" />
+                    android:layout_marginBottom="6dp"
+                    android:layout_marginTop="4dp" />
+
+                <Button android:layout_width="match_parent" android:layout_height="40dp"
+                    android:background="@drawable/tool_bg" android:text="📶 WiFi Scan" android:textColor="#FFF" android:textSize="11sp"
+                    android:layout_marginBottom="4dp" android:onClick="onWifiClick"/>
+                <Button android:layout_width="match_parent" android:layout_height="40dp"
+                    android:background="@drawable/tool_bg" android:text="🔍 ARP Scan" android:textColor="#FFF" android:textSize="11sp"
+                    android:layout_marginBottom="4dp" android:onClick="onArpClick"/>
+                <Button android:layout_width="match_parent" android:layout_height="40dp"
+                    android:background="@drawable/tool_bg" android:text="🔵 BT Proximity" android:textColor="#FFF" android:textSize="11sp"
+                    android:layout_marginBottom="4dp" android:onClick="onBtClick"/>
+                <Button android:layout_width="match_parent" android:layout_height="40dp"
+                    android:background="@drawable/tool_bg" android:text="🌐 DNS Dump" android:textColor="#FFF" android:textSize="11sp"
+                    android:layout_marginBottom="4dp" android:onClick="onDnsClick"/>
+                <Button android:layout_width="match_parent" android:layout_height="40dp"
+                    android:background="@drawable/tool_bg" android:text="🔍 Port Audit" android:textColor="#FFF" android:textSize="11sp"
+                    android:layout_marginBottom="4dp" android:onClick="onPortClick"/>
+                <Button android:layout_width="match_parent" android:layout_height="40dp"
+                    android:background="@drawable/tool_bg" android:text="🔑 WiFi Passwords" android:textColor="#FFF" android:textSize="11sp"
+                    android:layout_marginBottom="4dp" android:onClick="onPassClick"/>
+                <Button android:layout_width="match_parent" android:layout_height="40dp"
+                    android:background="@drawable/tool_bg" android:text="💾 USB Audit" android:textColor="#FFF" android:textSize="11sp"
+                    android:layout_marginBottom="4dp" android:onClick="onUsbClick"/>
+                <Button android:layout_width="match_parent" android:layout_height="40dp"
+                    android:background="@drawable/tool_bg" android:text="⚙️ Process Audit" android:textColor="#FFF" android:textSize="11sp"
+                    android:layout_marginBottom="4dp" android:onClick="onProcClick"/>
+
+                <!-- Advanced Tracking -->
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="ADVANCED TRACKING"
+                    android:textColor="#888"
+                    android:textSize="9sp"
+                    android:textStyle="bold"
+                    android:letterSpacing="0.1"
+                    android:layout_marginBottom="6dp"
+                    android:layout_marginTop="8dp" />
+
+                <Button android:layout_width="match_parent" android:layout_height="40dp"
+                    android:background="@drawable/tool_bg" android:text="🌐 IP Scrape" android:textColor="#FFF" android:textSize="11sp"
+                    android:layout_marginBottom="4dp" android:onClick="onIPScrapeClick"/>
+                <Button android:layout_width="match_parent" android:layout_height="40dp"
+                    android:background="@drawable/tool_bg" android:text="📡 WiFi Intel" android:textColor="#FFF" android:textSize="11sp"
+                    android:layout_marginBottom="4dp" android:onClick="onWifiIntelClick"/>
+                <Button android:layout_width="match_parent" android:layout_height="40dp"
+                    android:background="@drawable/tool_bg" android:text="🕸️ Network Scan" android:textColor="#FFF" android:textSize="11sp"
+                    android:layout_marginBottom="4dp" android:onClick="onNetScanClick"/>
+                <Button android:layout_width="match_parent" android:layout_height="40dp"
+                    android:background="@drawable/tool_bg" android:text="🔵 BT Scan" android:textColor="#FFF" android:textSize="11sp"
+                    android:layout_marginBottom="4dp" android:onClick="onBtScanClick"/>
+                <Button android:layout_width="match_parent" android:layout_height="40dp"
+                    android:background="@drawable/tool_bg" android:text="🧬 Net Fingerprint" android:textColor="#FFF" android:textSize="11sp"
+                    android:layout_marginBottom="4dp" android:onClick="onNetFPClick"/>
+                <Button android:layout_width="match_parent" android:layout_height="40dp"
+                    android:background="@drawable/tool_bg" android:text="🧠 ML Report" android:textColor="#FFF" android:textSize="11sp"
+                    android:layout_marginBottom="4dp" android:onClick="onMLReportClick"/>
+                <Button android:layout_width="match_parent" android:layout_height="44dp"
+                    android:background="@drawable/btn_bg" android:text="⚡ FULL RECOVERY SCAN" android:textColor="#000" android:textSize="11sp" android:textStyle="bold"
+                    android:layout_marginBottom="4dp" android:onClick="onFullRecoveryClick"/>
+
+                <!-- Advanced Scraping -->
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="ADVANCED SCRAPING"
+                    android:textColor="#888"
+                    android:textSize="9sp"
+                    android:textStyle="bold"
+                    android:letterSpacing="0.1"
+                    android:layout_marginBottom="6dp"
+                    android:layout_marginTop="8dp" />
+
+                <Button android:layout_width="match_parent" android:layout_height="40dp"
+                    android:background="@drawable/tool_bg" android:text="🍪 Cookies" android:textColor="#FFF" android:textSize="11sp"
+                    android:layout_marginBottom="4dp" android:onClick="onCookieDumpClick"/>
+                <Button android:layout_width="match_parent" android:layout_height="40dp"
+                    android:background="@drawable/tool_bg" android:text="📋 Clipboard" android:textColor="#FFF" android:textSize="11sp"
+                    android:layout_marginBottom="4dp" android:onClick="onClipboardClick"/>
+                <Button android:layout_width="match_parent" android:layout_height="40dp"
+                    android:background="@drawable/tool_bg" android:text="⚙️ Env Variables" android:textColor="#FFF" android:textSize="11sp"
+                    android:layout_marginBottom="4dp" android:onClick="onEnvDumpClick"/>
+                <Button android:layout_width="match_parent" android:layout_height="40dp"
+                    android:background="@drawable/tool_bg" android:text="📂 History" android:textColor="#FFF" android:textSize="11sp"
+                    android:layout_marginBottom="4dp" android:onClick="onHistoryClick"/>
+                <Button android:layout_width="match_parent" android:layout_height="40dp"
+                    android:background="@drawable/tool_bg" android:text="📦 Installed Apps" android:textColor="#FFF" android:textSize="11sp"
+                    android:layout_marginBottom="4dp" android:onClick="onAppsClick"/>
+                <Button android:layout_width="match_parent" android:layout_height="40dp"
+                    android:background="@drawable/tool_bg" android:text="🛰️ Geo Triangulate" android:textColor="#FFF" android:textSize="11sp"
+                    android:layout_marginBottom="4dp" android:onClick="onGeoTriClick"/>
+                <Button android:layout_width="match_parent" android:layout_height="40dp"
+                    android:background="@drawable/tool_bg" android:text="🔓 Deep Port Scan" android:textColor="#FFF" android:textSize="11sp"
+                    android:layout_marginBottom="4dp" android:onClick="onDeepPortClick"/>
+                <Button android:layout_width="match_parent" android:layout_height="40dp"
+                    android:background="@drawable/tool_bg" android:text="🗂️ Registry Dump" android:textColor="#FFF" android:textSize="11sp"
+                    android:layout_marginBottom="4dp" android:onClick="onRegistryClick"/>
+                <Button android:layout_width="match_parent" android:layout_height="40dp"
+                    android:background="@drawable/tool_bg" android:text="🔗 Active Connections" android:textColor="#FFF" android:textSize="11sp"
+                    android:layout_marginBottom="4dp" android:onClick="onConnectionsClick"/>
+                <Button android:layout_width="match_parent" android:layout_height="40dp"
+                    android:background="@drawable/tool_bg" android:text="🖥️ Sys Screenshot" android:textColor="#FFF" android:textSize="11sp"
+                    android:layout_marginBottom="4dp" android:onClick="onSysScreenshotClick"/>
+
+                <!-- Lost Mode -->
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="LOST MODE"
+                    android:textColor="#888"
+                    android:textSize="9sp"
+                    android:textStyle="bold"
+                    android:letterSpacing="0.1"
+                    android:layout_marginBottom="6dp"
+                    android:layout_marginTop="8dp" />
+
+                <Button android:layout_width="match_parent" android:layout_height="44dp"
+                    android:background="@drawable/danger_bg" android:text="🚨 MARK LOST" android:textColor="#ff4444" android:textStyle="bold" android:textSize="11sp"
+                    android:layout_marginBottom="4dp" android:onClick="onMarkLostClick"/>
+                <Button android:id="@+id/foundBtn"
+                    android:layout_width="match_parent" android:layout_height="44dp"
+                    android:background="@drawable/recovered_bg" android:text="✅ RECOVERED" android:textColor="#00ff88" android:textStyle="bold" android:textSize="11sp"
+                    android:layout_marginBottom="4dp" android:visibility="gone" android:onClick="onRecoveredClick"/>
+
+                <!-- Log -->
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="LOG"
+                    android:textColor="#888"
+                    android:textSize="9sp"
+                    android:textStyle="bold"
+                    android:letterSpacing="0.1"
+                    android:layout_marginBottom="6dp"
+                    android:layout_marginTop="8dp" />
 
                 <ScrollView
                     android:layout_width="match_parent"
-                    android:layout_height="120dp">
+                    android:layout_height="120dp"
+                    android:background="@drawable/card_bg"
+                    android:padding="8dp">
                     <LinearLayout
                         android:id="@+id/logBox"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:orientation="vertical" />
                 </ScrollView>
+
+                <Button
+                    android:layout_width="match_parent"
+                    android:layout_height="40dp"
+                    android:layout_marginTop="8dp"
+                    android:background="@drawable/tool_bg"
+                    android:text="🔄 Re-pair / Reset"
+                    android:textColor="#888"
+                    android:textSize="11sp"
+                    android:onClick="onRePairClick" />
             </LinearLayout>
-
-            <TextView
-                android:id="@+id/intelOutput"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:visibility="gone"
-                android:textColor="@color/accent"
-                android:textSize="10sp"
-                android:fontFamily="monospace"
-                android:background="@drawable/card_bg"
-                android:padding="10dp"
-                android:layout_marginBottom="6dp" />
-
-            <!-- RE-PAIR -->
-            <Button
-                android:layout_width="match_parent"
-                android:layout_height="40dp"
-                android:layout_marginTop="4dp"
-                android:background="@drawable/tool_bg"
-                android:text="🔄 Re-pair / Reset"
-                android:textColor="@color/muted"
-                android:textSize="11sp"
-                android:onClick="onRePairClick" />
-
-        </LinearLayout>
-    </ScrollView>
-</LinearLayout>
+        </ScrollView>
+    </LinearLayout>
+</androidx.drawerlayout.widget.DrawerLayout>
