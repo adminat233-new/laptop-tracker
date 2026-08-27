@@ -201,6 +201,8 @@ public class DashboardActivity extends AppCompatActivity {
         ws.setJavaScriptEnabled(true);
         ws.setDomStorageEnabled(true);
         ws.setAllowFileAccess(true);
+        ws.setAllowContentAccess(true);
+        ws.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
         ws.setUseWideViewPort(true);
         ws.setLoadWithOverviewMode(true);
 
@@ -214,8 +216,8 @@ public class DashboardActivity extends AppCompatActivity {
 
         String mapHtml = "<!DOCTYPE html><html><head><meta charset='UTF-8'>"
             + "<meta name='viewport' content='width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no'>"
-            + "<link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'/>"
-            + "<script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'></script>"
+            + "<link rel='stylesheet' href='file:///android_asset/leaflet.css'/>"
+            + "<script src='file:///android_asset/leaflet.js'></script>"
             + "<style>html,body,#map{width:100%;height:100%;margin:0;padding:0;background:#0a0a0a}"
             + ".marker-lp{width:28px;height:28px;background:#000;border:3px solid #d4ff3f;border-radius:50%;box-shadow:0 0 12px rgba(212,255,63,0.6);position:relative}"
             + ".marker-lp::after{content:'';width:8px;height:8px;background:#d4ff3f;border-radius:50%;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%)}"
@@ -230,16 +232,16 @@ public class DashboardActivity extends AppCompatActivity {
             + "</style></head><body><div id='map'></div>"
             + "<script>"
             + "var map=L.map('map',{zoomControl:false,attributionControl:false}).setView([0,0],2);"
-            + "var street=L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{maxZoom:19});"
+            + "var street=L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{maxZoom:19,subdomains:'abcd'});"
             + "var sat=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:18});"
-            + "var terrain=L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',{maxZoom:17});"
+            + "var terrain=L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',{maxZoom:17,subdomains:'abc'});"
             + "street.addTo(map);"
             + "var lpM=null,phM=null,lpLL=null,phLL=null,trackLine=null;"
             + "function updateLp(lat,lng){lpLL=[lat,lng];if(lpM){lpM.setLatLng([lat,lng])}else{"
-            + "lpM=L.marker([lat,lng],{icon:L.divIcon({className:'',html:'<div class=\"marker-lp\"><div class=\"pulse lp\"></div></div><div class=\"lbl lp\">💻 LAPTOP</div>',iconSize:[28,28],iconAnchor:[14,14]})}).addTo(map);"
+            + "lpM=L.marker([lat,lng],{icon:L.divIcon({className:'',html:'<div class=\"marker-lp\"><div class=\"pulse lp\"></div></div><div class=\"lbl lp\">LAPTOP</div>',iconSize:[28,28],iconAnchor:[14,14]})}).addTo(map);"
             + "if(!phM)map.setView([lat,lng],16)}updateTrack()}"
             + "function updatePh(lat,lng){phLL=[lat,lng];if(phM){phM.setLatLng([lat,lng])}else{"
-            + "phM=L.marker([lat,lng],{icon:L.divIcon({className:'',html:'<div class=\"marker-ph\"><div class=\"pulse ph\"></div></div><div class=\"lbl ph\">📱 PHONE</div>',iconSize:[28,28],iconAnchor:[14,14]})}).addTo(map)}updateTrack()}"
+            + "phM=L.marker([lat,lng],{icon:L.divIcon({className:'',html:'<div class=\"marker-ph\"><div class=\"pulse ph\"></div></div><div class=\"lbl ph\">PHONE</div>',iconSize:[28,28],iconAnchor:[14,14]})}).addTo(map)}updateTrack()}"
             + "function updateTrack(){if(!lpLL||!phLL)return;if(trackLine)map.removeLayer(trackLine);"
             + "trackLine=L.polyline([lpLL,phLL],{color:'#d4ff3f',weight:3,opacity:0.7,dashArray:'8,6'}).addTo(map);"
             + "var R=6371e3,p=Math.PI/180;"
@@ -247,25 +249,24 @@ public class DashboardActivity extends AppCompatActivity {
             + "var a=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(lpLL[0]*p)*Math.cos(phLL[0]*p)*Math.sin(dLng/2)*Math.sin(dLng/2);"
             + "var dist=R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));"
             + "var txt=dist>=1000?(dist/1000).toFixed(1)+'km':Math.round(dist)+'m';"
-            + "window.AndroidBridge.trackUpdate(txt);}"
+            + "try{window.AndroidBridge.trackUpdate(txt)}catch(e){}}"
             + "function setMapType(type){map.removeLayer(street);map.removeLayer(sat);map.removeLayer(terrain);"
             + "if(type==='street')street.addTo(map);else if(type==='sat')sat.addTo(map);else terrain.addTo(map)}"
             + "function setCenter(lat,lng,z){map.setView([lat,lng],z||16)}"
             + "</script></body></html>";
 
-        mapView.loadDataWithBaseURL("https://laptop-tracker-k9vi.onrender.com", mapHtml, "text/html", "UTF-8", null);
+        mapView.loadDataWithBaseURL("file:///android_asset/", mapHtml, "text/html", "UTF-8", null);
         mapView.addJavascriptInterface(new Object() {
             @JavascriptInterface
             public void trackUpdate(String txt) {
                 runOnUiThread(() -> {
-                    String[] parts = txt.replace("m","").replace("km","").trim().split(" ");
                     if (trackDist != null) trackDist.setText(txt);
                     if (trackInfo != null) trackInfo.setVisibility(View.VISIBLE);
                 });
             }
         }, "AndroidBridge");
 
-        new Handler(Looper.getMainLooper()).postDelayed(() -> { mapReady = true; }, 2000);
+        new Handler(Looper.getMainLooper()).postDelayed(() -> { mapReady = true; }, 3000);
     }
 
     private void runMapCommand(String js) {
