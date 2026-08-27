@@ -63,8 +63,9 @@ public class ApiClient {
     public void get(String path, ApiCallback cb) {
         executor.execute(() -> {
             try {
+                String tPath = path + (path.contains("?") ? "&" : "?") + "t=" + System.currentTimeMillis();
                 Request req = new Request.Builder()
-                        .url(baseUrl + path)
+                        .url(baseUrl + tPath)
                         .get()
                         .build();
                 Response resp = http.newCall(req).execute();
@@ -91,7 +92,8 @@ public class ApiClient {
 
     public JSONObject getSync(String path) throws IOException {
         try {
-            Request req = new Request.Builder().url(baseUrl + path).get().build();
+            String tPath = path + (path.contains("?") ? "&" : "?") + "t=" + System.currentTimeMillis();
+            Request req = new Request.Builder().url(baseUrl + tPath).get().build();
             Response resp = http.newCall(req).execute();
             String json = resp.body() != null ? resp.body().string() : "{}";
             return new JSONObject(json);

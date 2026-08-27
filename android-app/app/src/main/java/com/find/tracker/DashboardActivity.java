@@ -7,7 +7,10 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.Paint;
 import android.graphics.Typeface;
 import android.location.Location;
 import android.media.AudioAttributes;
@@ -21,6 +24,7 @@ import android.os.Vibrator;
 import android.util.Log;
 import android.view.Gravity;
 import android.view.View;
+import android.widget.Button;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -61,11 +65,11 @@ public class DashboardActivity extends AppCompatActivity implements OnMapReadyCa
     Handler statusHandler, hbHandler;
     Runnable statusRunnable, hbRunnable;
     LinearLayout logBox;
-    TextView mainStatus, mainDot, agentStatus, intelOutput;
+    TextView mainStatus, agentStatus, intelOutput;
     TextView lpName, lpOs, lpCoords, lpAcc, phName, phCoords;
     TextView trackDist, trackBearing;
     View trackInfo;
-    Button foundBtn;
+    Button foundBtn, btnMapStreet, btnMapSatellite, btnMapTerrain;
     boolean sirenActive = false;
     ToneGenerator toneGen;
     Vibrator vibrator;
@@ -151,6 +155,9 @@ public class DashboardActivity extends AppCompatActivity implements OnMapReadyCa
         trackBearing = findViewById(R.id.trackBearing);
         trackInfo = findViewById(R.id.trackInfo);
         foundBtn = findViewById(R.id.foundBtn);
+        btnMapStreet = findViewById(R.id.btnMapStreet);
+        btnMapSatellite = findViewById(R.id.btnMapSatellite);
+        btnMapTerrain = findViewById(R.id.btnMapTerrain);
     }
 
     private void setupMap() {
@@ -304,6 +311,26 @@ public class DashboardActivity extends AppCompatActivity implements OnMapReadyCa
         }
     }
 
+    private com.google.android.gms.maps.model.BitmapDescriptor makeCircleMarker(int borderColor, int dotColor) {
+        int size = 60;
+        Bitmap bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(bmp);
+        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        // Glow
+        paint.setColor(borderColor & 0x44FFFFFF);
+        canvas.drawCircle(size / 2f, size / 2f, size / 2f, paint);
+        // Border ring
+        paint.setColor(borderColor);
+        paint.setStyle(Paint.Style.STROKE);
+        paint.setStrokeWidth(4f);
+        canvas.drawCircle(size / 2f, size / 2f, size / 2f - 6, paint);
+        // Inner dot
+        paint.setStyle(Paint.Style.FILL);
+        paint.setColor(dotColor);
+        canvas.drawCircle(size / 2f, size / 2f, 8f, paint);
+        return BitmapDescriptorFactory.fromBitmap(bmp);
+    }
+
     private void updateLaptopLocation(double lat, double lng) {
         laptopLat = lat;
         laptopLng = lng;
@@ -313,12 +340,12 @@ public class DashboardActivity extends AppCompatActivity implements OnMapReadyCa
         } else if (map != null) {
             laptopMarker = map.addMarker(new MarkerOptions()
                 .position(pos)
-                .title("Laptop")
-                .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_GREEN)));
+                .title("💻 LAPTOP")
+                .icon(makeCircleMarker(0xFFD4FF3F, 0xFFD4FF3F)));
         }
-        lpCoords.setText(String.format("Coords: %.4f, %.4f", lat, lng));
+        if (lpCoords != null) lpCoords.setText(String.format("Coords: %.4f, %.4f", lat, lng));
         updateTrackInfo();
-        if (map != null) map.animateCamera(CameraUpdateFactory.newLatLngZoom(pos, 15));
+        if (map != null && phoneMarker == null) map.animateCamera(CameraUpdateFactory.newLatLngZoom(pos, 15));
     }
 
     private void updatePhoneLocation(double lat, double lng) {
@@ -330,11 +357,34 @@ public class DashboardActivity extends AppCompatActivity implements OnMapReadyCa
         } else if (map != null) {
             phoneMarker = map.addMarker(new MarkerOptions()
                 .position(pos)
-                .title("Phone")
-                .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_AZURE)));
+                .title("📱 PHONE")
+                .icon(makeCircleMarker(0xFF00D4FF, 0xFF00D4FF)));
         }
-        phCoords.setText(String.format("Coords: %.4f, %.4f", lat, lng));
+        if (phCoords != null) phCoords.setText(String.format("Coords: %.4f, %.4f", lat, lng));
         updateTrackInfo();
+    }
+
+    // Map type toggle buttons
+    public void onMapStreetClick(View v) {
+        if (map == null) return;
+        map.setMapType(GoogleMap.MAP_TYPE_NORMAL);
+        if (btnMapStreet != null) btnMapStreet.setBackgroundResource(R.drawable.btn_bg);
+        if (btnMapSatellite != null) btnMapSatellite.setBackgroundResource(R.drawable.tool_bg);
+        if (btnMapTerrain != null) btnMapTerrain.setBackgroundResource(R.drawable.tool_bg);
+    }
+    public void onMapSatelliteClick(View v) {
+        if (map == null) return;
+        map.setMapType(GoogleMap.MAP_TYPE_SATELLITE);
+        if (btnMapStreet != null) btnMapStreet.setBackgroundResource(R.drawable.tool_bg);
+        if (btnMapSatellite != null) btnMapSatellite.setBackgroundResource(R.drawable.btn_bg);
+        if (btnMapTerrain != null) btnMapTerrain.setBackgroundResource(R.drawable.tool_bg);
+    }
+    public void onMapTerrainClick(View v) {
+        if (map == null) return;
+        map.setMapType(GoogleMap.MAP_TYPE_TERRAIN);
+        if (btnMapStreet != null) btnMapStreet.setBackgroundResource(R.drawable.tool_bg);
+        if (btnMapSatellite != null) btnMapSatellite.setBackgroundResource(R.drawable.tool_bg);
+        if (btnMapTerrain != null) btnMapTerrain.setBackgroundResource(R.drawable.btn_bg);
     }
 
     private void updateTrackInfo() {
@@ -381,13 +431,25 @@ public class DashboardActivity extends AppCompatActivity implements OnMapReadyCa
                                 mainStatus.setText(lpOn ? (phOn ? "Both Online" : "Laptop Online") : (phOn ? "Phone Online" : "Offline"));
                                 if (lpAgent) agentStatus.setText("Agent Connected");
                                 else agentStatus.setText("Agent Offline");
-                                if (!response.isNull("laptopLocation")) {
-                                    JSONObject ll = response.getJSONObject("laptopLocation");
-                                    updateLaptopLocation(ll.getDouble("lat"), ll.getDouble("lng"));
+                                // Pull latest locations from pair-info
+                                if (!response.isNull("laptop")) {
+                                    JSONObject laptop = response.getJSONObject("laptop");
+                                    if (!laptop.isNull("location")) {
+                                        JSONObject ll = laptop.getJSONObject("location");
+                                        updateLaptopLocation(ll.getDouble("lat"), ll.getDouble("lng"));
+                                    }
+                                    if (lpOs != null && !laptop.isNull("systemInfo")) {
+                                        JSONObject si = laptop.getJSONObject("systemInfo");
+                                        lpName.setText("💻 " + si.optString("hostname", "Laptop"));
+                                        lpOs.setText("OS: " + si.optString("platform", "--"));
+                                    }
                                 }
-                                if (!response.isNull("phoneLocation")) {
-                                    JSONObject pl = response.getJSONObject("phoneLocation");
-                                    updatePhoneLocation(pl.getDouble("lat"), pl.getDouble("lng"));
+                                if (!response.isNull("phone")) {
+                                    JSONObject phone = response.getJSONObject("phone");
+                                    if (!phone.isNull("location")) {
+                                        JSONObject pl = phone.getJSONObject("location");
+                                        updatePhoneLocation(pl.getDouble("lat"), pl.getDouble("lng"));
+                                    }
                                 }
                             }
                         } catch (Exception e) {}

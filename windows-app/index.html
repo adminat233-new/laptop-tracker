@@ -2,65 +2,94 @@
 <html>
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>FIND</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
 <style>
+:root{--p:#d4ff3f;--bg:#0a0a0a;--pn:#121212;--tx:#fff;--mu:#888;--bd:rgba(255,255,255,0.08);--bl:#00d4ff;--rd:#ff4444;--gn:#00ff88}
 *{margin:0;padding:0;box-sizing:border-box}
-body{background:#0a0a0f;color:#d4ff3f;font-family:'Segoe UI',system-ui,sans-serif;overflow:hidden;height:100vh;user-select:none}
-.tb{height:32px;background:#111118;display:flex;align-items:center;justify-content:space-between;padding:0 8px;-webkit-app-region:drag}
-.tb span{font-size:11px;font-weight:700;letter-spacing:3px}
+body{background:var(--bg);color:var(--tx);font-family:'Segoe UI',system-ui,sans-serif;overflow:hidden;height:100vh;user-select:none;display:flex;flex-direction:column;}
+.tb{height:32px;background:#111118;display:flex;align-items:center;justify-content:space-between;padding:0 8px;-webkit-app-region:drag;flex-shrink:0;z-index:9999}
+.tb span{font-size:11px;font-weight:700;letter-spacing:3px;color:var(--p)}
 .tb-b{display:flex;gap:2px;-webkit-app-region:no-drag}
 .tb-b button{width:30px;height:26px;border:none;background:0 0;color:#666;font-size:13px;cursor:pointer;border-radius:4px}
-.tb-b button:hover{background:#1a1a25;color:#d4ff3f}
-.tb-b .x:hover{background:#e81123;color:#fff}
-.scr{display:none;height:calc(100vh - 32px);overflow-y:auto;padding:16px}
-.scr.on{display:block}
-.pair{display:flex;flex-direction:column;align-items:center;padding-top:80px}
-.logo{font-size:48px;font-weight:900;letter-spacing:8px;color:#d4ff3f}
-.sub{color:#444;font-size:11px;margin:8px 0 40px}
+.tb-b button:hover{background:#1a1a25;color:var(--p)}
+.tb-b .x:hover{background:var(--rd);color:#fff}
+.scr{display:none;flex:1;overflow:hidden;position:relative}
+.scr.on{display:flex}
+.pair{flex-direction:column;align-items:center;padding-top:80px;background:var(--bg)}
+.logo{font-size:48px;font-weight:900;letter-spacing:8px;color:var(--p)}
+.sub{color:var(--mu);font-size:11px;margin:8px 0 40px}
 .modes{display:flex;flex-direction:column;gap:12px;width:280px}
-.mb{padding:16px;border:1px solid #1a1a25;background:#111118;color:#d4ff3f;font-size:13px;font-weight:600;cursor:pointer;text-align:center;border-radius:10px;transition:all .2s;font-family:inherit}
-.mb:hover{border-color:#d4ff3f;background:#1a1a25}
-.mb small{display:block;font-size:10px;color:#555;font-weight:400;margin-top:4px}
+.mb{padding:16px;border:1px solid var(--bd);background:var(--pn);color:var(--tx);font-size:13px;font-weight:600;cursor:pointer;text-align:center;border-radius:12px;transition:0.2s}
+.mb:hover{border-color:var(--p);background:rgba(255,255,255,0.05)}
+.mb small{display:block;font-size:10px;color:var(--mu);font-weight:400;margin-top:4px}
 .cd{display:none;margin-top:24px;text-align:center}
 .cds{display:flex;gap:6px;justify-content:center}
-.cc{width:40px;height:50px;background:#111118;border:2px solid #1a1a25;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700}
-.pw{color:#555;font-size:11px;margin-top:12px}
+.cc{width:44px;height:56px;background:rgba(255,255,255,0.04);border:1px solid var(--bd);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:800;color:var(--p)}
+.pw{color:var(--mu);font-size:11px;margin-top:12px}
 .pig{display:none;gap:8px;margin-top:20px;width:280px}
-.pi{flex:1;padding:12px;background:#111118;border:1px solid #1a1a25;border-radius:8px;color:#d4ff3f;font-size:16px;font-family:monospace;text-align:center;text-transform:uppercase;letter-spacing:3px}
-.pi::placeholder{color:#333;text-transform:none;letter-spacing:0}
-.pi:focus{outline:none;border-color:#d4ff3f}
-.ps{padding:12px 20px;background:#d4ff3f;color:#000;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer}
-.sb{background:#111118;border-radius:12px;padding:14px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between}
+.pi{flex:1;padding:12px;background:#000;border:1px solid var(--bd);border-radius:10px;color:#fff;font-size:16px;font-family:monospace;text-align:center;text-transform:uppercase;letter-spacing:3px}
+.pi:focus{outline:none;border-color:var(--p)}
+.ps{padding:12px 20px;background:var(--p);color:#000;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer}
+
+/* Dashboard Sidebar */
+.sidebar{width:320px;background:var(--pn);border-right:1px solid var(--bd);display:flex;flex-direction:column;overflow-y:auto}
+.sidebar-header{padding:16px;border-bottom:1px solid var(--bd);display:flex;align-items:center;justify-content:space-between}
+.sidebar-header h3{font-size:14px;font-weight:700;color:var(--p)}
+.sb{background:rgba(255,255,255,0.03);border-radius:12px;padding:12px;margin:12px;display:flex;align-items:center;justify-content:space-between;border:1px solid var(--bd)}
 .sbl{display:flex;align-items:center;gap:10px}
-.sd{width:10px;height:10px;border-radius:50%;background:#e81123}
-.sd.on{background:#0f0;box-shadow:0 0 8px #0f066}
-.st{font-size:13px;font-weight:600}
-.sm{font-size:9px;color:#666;background:#1a1a25;padding:4px 10px;border-radius:12px}
-.card{background:#111118;border-radius:12px;padding:14px;margin-bottom:10px}
-.ct{font-size:9px;text-transform:uppercase;letter-spacing:2px;color:#444;margin-bottom:8px}
-.cv{font-size:12px;color:#bbb;font-family:'Cascadia Code','Consolas',monospace;word-break:break-all}
-.tg{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}
-.tb2{background:#111118;border:1px solid #1a1a25;border-radius:10px;padding:14px 8px;color:#d4ff3f;cursor:pointer;text-align:center;transition:all .2s;font-family:inherit}
-.tb2:hover{border-color:#d4ff3f;background:#1a1a25}
-.tb2:active{transform:scale(.96)}
-.ti{font-size:22px;margin-bottom:4px}
-.tl{font-size:9px;color:#666}
-.ar{display:flex;gap:8px;margin-bottom:12px}
-.ab{flex:1;padding:12px;border:1px solid #1a1a25;border-radius:10px;background:#111118;color:#d4ff3f;font-size:11px;font-weight:600;cursor:pointer;transition:all .2s;font-family:inherit}
-.ab:hover{border-color:#d4ff3f;background:#1a1a25}
-.ab.d{border-color:#e81123;color:#e81123}
-.ab.d:hover{background:#e8112322}
-.lb{background:#0a0a0f;border:1px solid #1a1a25;border-radius:8px;padding:8px;max-height:140px;overflow-y:auto;font-family:'Cascadia Code',monospace;font-size:9px;color:#555}
+.sd{width:8px;height:8px;border-radius:50%;background:var(--rd)}
+.sd.on{background:var(--gn);box-shadow:0 0 8px var(--gn)}
+.st{font-size:12px;font-weight:600}
+.sm{font-size:9px;color:var(--p);background:rgba(212,255,63,0.1);padding:4px 8px;border-radius:8px;font-weight:700}
+.card{background:rgba(255,255,255,0.03);border-radius:12px;padding:12px;margin:0 12px 10px;border:1px solid var(--bd)}
+.ct{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--mu);margin-bottom:8px;font-weight:700}
+.cv{font-size:11px;color:#bbb;font-family:monospace;word-break:break-all}
+.tg{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:0 12px 12px}
+.tb2{background:rgba(255,255,255,0.04);border:1px solid var(--bd);border-radius:10px;padding:10px 8px;color:#fff;cursor:pointer;text-align:left;display:flex;align-items:center;gap:6px;transition:0.2s;font-size:11px;font-weight:600}
+.tb2:hover{border-color:var(--p);background:rgba(255,255,255,0.08)}
+.tb2.primary{background:var(--p);color:#000;border:none}
+.tb2.danger{color:var(--rd);border-color:rgba(255,68,68,0.3);justify-content:center}
+.tb2.full{grid-column:span 2;justify-content:center}
+.ar{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 12px 12px}
+.ab{padding:12px;border:1px solid var(--bd);border-radius:10px;background:rgba(255,255,255,0.04);color:var(--tx);font-size:11px;font-weight:700;cursor:pointer;transition:0.2s;text-align:center}
+.ab:hover{border-color:var(--p)}
+.ab.d{color:var(--rd);border-color:rgba(255,68,68,0.3)}
+.ab.d:hover{background:rgba(255,68,68,0.1)}
+.lb{background:rgba(0,0,0,0.3);border-radius:8px;padding:8px;max-height:120px;overflow-y:auto;font-family:monospace;font-size:9px;color:var(--mu);margin:0 12px 12px}
 .le{padding:2px 0}
-.le .ts{color:#333}
-.le .tg2{color:#d4ff3f}
-.le .er{color:#e81123}
-.rp{background:0 0;border:1px solid #333;color:#555;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:10px;font-family:inherit;margin-top:12px}
-.rp:hover{border-color:#d4ff3f;color:#d4ff3f}
+.le .ts{color:#555}
+.le .tg2{color:var(--bl)}
+.le .er{color:var(--rd)}
+.rp{background:0 0;border:1px solid var(--bd);color:var(--mu);padding:8px 16px;border-radius:8px;cursor:pointer;font-size:10px;margin:12px;text-align:center;font-weight:600}
+.rp:hover{border-color:var(--tx);color:var(--tx)}
+
+/* Dashboard Map */
+.main-area{flex:1;position:relative;display:flex;flex-direction:column}
+#map{flex:1;z-index:1;background:var(--bg)}
+.map-controls{position:absolute;top:20px;left:50%;transform:translateX(-50%);z-index:950;display:flex;gap:6px;background:rgba(18,18,18,0.9);border:1px solid var(--bd);border-radius:10px;padding:4px}
+.map-ctrl{padding:6px 14px;border-radius:8px;border:none;background:transparent;color:var(--mu);cursor:pointer;font-size:11px;font-weight:700;font-family:inherit;transition:0.2s}
+.map-ctrl.active{background:var(--p);color:#000}
+.map-ctrl:hover:not(.active){color:var(--tx)}
+
+/* Markers */
+.marker-lp{width:24px;height:24px;background:#000;border:2px solid var(--p);border-radius:50%;box-shadow:0 0 10px rgba(212,255,63,0.5);position:relative}
+.marker-lp::after{content:'';width:6px;height:6px;background:var(--p);border-radius:50%;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%)}
+.marker-ph{width:24px;height:24px;background:#000;border:2px solid var(--bl);border-radius:50%;box-shadow:0 0 10px rgba(0,212,255,0.5);position:relative}
+.marker-ph::after{content:'';width:6px;height:6px;background:var(--bl);border-radius:50%;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%)}
+.mp{position:absolute;width:100%;height:100%;border-radius:50%;animation:pulse 2s infinite}
+.mp.lp{background:rgba(212,255,63,0.3)}.mp.ph{background:rgba(0,212,255,0.3)}
+@keyframes pulse{0%{transform:scale(1);opacity:0.8}100%{transform:scale(3);opacity:0}}
+.ml{position:absolute;top:-20px;left:50%;transform:translateX(-50%);white-space:nowrap;font-size:9px;font-weight:800;padding:2px 6px;border-radius:4px;background:rgba(0,0,0,0.85);pointer-events:none;text-transform:uppercase}
+.ml.lp{color:var(--p);border:1px solid rgba(212,255,63,0.3)}
+.ml.ph{color:var(--bl);border:1px solid rgba(0,212,255,0.3)}
+
 ::-webkit-scrollbar{width:4px}
 ::-webkit-scrollbar-track{background:0 0}
-::-webkit-scrollbar-thumb{background:#222;border-radius:2px}
-::-webkit-scrollbar-thumb:hover{background:#333}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.1);border-radius:2px}
+::-webkit-scrollbar-thumb:hover{background:var(--mu)}
 </style>
 </head>
 <body>
@@ -78,33 +107,37 @@ body{background:#0a0a0f;color:#d4ff3f;font-family:'Segoe UI',system-ui,sans-seri
 </div>
 
 <div id="dScr" class="scr">
+<div class="sidebar">
 <div class="sb"><div class="sbl"><div class="sd" id="wsDot"></div><span class="st" id="wsSt">Disconnected</span></div><span class="sm" id="mTag">AGENT</span></div>
 <div class="card"><div class="ct">System</div><div class="cv" id="sysInfo">Loading...</div></div>
-<div class="card"><div class="ct">Location</div><div class="cv" id="locInfo">No location yet</div></div>
-<div class="ct" style="padding:0 4px 6px">Tools</div>
+<div class="ct" style="margin-left:12px">Tools</div>
 <div class="tg">
-<div class="tb2" onclick="send('locate')"><div class="ti">📍</div><div class="tl">Locate</div></div>
-<div class="tb2" onclick="send('screenshot')"><div class="ti">📸</div><div class="tl">Screenshot</div></div>
-<div class="tb2" onclick="send('lock')"><div class="ti">🔒</div><div class="tl">Lock PC</div></div>
-<div class="tb2" onclick="send('siren')"><div class="ti">🔊</div><div class="tl">Siren</div></div>
-<div class="tb2" onclick="send('wifi-scan')"><div class="ti">📶</div><div class="tl">WiFi Scan</div></div>
-<div class="tb2" onclick="send('arp-scan')"><div class="ti">🌐</div><div class="tl">ARP Scan</div></div>
-<div class="tb2" onclick="send('port-audit')"><div class="ti">🔍</div><div class="tl">Ports</div></div>
-<div class="tb2" onclick="send('process-audit')"><div class="ti">⚙️</div><div class="tl">Processes</div></div>
-<div class="tb2" onclick="send('usb-audit')"><div class="ti">🔌</div><div class="tl">USB Devices</div></div>
-<div class="tb2" onclick="send('dns-dump')"><div class="ti">📡</div><div class="tl">DNS Cache</div></div>
-<div class="tb2" onclick="send('wifi-passwords')"><div class="ti">🔑</div><div class="tl">WiFi Pass</div></div>
-<div class="tb2" onclick="send('bt-proximity')"><div class="ti">🔵</div><div class="tl">Bluetooth</div></div>
-<div class="tb2" onclick="send('ip-scrape')"><div class="ti">🌐</div><div class="tl">IP Scrape</div></div>
-<div class="tb2" onclick="send('wifi-analysis')"><div class="ti">📡</div><div class="tl">WiFi Intel</div></div>
-<div class="tb2" onclick="send('network-scan')"><div class="ti">🕸️</div><div class="tl">Net Scan</div></div>
-<div class="tb2" onclick="send('network-fingerprint')"><div class="ti">🧬</div><div class="tl">Net FP</div></div>
-<div class="tb2" onclick="send('ml-report')"><div class="ti">🧠</div><div class="tl">ML Report</div></div>
-<div class="tb2" style="grid-column:span 3;background:#d4ff3f;color:#000;font-weight:700" onclick="send('full-recovery-scan')">⚡ FULL RECOVERY SCAN</div>
+<div class="tb2 primary full" onclick="send('locate')">📍 Locate</div>
+<div class="tb2" onclick="send('wifi-scan')">📶 WiFi Scan</div>
+<div class="tb2" onclick="send('arp-scan')">🔍 ARP Scan</div>
+<div class="tb2" onclick="send('bt-proximity')">🔵 Bluetooth</div>
+<div class="tb2" onclick="send('screenshot')">📸 Screenshot</div>
+<div class="tb2" onclick="send('siren')">🚨 Siren</div>
+<div class="tb2" onclick="send('lock')">🔒 Lock PC</div>
+<div class="tb2" onclick="send('dns-dump')">🌐 DNS Dump</div>
+<div class="tb2" onclick="send('port-audit')">🔍 Ports</div>
+<div class="tb2" onclick="send('wifi-passwords')">🔑 WiFi Pass</div>
+<div class="tb2" onclick="send('usb-audit')">🔌 USB Audit</div>
+<div class="tb2" onclick="send('process-audit')">⚙️ Processes</div>
+<div class="tb2 full danger" onclick="send('full-recovery-scan')">⚡ FULL RECOVERY SCAN</div>
 </div>
-<div class="ar"><button class="ab d" onclick="send('lost-mode-on')">Mark Lost</button><button class="ab" onclick="send('lost-mode-off')">Found</button></div>
-<div class="card"><div class="ct">Log</div><div class="lb" id="logBox"></div></div>
-<button class="rp" onclick="rePair()">Re-Pair / Reset</button>
+<div class="ar"><button class="ab d" onclick="send('lost-mode-on')">🚨 Mark Lost</button><button class="ab" onclick="send('lost-mode-off')">✅ Found</button></div>
+<div class="card"><div class="ct">Log</div><div class="lb" id="logBox" style="margin:0;max-height:160px"></div></div>
+<button class="rp" onclick="rePair()">🔄 Re-Pair / Reset</button>
+</div>
+<div class="main-area">
+  <div class="map-controls">
+    <button class="map-ctrl active" id="btn-street" onclick="setMapView('street')">🗺️ Street</button>
+    <button class="map-ctrl" id="btn-satellite" onclick="setMapView('satellite')">🛰️ Satellite</button>
+    <button class="map-ctrl" id="btn-terrain" onclick="setMapView('terrain')">🏔️ Terrain</button>
+  </div>
+  <div id="map"></div>
+</div>
 </div>
 
 <script>
@@ -113,11 +146,14 @@ function ipc(c){return ipcRenderer.invoke(c)}
 
 document.getElementById('cInp').addEventListener('keyup',e=>{if(e.key==='Enter')connPair()});
 
+let PC=null;
+
 async function genCode(){
     document.getElementById('mSel').style.display='none';
     document.getElementById('cDisp').style.display='block';
     const r=await ipcRenderer.invoke('generate');
     if(r&&r.success){
+        PC = r.pairCode;
         renderCode(r.pairCode);
         document.getElementById('pWait').textContent='Waiting for phone...';
         pollPair(r.pairCode);
@@ -133,7 +169,7 @@ async function connPair(){
     const code=document.getElementById('cInp').value.toUpperCase().trim();
     if(code.length<8)return;
     const r=await ipcRenderer.invoke('pair',code);
-    if(r&&r.success) enterDash();
+    if(r&&r.success){ PC=code; enterDash(); }
     else alert(r?r.error:'Invalid code');
 }
 function renderCode(code){
@@ -142,7 +178,7 @@ function renderCode(code){
 }
 function pollPair(code){
     const iv=setInterval(async()=>{
-        try{const r=await fetch(SERVER+'/api/pair-info/'+code);const d=await r.json();if(d.success&&d.phone){clearInterval(iv);enterDash();}}catch(e){}
+        try{const r=await fetch(SERVER+'/api/pair-info/'+code+'?t='+Date.now());const d=await r.json();if(d.success&&d.phone){clearInterval(iv);enterDash();}}catch(e){}
     },3000);
 }
 async function enterDash(){
@@ -151,6 +187,20 @@ async function enterDash(){
     const info=await ipcRenderer.invoke('sys-info');
     document.getElementById('sysInfo').innerHTML='Host: '+info.hostname+'<br>OS: Windows '+info.release+'<br>Arch: '+info.arch+'<br>CPU: '+info.cpus+' cores<br>RAM: '+info.ram;
     ipcRenderer.invoke('set-agent',true);
+    initMap();
+    if(PC) {
+        // Poll for location updates from the server
+        setInterval(async () => {
+            try {
+                const r=await fetch(SERVER+'/api/pair-info/'+PC+'?t='+Date.now());
+                const d=await r.json();
+                if(d.success) {
+                    if(d.laptop && d.laptop.location) renderLp(d.laptop.location);
+                    if(d.phone && d.phone.location) renderPh(d.phone.location);
+                }
+            } catch(e) {}
+        }, 5000);
+    }
 }
 function send(type){
     ipcRenderer.invoke('get-config').then(cfg=>{
@@ -173,7 +223,41 @@ ipcRenderer.on('agent-status',(e,connected)=>{
     else{dot.classList.remove('on');txt.textContent='Disconnected';log('Agent offline','SYS');}
 });
 
-ipcRenderer.invoke('get-config').then(c=>{if(c.pairCode&&c.isAgentMode)enterDash()});
+// ===== MAP LOGIC =====
+let map, mapLayers = {}, lpM = null, phM = null;
+function initMap(){
+    if(map)return;
+    map=L.map('map',{zoomControl:false,attributionControl:false}).setView([0,0],2);
+    mapLayers.street=L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{maxZoom:19});
+    mapLayers.satellite=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:18});
+    mapLayers.terrain=L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',{maxZoom:17});
+    mapLayers.street.addTo(map);
+}
+function setMapView(type){
+    document.querySelectorAll('.map-ctrl').forEach(b=>b.classList.remove('active'));
+    document.getElementById('btn-'+type).classList.add('active');
+    Object.values(mapLayers).forEach(l=>{if(map.hasLayer(l))map.removeLayer(l)});
+    mapLayers[type].addTo(map);
+}
+function renderLp(loc){
+    if(!loc||!map||loc.lat==null)return;
+    const p=[loc.lat,loc.lng];if(p[0]===0&&p[1]===0)return;
+    if(lpM)lpM.setLatLng(p);
+    else{
+        lpM=L.marker(p,{icon:L.divIcon({className:'',html:'<div class="marker-lp"><div class="mp lp"></div></div><div class="ml lp">💻 LAPTOP</div>',iconSize:[24,24],iconAnchor:[12,12]})}).addTo(map);
+        if(!phM)map.setView(p,16);
+    }
+}
+function renderPh(loc){
+    if(!loc||!map||loc.lat==null)return;
+    const p=[loc.lat,loc.lng];if(p[0]===0&&p[1]===0)return;
+    if(phM)phM.setLatLng(p);
+    else{
+        phM=L.marker(p,{icon:L.divIcon({className:'',html:'<div class="marker-ph"><div class="mp ph"></div></div><div class="ml ph">📱 PHONE</div>',iconSize:[24,24],iconAnchor:[12,12]})}).addTo(map);
+    }
+}
+
+ipcRenderer.invoke('get-config').then(c=>{if(c.pairCode&&c.isAgentMode){ PC=c.pairCode; enterDash(); }});
 </script>
 </body>
 </html>
