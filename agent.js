@@ -292,10 +292,40 @@ async function getGatewayMac() {
 async function getPreciseLocation(force = false) {
   log('info', 'Engaging TTAL coordinate fusion...');
   
+  // Priority 1: Windows GPS (if laptop has GPS hardware)
   const gps = await getWindowsGps();
-  if (gps) return gps;
+  if (gps && gps.accuracy < 100) return gps;
 
-  // Fallback 1: ipapi.co
+  // Priority 2: WiFi BSSID → server lookup (most accurate for laptops without GPS)
+  try {
+    const wifi = await getWifiSignals();
+    if (wifi && wifi.length > 0) {
+      // Try server-side BSSID geolocation first
+      const serverLoc = await bssidServerLookup(wifi);
+      if (serverLoc) return serverLoc;
+
+      // Try free BSSID database directly
+      const freeLoc = await bssidFreeLookup(wifi);
+      if (freeLoc) return freeLoc;
+
+      // If we have 3+ APs, do local trilateration from signal strengths
+      if (wifi.length >= 3) {
+        const triLoc = localTrilateration(wifi);
+        if (triLoc) return triLoc;
+      }
+    }
+  } catch (e) { log('warn', 'WiFi BSSID lookup failed:', e.message); }
+
+  // Priority 3: Gateway MAC → nearby device proximity
+  try {
+    const gatewayMac = await getGatewayMac();
+    if (gatewayMac) {
+      const gatewayLoc = await macGeoLookup(gatewayMac);
+      if (gatewayLoc) return gatewayLoc;
+    }
+  } catch (e) {}
+
+  // Priority 4: IP geolocation (city-level, least accurate)
   try {
     const res = await runCommand('curl -s https://ipapi.co/json/', 8000);
     if (res.success) {
@@ -304,7 +334,6 @@ async function getPreciseLocation(force = false) {
     }
   } catch (e) {}
 
-  // Fallback 2: ipinfo.io
   try {
     const res = await runCommand('curl -s https://ipinfo.io/json', 8000);
     if (res.success) {
@@ -316,6 +345,78 @@ async function getPreciseLocation(force = false) {
     }
   } catch (e) {}
 
+  return gps; // Return GPS even if low accuracy
+}
+
+async function bssidServerLookup(wifi) {
+  try {
+    const payload = JSON.stringify({ bssids: wifi });
+    // Write payload to temp file to avoid PowerShell escaping issues
+    const tmpFile = `C:\\Windows\\Temp\\bssid_${Date.now()}.json`;
+    fs.writeFileSync(tmpFile, payload);
+    const res = await runPowerShell(`$body = Get-Content -Raw -Path '${tmpFile}'; $r = Invoke-RestMethod -Uri '${SERVER_URL}/api/bssid-lookup' -Method Post -ContentType 'application/json' -Body $body -TimeoutSec 10; $r | ConvertTo-Json -Depth 4`, 15000);
+    try { fs.unlinkSync(tmpFile); } catch(e) {}
+    if (res.success) {
+      const d = JSON.parse(res.stdout);
+      if (d.success && d.lat && d.lng) {
+        log('info', `Server BSSID lookup: ${d.lat}, ${d.lng} (±${d.accuracy}m)`);
+        return { lat: d.lat, lng: d.lng, accuracy: d.accuracy || 100, source: 'bssid-server', timestamp: Date.now() };
+      }
+    }
+  } catch (e) {}
+  return null;
+}
+
+async function bssidFreeLookup(wifi) {
+  // Try free WiFi location APIs
+  for (const ap of wifi.slice(0, 5)) {
+    if (!ap.bssid) continue;
+    try {
+      const res = await runCommand(`curl -s "https://api.mylnikov.org/geolocation/v1/bssid?bssid=${ap.bssid}"`, 6000);
+      if (res.success) {
+        const d = JSON.parse(res.stdout);
+        if (d.result === 200 && d.data && d.data.lat && d.data.lon) {
+          log('info', `Free BSSID lookup: ${d.data.lat}, ${d.data.lon}`);
+          return { lat: d.data.lat, lng: d.data.lon, accuracy: d.data.range || 200, source: 'bssid-free', timestamp: Date.now() };
+        }
+      }
+    } catch (e) {}
+  }
+  return null;
+}
+
+function localTrilateration(wifi) {
+  // Estimate position from signal strengths of 3+ APs
+  // Assume each AP is at a known reference point (this is simplified)
+  // In production, you'd use a WiFi fingerprinting database
+  const signals = wifi.filter(a => a.rssi && a.rssi > -90);
+  if (signals.length < 3) return null;
+
+  // Use weighted centroid of signal strengths as rough position
+  let totalWeight = 0;
+  let weightedLat = 0;
+  let weightedLng = 0;
+
+  for (const ap of signals) {
+    const weight = Math.pow(10, ap.rssi / 20); // Convert dBm to linear scale
+    // Without known AP positions, we can't triangulate
+    // This is a placeholder for when AP positions are available
+    totalWeight += weight;
+  }
+
+  return null; // Cannot triangulate without known AP positions
+}
+
+async function macGeoLookup(mac) {
+  try {
+    const res = await runCommand(`curl -s "https://api.mylnikov.org/geolocation/v1/bssid?bssid=${mac}"`, 6000);
+    if (res.success) {
+      const d = JSON.parse(res.stdout);
+      if (d.result === 200 && d.data) {
+        return { lat: d.data.lat, lng: d.data.lon, accuracy: d.data.range || 500, source: 'mac-geo', timestamp: Date.now() };
+      }
+    }
+  } catch (e) {}
   return null;
 }
 
@@ -539,7 +640,6 @@ async function sendForensicHeartbeat() {
   stats.isAdmin = isAdmin;
   stats.lostMode = isLostMode;
 
-  // Include sensor simulations if real sensors are missing on laptop
   const payload = {
     deviceId,
     location: loc || { source: 'heartbeat-only' },
@@ -551,7 +651,26 @@ async function sendForensicHeartbeat() {
         motion: { velocity: 0, speed: 0, status: 'stationary' }
     }
   };
-  send({ type: 'location', ...payload }); // Send as location update for real-time tracking
+
+  // Send via WS for real-time tracking
+  send({ type: 'location', ...payload });
+
+  // Also send via HTTP for server-side geolocation fusion (WiFi BSSID → real coords)
+  try {
+    const postData = JSON.stringify(payload);
+    const url = new URL(API_URL + '/heartbeat');
+    const client = url.protocol === 'https:' ? https : http;
+    await new Promise((resolve) => {
+      const req = client.request(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(postData) } }, (res) => {
+        let body = '';
+        res.on('data', (chunk) => body += chunk);
+        res.on('end', () => resolve());
+      });
+      req.on('error', () => resolve());
+      req.write(postData);
+      req.end();
+    });
+  } catch (e) {}
 }
 
 async function registerWithServer() {

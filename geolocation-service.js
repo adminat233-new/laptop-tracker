@@ -17,6 +17,10 @@ class GeolocationService {
             if (result) return result;
         }
 
+        // Free BSSID lookup via mylnikov API
+        const freeResult = await this.callFreeBssidApi(wifiSignals);
+        if (freeResult) return freeResult;
+
         return this.callIpApi();
     }
 
@@ -93,6 +97,37 @@ class GeolocationService {
                 });
             }).on('error', () => resolve(null));
         });
+    }
+
+    async callFreeBssidApi(wifiSignals) {
+        for (const ap of (wifiSignals || []).slice(0, 5)) {
+            if (!ap.bssid) continue;
+            try {
+                const result = await new Promise((resolve) => {
+                    const req = https.get(`https://api.mylnikov.org/geolocation/v1/bssid?bssid=${ap.bssid}`, { timeout: 5000 }, (res) => {
+                        let data = '';
+                        res.on('data', (d) => data += d);
+                        res.on('end', () => {
+                            try {
+                                const json = JSON.parse(data);
+                                if (json.result === 200 && json.data && json.data.lat && json.data.lon) {
+                                    resolve({
+                                        lat: json.data.lat,
+                                        lng: json.data.lon,
+                                        accuracy: json.data.range || 200,
+                                        source: 'bssid-free-db'
+                                    });
+                                } else resolve(null);
+                            } catch (e) { resolve(null); }
+                        });
+                    });
+                    req.on('error', () => resolve(null));
+                    req.on('timeout', () => { req.destroy(); resolve(null); });
+                });
+                if (result) return result;
+            } catch (e) {}
+        }
+        return null;
     }
 }
 
