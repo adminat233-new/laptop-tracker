@@ -452,12 +452,12 @@
     <div class="pair-container">
       <div class="hero-icon">📦</div>
       <h2>Welcome to Haulix</h2>
-      <p>Fleet Intelligence & Real-time Recovery</p>
+      <p>Secure Fleet Intelligence & Recovery</p>
 
       <div id="role-selection" class="role-selection">
         <div class="role-btn" onclick="becomeLaptop()">
           <span class="icon">💻</span>
-          <span class="label">Laptop Node</span>
+          <span class="label">Target Laptop</span>
         </div>
         <div class="role-btn" onclick="becomePhone()">
           <span class="icon">📱</span>
@@ -522,7 +522,7 @@
           <div class="search-container">
             <div class="search-box">
               <span>🔍</span>
-              <input type="text" placeholder="Search vehicle ID or driver...">
+              <input type="text" placeholder="Search device ID or status...">
             </div>
           </div>
 
@@ -659,6 +659,7 @@
     let bleDevices = [];
     let liveEffectsEnabled = false;
     let liveEffectLayers = [];
+    let dashboardShown = false;
 
     // --- UI Helpers ---
     function showToast(msg) {
@@ -670,7 +671,10 @@
     function showScreen(id) {
       document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
       document.getElementById(id).classList.add('active');
-      if (id === 'dashboard') setTimeout(initMap, 200);
+      if (id === 'dashboard') {
+          setTimeout(initMap, 200);
+          dashboardShown = true;
+      }
     }
 
     function addForensicLog(msg, tool = 'sys', level = 'info') {
@@ -703,7 +707,6 @@
       ws.onopen = () => {
           ws.send(JSON.stringify({ type: 'register', deviceId: id }));
           if (type === 'phone') {
-              // Phone should start sending its location immediately to server
               navigator.geolocation.watchPosition((pos) => {
                   const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy, source: 'phone-gps' };
                   ws.send(JSON.stringify({ type: 'location', location: loc }));
@@ -712,7 +715,10 @@
       };
       ws.onmessage = (e) => {
         const msg = JSON.parse(e.data);
-        if (msg.type === 'connected') { showScreen('dashboard'); addForensicLog('Uplink synchronized', 'SYS'); }
+        if (msg.type === 'connected') {
+            showScreen('dashboard');
+            addForensicLog('Uplink synchronized', 'SYS');
+        }
         if (msg.type === 'location') {
             if (msg.fromDeviceId?.startsWith('LP-')) updateDeviceLocation(msg.location);
             else if (msg.fromDeviceId?.startsWith('PH-')) updatePhoneLocation(msg.location);
@@ -741,32 +747,47 @@
     function initMap() {
       if (map) return;
       map = L.map('map', { center: [0, 0], zoom: 2, zoomControl: false, attributionControl: false });
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 20 }).addTo(map);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
       document.getElementById('system-date').textContent = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) + ' • Live';
     }
 
     async function becomeLaptop() {
       isLaptop = true;
+      localStorage.setItem('isLaptop', 'true');
       document.getElementById('role-selection').classList.add('hidden');
       document.getElementById('laptop-section').classList.remove('hidden');
       const data = await api('/api/generate', { systemInfo: { platform: navigator.platform } });
       if (data.success) {
         laptopDeviceId = data.deviceId;
+        localStorage.setItem('laptopDeviceId', laptopDeviceId);
         const container = document.getElementById('code-display');
         container.innerHTML = '';
         data.pairCode.split('').forEach(char => {
           const div = document.createElement('div'); div.className = 'code-box'; div.textContent = char; container.appendChild(div);
         });
         connectWebSocket(laptopDeviceId, 'laptop');
-        setInterval(() => apiGet('/api/paired/' + laptopDeviceId).then(d => { if (d.paired) showScreen('dashboard'); }), 3000);
+
+        window._pairDetect = setInterval(() => {
+            if (!dashboardShown) {
+                apiGet('/api/paired/' + laptopDeviceId).then(d => {
+                    if (d.paired) {
+                        phoneDeviceId = d.pairedDeviceIds[0];
+                        localStorage.setItem('phoneDeviceId', phoneDeviceId);
+                        showScreen('dashboard');
+                    }
+                });
+            }
+        }, 3000);
       }
     }
 
     function becomePhone() {
       isLaptop = false;
+      localStorage.setItem('isLaptop', 'false');
       document.getElementById('role-selection').classList.add('hidden');
       document.getElementById('phone-section').classList.remove('hidden');
       const container = document.getElementById('code-inputs');
+      container.innerHTML = '';
       for (let i = 0; i < CODE_LENGTH; i++) {
         const input = document.createElement('input'); input.className = 'code-input'; input.maxLength = 1;
         input.addEventListener('input', (e) => {
@@ -782,37 +803,66 @@
       const data = await api('/api/verify', { pairCode: code });
       if (data.success) {
         phoneDeviceId = data.phoneDeviceId; laptopDeviceId = data.laptopDeviceId;
+        localStorage.setItem('phoneDeviceId', phoneDeviceId);
+        localStorage.setItem('laptopDeviceId', laptopDeviceId);
         showScreen('dashboard');
         connectWebSocket(phoneDeviceId, 'phone');
-        setInterval(() => apiGet('/api/status/' + laptopDeviceId).then(d => {
-            if (d.deviceLocation) updateDeviceLocation(d.deviceLocation);
-            const badge = document.getElementById('status-badge');
-            badge.textContent = d.isOnline ? 'Active' : 'Offline';
-            badge.className = 'status-badge ' + (d.isOnline ? 'active' : 'offline');
-
-            if (d.systemInfo) {
-                const adminEl = document.getElementById('admin-status');
-                if (d.systemInfo.isAdmin) {
-                    adminEl.textContent = '🛡️ ADMIN PRIVILEGES ACTIVE';
-                    adminEl.style.color = 'var(--accent-green)';
-                } else {
-                    adminEl.textContent = '⚠️ LIMITED PRIVILEGES';
-                    adminEl.style.color = '#ffaa00';
-                }
-
-                if (d.systemInfo.lostMode) {
-                    document.getElementById('lost-btn').classList.add('hidden');
-                    document.getElementById('found-btn').classList.remove('hidden');
-                    document.getElementById('primary-device-card').style.borderColor = '#ff4444';
-                } else {
-                    document.getElementById('lost-btn').classList.remove('hidden');
-                    document.getElementById('found-btn').classList.add('hidden');
-                    document.getElementById('primary-device-card').style.borderColor = 'var(--border)';
-                }
-            }
-        }), 5000);
+        startStatusPolling();
+      } else {
+        document.getElementById('pair-error').textContent = data.error || 'Connection failed';
       }
     }
+
+    function startStatusPolling() {
+        if (window._statusPoll) clearInterval(window._statusPoll);
+        window._statusPoll = setInterval(() => {
+            if (!laptopDeviceId) return;
+            apiGet('/api/status/' + laptopDeviceId).then(d => {
+                if (d.deviceLocation) updateDeviceLocation(d.deviceLocation);
+                const badge = document.getElementById('status-badge');
+                badge.textContent = d.isOnline ? 'Active' : 'Offline';
+                badge.className = 'status-badge ' + (d.isOnline ? 'active' : 'offline');
+
+                if (d.systemInfo) {
+                    const adminEl = document.getElementById('admin-status');
+                    if (d.systemInfo.isAdmin) {
+                        adminEl.textContent = '🛡️ ADMIN PRIVILEGES ACTIVE';
+                        adminEl.style.color = 'var(--accent-green)';
+                    } else {
+                        adminEl.textContent = '⚠️ LIMITED PRIVILEGES';
+                        adminEl.style.color = '#ffaa00';
+                    }
+
+                    if (d.systemInfo.lostMode) {
+                        document.getElementById('lost-btn').classList.add('hidden');
+                        document.getElementById('found-btn').classList.remove('hidden');
+                        document.getElementById('primary-device-card').style.borderColor = '#ff4444';
+                    } else {
+                        document.getElementById('lost-btn').classList.remove('hidden');
+                        document.getElementById('found-btn').classList.add('hidden');
+                        document.getElementById('primary-device-card').style.borderColor = 'var(--border)';
+                    }
+                    if (d.systemInfo.platform) document.getElementById('device-platform').textContent = d.systemInfo.platform;
+                }
+            });
+        }, 5000);
+    }
+
+    window.addEventListener('load', () => {
+        const savedLaptopId = localStorage.getItem('laptopDeviceId');
+        const savedPhoneId = localStorage.getItem('phoneDeviceId');
+        const savedIsLaptop = localStorage.getItem('isLaptop');
+
+        if (savedLaptopId && savedPhoneId) {
+            laptopDeviceId = savedLaptopId;
+            phoneDeviceId = savedPhoneId;
+            isLaptop = savedIsLaptop === 'true';
+
+            showScreen('dashboard');
+            connectWebSocket(isLaptop ? laptopDeviceId : phoneDeviceId, isLaptop ? 'laptop' : 'phone');
+            if (!isLaptop) startStatusPolling();
+        }
+    });
 
     async function toggleLostMode(active) {
         if (!laptopDeviceId) return;
@@ -848,13 +898,15 @@
 
     function sendCommand(type) {
       const targetId = isLaptop ? phoneDeviceId : laptopDeviceId;
-      if (!targetId) return showToast('No paired device');
+      if (!targetId) {
+          showToast('Pairing required to send command');
+          return;
+      }
       api('/api/command', { deviceId: targetId, commandType: type });
       showToast('Command sent: ' + type);
       addForensicLog('Command issued: ' + type, 'CMD');
     }
 
-    // --- Advanced Tools ---
     function toggleLiveEffects() {
       liveEffectsEnabled = !liveEffectsEnabled;
       if (!liveEffectsEnabled) {
