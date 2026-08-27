@@ -13,6 +13,7 @@ const server = http.createServer(app);
 const wss = new Server({ server });
 const sockets = new Map();
 const lostDevices = new Set();
+const agentSockets = new Set(); // Track agent connections
 
 app.use(express.json());
 app.use((req, res, next) => {
@@ -125,8 +126,8 @@ app.get('/api/pair-info/:pairCode', async (req, res) => {
     res.json(sanitize({
       success: true,
       pairCode: pc,
-      laptop: laptop ? { deviceId: laptop.deviceId, systemInfo: laptop.systemInfo ? JSON.parse(laptop.systemInfo) : null, online: laptopOnline, lastSeen: laptop.lastSeen, isLost: lostDevices.has(laptop.deviceId) } : null,
-      phone: phone ? { deviceId: phone.deviceId, online: phoneOnline, lastSeen: phone.lastSeen, isLost: lostDevices.has(phone.deviceId) } : null,
+      laptop: laptop ? { deviceId: laptop.deviceId, systemInfo: laptop.systemInfo ? JSON.parse(laptop.systemInfo) : null, online: laptopOnline, lastSeen: laptop.lastSeen, isLost: lostDevices.has(laptop.deviceId), agentConnected: agentSockets.has(laptop.deviceId) } : null,
+      phone: phone ? { deviceId: phone.deviceId, online: phoneOnline, lastSeen: phone.lastSeen, isLost: lostDevices.has(phone.deviceId), agentConnected: agentSockets.has(phone.deviceId) } : null,
       laptopLocation: laptopLocation && laptopLocation.lat != null ? laptopLocation : null,
       phoneLocation: phoneLocation && phoneLocation.lat != null ? phoneLocation : null
     }));
@@ -254,8 +255,9 @@ wss.on('connection', (ws) => {
       if (msg.type === 'register') {
         myId = msg.deviceId;
         sockets.set(myId, ws);
+        if (msg.deviceType === 'agent') agentSockets.add(myId);
         try { await prisma.device.update({ where: { deviceId: myId }, data: { lastSeen: now() } }); } catch(e) {}
-        console.log(`WS Registered: ${myId}`);
+        console.log(`WS Registered: ${myId} (${msg.deviceType || 'browser'})`);
         return;
       }
       if (myId) {
@@ -267,7 +269,7 @@ wss.on('connection', (ws) => {
       }
     } catch(e) { console.error('WS Error:', e); }
   });
-  ws.on('close', () => { if (myId && sockets.get(myId) === ws) sockets.delete(myId); });
+  ws.on('close', () => { if (myId && sockets.get(myId) === ws) { sockets.delete(myId); agentSockets.delete(myId); } });
 });
 
 // ============= LOST MODE TIMER =============

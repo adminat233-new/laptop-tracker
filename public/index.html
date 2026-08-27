@@ -203,6 +203,7 @@
         </div>
         <div class="panel" id="intel-panel">
           <div class="panel-header"><span class="panel-title">Intel</span><button class="panel-close" onclick="togglePanel('intel')">✕</button></div>
+          <div style="padding:8px 12px;font-size:11px;color:var(--mu);border-bottom:1px solid var(--bd);"><span id="agent-status-text">⏳ Checking agent...</span></div>
           <div class="panel-body"><pre id="intel-output">Waiting for data...</pre></div>
         </div>
       </div>
@@ -319,20 +320,38 @@ function connectWS(id){
     }
     if(msg.type==='commandResult')handleResult(msg);
     if(msg.type==='command'){
-      if(msg.commandType==='lost-mode-on'){
-        log('🚨 LOST MODE ACTIVATED — this device is marked stolen','SYS');
-        toast('🚨 LOST MODE — Device has been marked stolen');
-        browserLock();
-        browserSiren();
-      }
-      if(msg.commandType==='lost-mode-off'){
-        log('✅ Lost mode deactivated — device recovered','SYS');
-        toast('✅ Device Recovered');
-        const el=document.getElementById('browser-lock');if(el)el.remove();
-        stopSiren();
-      }
+      handleIncomingCommand(msg);
     }
   };
+}
+
+// ===== INCOMING COMMAND HANDLER =====
+function handleIncomingCommand(msg){
+  const {commandType,commandId}=msg;
+  log('📥 Command received: '+commandType,'CMD');
+  switch(commandType){
+    case 'lock': browserLock(); break;
+    case 'siren': browserSiren(); break;
+    case 'locate': browserLocate(); break;
+    case 'screenshot': browserScreenshot(); break;
+    case 'lost-mode-on':
+      log('🚨 LOST MODE — device is stolen','SYS');
+      toast('🚨 LOST MODE ACTIVATED');
+      browserLock();browserSiren();
+      break;
+    case 'lost-mode-off':
+      log('✅ Device recovered','SYS');
+      toast('✅ Device Recovered');
+      const el=document.getElementById('browser-lock');if(el)el.remove();
+      stopSiren();
+      break;
+    default:
+      // Commands that need the agent — send result back saying agent required
+      log('⏳ '+commandType+' requires agent — forwarding...','CMD');
+      // Try to forward to agent via server
+      apiP('/api/command',{deviceId:MY,commandType,commandId}).catch(()=>{});
+      break;
+  }
 }
 
 // ===== HEARTBEAT =====
@@ -412,21 +431,30 @@ async function fetchIPCountry(){
 
 // ===== COMMANDS =====
 let cmdTimer=null,cmdWaiting=null;
+
+// Commands that CAN run in the browser (no agent needed)
+const BROWSER_CMDS=['lock','siren','locate'];
+
 async function cmd(type){
   if(!PC)return toast('Not paired');
   // Browser-side commands (work without agent)
-  if(type==='lock'){browserLock();return}
-  if(type==='siren'){browserSiren();return}
+  if(type==='lock'){browserLock();return sendCmdToAgent(type)}
+  if(type==='siren'){browserSiren();return sendCmdToAgent(type)}
+  if(type==='locate'){browserLocate();return}
+  if(type==='screenshot'){browserScreenshot();return}
+  // All other commands need the agent
+  sendCmdToAgent(type);
+}
+
+async function sendCmdToAgent(type){
   try{
     const r=await apiP('/api/command',{deviceId:PC,commandType:type});
     if(r.success){
       toast('Sent: '+type);log('CMD → '+type,'CMD');
-      // Wait for result with timeout
       cmdWaiting=type;
       if(cmdTimer)clearTimeout(cmdTimer);
-      cmdTimer=setTimeout(()=>{if(cmdWaiting===type){cmdWaiting=null;log('⏰ Timeout: '+type+' — no agent response','ERR');showIntel('⏳ '+type+': No response. Is the agent running on the laptop?')}},15000);
-    }
-    else toast('Failed: '+(r.error||'Unknown'));
+      cmdTimer=setTimeout(()=>{if(cmdWaiting===type){cmdWaiting=null;log('⏰ '+type+': No agent response','ERR');showIntel('⏳ '+type+': No response from agent.\n\nThis command requires the native agent.\nStart it on the laptop:\n\n  node agent.js\n\nBrowser-only commands: lock, siren, screenshot, locate')}},10000);
+    }else toast('Failed: '+(r.error||'Unknown'));
   }catch(e){toast('Network error')}
 }
 
@@ -435,15 +463,18 @@ function handleResult(msg){
     cmdWaiting=null;if(cmdTimer)clearTimeout(cmdTimer);
     const r=typeof msg.result==='string'?JSON.parse(msg.result):msg.result;
     const cmd=msg.commandType||'';
-    log('✅ '+cmd+' completed','RES');
+    log('✅ '+cmd+' done','RES');
     if(r.bssids){
-      const lines=r.bssids.map(n=>`• ${n.ssid||'Hidden'}: ${n.rssi||'?'}dBm, Ch${n.channel||'?'}${n.bssids?' MAC:'+n.bssid:''}`);
+      const lines=r.bssids.map(n=>`• ${n.ssid||'Hidden'}: ${n.rssi||'?'}dBm, Ch${n.channel||'?'}${n.bssid?' MAC:'+n.bssid:''}`);
       showIntel('📡 WiFi Scan ('+r.bssids.length+' networks):\n'+lines.join('\n'));
     }
     else if(r.arp) showIntel('🔍 ARP Table:\n'+r.arp);
-    else if(r.devices) showIntel('🔵 Bluetooth ('+r.devices.length+' devices):\n'+r.devices.map(d=>`• ${d.address||d.name||'?'} ${d.rssi?d.rssi+'dBm':''}`).join('\n'));
-    else if(r.processes) showIntel('⚙️ Process Audit ('+r.processes.length+'):\n'+JSON.stringify(r.processes,null,1).substring(0,4000));
-    else if(r.image){const m=document.getElementById('modal');const img=document.createElement('img');img.src='data:image/png;base64,'+r.image;img.style.cssText='max-width:100%;max-height:80vh;border-radius:16px';m.appendChild(img);m.style.display='flex'}
+    else if(r.routes) showIntel('🔍 Routes:\n'+r.routes);
+    else if(r.devices&&Array.isArray(r.devices)) showIntel('🔵 Bluetooth ('+r.devices.length+'):\n'+r.devices.join('\n'));
+    else if(r.devices&&typeof r.devices==='string') showIntel('🔵 Bluetooth:\n'+r.devices);
+    else if(r.processes) showIntel('⚙️ Processes:\n'+r.processes);
+    else if(r.system) showIntel('💻 System:\n'+r.system);
+    else if((r.image||r.data&&r.data.image))showScreenshot(r.image||r.data.image);
     else if(r.output) showIntel('📋 '+cmd+':\n'+r.output);
     else if(r.message) showIntel('💬 '+r.message);
     else if(r.data) showIntel('📋 '+cmd+':\n'+(typeof r.data==='string'?r.data:JSON.stringify(r.data,null,1)));
@@ -452,6 +483,62 @@ function handleResult(msg){
 }
 
 function showIntel(t){document.getElementById('intel-output').textContent=t}
+
+// ===== BROWSER SCREENSHOT =====
+async function browserScreenshot(){
+  try{
+    log('📸 Requesting screen share...','CAM');
+    toast('Select a window or screen to capture');
+    const stream=await navigator.mediaDevices.getDisplayMedia({video:{cursor:'always'},audio:false});
+    const track=stream.getVideoTracks()[0];
+    const imageCapture=new ImageCapture(track);
+    const bitmap=await imageCapture.grabFrame();
+    track.stop();
+    const canvas=document.createElement('canvas');
+    canvas.width=bitmap.width;canvas.height=bitmap.height;
+    const ctx=canvas.getContext('2d');ctx.drawImage(bitmap,0,0);
+    const dataUrl=canvas.toDataURL('image/png');
+    const base64=dataUrl.split(',')[1];
+    showScreenshot(base64);
+    log('📸 Screenshot captured','CAM');
+  }catch(e){
+    if(e.name==='NotAllowedError')log('📸 Screenshot cancelled by user','CAM');
+    else log('📸 Screenshot error: '+e.message,'ERR');
+  }
+}
+
+function showScreenshot(base64){
+  const m=document.getElementById('modal');
+  m.innerHTML='<div class="close" onclick=\\'this.parentElement.style.display="none"\\'>✕</div>';
+  const img=document.createElement('img');
+  img.src='data:image/png;base64,'+base64;
+  img.style.cssText='max-width:100%;max-height:80vh;border-radius:16px';
+  m.appendChild(img);m.style.display='flex';
+}
+
+// ===== BROWSER LOCATE =====
+async function browserLocate(){
+  try{
+    log('📍 Getting location...','GPS');
+    const pos=await new Promise((ok,no)=>navigator.geolocation.getCurrentPosition(ok,no,{enableHighAccuracy:true,timeout:10000}));
+    const loc={lat:pos.coords.latitude,lng:pos.coords.longitude,accuracy:pos.coords.accuracy,source:'browser-gps'};
+    if(ROLE==='phone')renderPh(loc);else renderLp(loc);
+    apiP('/api/location/phone',{deviceId:MY,location:loc}).catch(()=>{});
+    showIntel('📍 Location:\nLat: '+loc.lat.toFixed(6)+'\nLng: '+loc.lng.toFixed(6)+'\nAccuracy: ±'+Math.round(loc.accuracy)+'m\nSource: '+loc.source);
+    log('📍 Location acquired','GPS');
+  }catch(e){
+    log('📍 GPS denied — trying IP geolocation...','GPS');
+    try{
+      const r=await fetch('https://ipapi.co/json/');
+      const d=await r.json();
+      if(d.latitude){
+        const loc={lat:d.latitude,lng:d.longitude,accuracy:5000,source:'ip-geo'};
+        if(ROLE==='phone')renderPh(loc);else renderLp(loc);
+        showIntel('📍 IP Location:\nLat: '+loc.lat.toFixed(6)+'\nLng: '+loc.lng.toFixed(6)+'\nCity: '+(d.city||'?')+'\nCountry: '+(d.country_name||'?'));
+      }
+    }catch(e2){showIntel('❌ Location unavailable')}
+  }
+}
 
 // ===== BROWSER LOCK =====
 function browserLock(){
@@ -559,6 +646,8 @@ function startPoll(){
       const st=document.getElementById('main-status');
       const lpOn=d.laptop&&d.laptop.online;
       const phOn=d.phone&&d.phone.online;
+      const lpAgent=d.laptop&&d.laptop.agentConnected;
+      const phAgent=d.phone&&d.phone.agentConnected;
       dot.className=lpOn?'status-dot on':'status-dot off';
       let statusText=lpOn?(phOn?'Both Online':'Laptop Online'):(phOn?'Phone Online':'Offline');
       if(d.laptop&&d.laptop.isLost)statusText+=' — 🚨 LAPTOP LOST';
@@ -566,7 +655,11 @@ function startPoll(){
       st.textContent=statusText;
       setBadge('lp',lpOn);
       setBadge('ph',phOn);
-      // Show found button if any device is lost
+      // Show agent status in intel
+      if(ROLE==='laptop'){
+        const agentEl=document.getElementById('agent-status-text');
+        if(agentEl)agentEl.textContent=lpAgent?'✅ Agent Connected':'⚠️ Agent Offline — run: node agent.js';
+      }
       const anyLost=(d.laptop&&d.laptop.isLost)||(d.phone&&d.phone.isLost);
       document.getElementById('found-btn').classList.toggle('hidden',!anyLost);
       if(d.laptop&&d.laptop.systemInfo){
