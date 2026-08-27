@@ -401,10 +401,10 @@ ipcRenderer.on('agent-status',(e,connected)=>{
 let map, mapLayers = {}, lpM = null, phM = null;
 function initMap(){
     if(map)return;
-    map=L.map('map',{zoomControl:false,attributionControl:false}).setView([0,0],2);
-    mapLayers.street=L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{maxZoom:19});
+    map=L.map('map',{zoomControl:false,attributionControl:false}).setView([20,0],2);
+    mapLayers.street=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,subdomains:'abc'});
     mapLayers.satellite=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:18});
-    mapLayers.terrain=L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',{maxZoom:17});
+    mapLayers.terrain=L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',{maxZoom:17,subdomains:'abc'});
     mapLayers.street.addTo(map);
 }
 function setMapView(type){

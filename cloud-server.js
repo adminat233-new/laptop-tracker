@@ -165,11 +165,22 @@ app.post('/api/heartbeat', async (req, res) => {
         });
       } catch(e) { console.log('Heartbeat location upsert error:', e.message.substring(0,80)); }
 
-      // Broadcast location to paired device
+      // Broadcast location to paired device AND all browsers watching this pair
       const dev = await prisma.device.findUnique({ where: { deviceId } });
       if (dev) {
-        const pair = await prisma.device.findFirst({ where: { pairCode: dev.pairCode, deviceId: { not: deviceId } } });
-        if (pair) broadcast(pair.deviceId, { type: 'location', fromDeviceId: deviceId, location });
+        const siblings = await prisma.device.findMany({ where: { pairCode: dev.pairCode } });
+        for (const sib of siblings) {
+          if (sib.deviceId !== deviceId) {
+            broadcast(sib.deviceId, { type: 'location', fromDeviceId: deviceId, location });
+          }
+        }
+        // Also broadcast to all browser connections
+        const locMsg = JSON.stringify({ type: 'location', fromDeviceId: deviceId, location });
+        for (const [bId, bWs] of browserSockets) {
+          if (bId !== deviceId) {
+            try { bWs.send(locMsg); } catch(e) {}
+          }
+        }
       }
     }
 
@@ -195,8 +206,18 @@ app.post('/api/location/phone', async (req, res) => {
       } catch(e) { console.log('Phone location upsert error:', e.message.substring(0,80)); }
       const dev = await prisma.device.findUnique({ where: { deviceId } });
       if (dev) {
-        const pair = await prisma.device.findFirst({ where: { pairCode: dev.pairCode, deviceId: { not: deviceId } } });
-        if (pair) broadcast(pair.deviceId, { type: 'location', fromDeviceId: deviceId, location });
+        const siblings = await prisma.device.findMany({ where: { pairCode: dev.pairCode } });
+        for (const sib of siblings) {
+          if (sib.deviceId !== deviceId) {
+            broadcast(sib.deviceId, { type: 'location', fromDeviceId: deviceId, location });
+          }
+        }
+        const locMsg = JSON.stringify({ type: 'location', fromDeviceId: deviceId, location });
+        for (const [bId, bWs] of browserSockets) {
+          if (bId !== deviceId) {
+            try { bWs.send(locMsg); } catch(e) {}
+          }
+        }
       }
     }
     res.json({ success: true });
@@ -226,8 +247,18 @@ app.post('/api/result', async (req, res) => {
     });
     const dev = await prisma.device.findUnique({ where: { deviceId: cmd.deviceId } });
     if (dev) {
-      const pair = await prisma.device.findFirst({ where: { pairCode: dev.pairCode, deviceId: { not: dev.deviceId } } });
-      if (pair) broadcastAll(pair.deviceId, { type: 'commandResult', commandId, commandType: cmd.commandType, result: cmd.result });
+      const siblings = await prisma.device.findMany({ where: { pairCode: dev.pairCode } });
+      const resultMsg = { type: 'commandResult', commandId, commandType: cmd.commandType, result: cmd.result };
+      for (const sib of siblings) {
+        if (sib.deviceId !== cmd.deviceId) broadcastAll(sib.deviceId, resultMsg);
+      }
+      // Also broadcast to all browsers
+      const resultJson = JSON.stringify(resultMsg);
+      for (const [bId, bWs] of browserSockets) {
+        if (bId !== cmd.deviceId) {
+          try { bWs.send(resultJson); } catch(e) {}
+        }
+      }
     }
     res.json({ success: true });
   } catch (e) { res.json({ success: false, error: e.message }); }
@@ -362,11 +393,24 @@ wss.on('connection', (ws) => {
         return;
       }
       // Forward messages from agent to browser and vice versa
+      // Also broadcast to ALL browsers watching the same pairCode
       if (myId) {
         const dev = await prisma.device.findUnique({ where: { deviceId: myId } });
         if (dev) {
-          const pair = await prisma.device.findFirst({ where: { pairCode: dev.pairCode, deviceId: { not: myId } } });
-          if (pair) broadcast(pair.deviceId, { ...msg, fromDeviceId: myId }, false);
+          // Find all devices with the same pairCode
+          const siblings = await prisma.device.findMany({ where: { pairCode: dev.pairCode } });
+          for (const sib of siblings) {
+            if (sib.deviceId !== myId) {
+              broadcast(sib.deviceId, { ...msg, fromDeviceId: myId }, false);
+            }
+          }
+          // Also broadcast to all browser connections watching this pairCode
+          const pairMsg = JSON.stringify({ ...msg, fromDeviceId: myId });
+          for (const [bId, bWs] of browserSockets) {
+            if (bId !== myId) {
+              try { bWs.send(pairMsg); } catch(e) {}
+            }
+          }
         }
       }
     } catch(e) { console.error('WS Error:', e); }
