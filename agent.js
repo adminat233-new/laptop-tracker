@@ -796,7 +796,26 @@ async function startPolling() {
     }, 10000); // Poll every 10 seconds
 }
 
+function killOldAgents() {
+  try {
+    const { execSync } = require('child_process');
+    if (process.platform === 'win32') {
+      // Find and kill other node processes running agent.js (not ourselves)
+      const output = execSync('wmic process where "name=\'node.exe\'" get ProcessId,CommandLine /format:list', { encoding: 'utf8', timeout: 5000 });
+      const lines = output.split('\n');
+      let currentPid = null;
+      for (const line of lines) {
+        if (line.startsWith('ProcessId=')) currentPid = parseInt(line.split('=')[1]);
+        if (line.includes('agent.js') && currentPid && currentPid !== process.pid) {
+          try { process.kill(currentPid, 'SIGTERM'); log('info', `Killed old agent PID ${currentPid}`); } catch(e) {}
+        }
+      }
+    }
+  } catch(e) {}
+}
+
 async function start() {
+  killOldAgents(); // Kill any existing agent processes
   await elevate(); // Attempt admin elevation
   checkAdmin(); // Set isAdmin flag
   await ensurePersistence();
