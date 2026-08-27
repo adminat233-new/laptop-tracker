@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>FIND</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0a0f;color:#d4ff3f;font-family:'Segoe UI',system-ui,sans-serif;overflow:hidden;height:100vh;user-select:none}
+.tb{height:32px;background:#111118;display:flex;align-items:center;justify-content:space-between;padding:0 8px;-webkit-app-region:drag}
+.tb span{font-size:11px;font-weight:700;letter-spacing:3px}
+.tb-b{display:flex;gap:2px;-webkit-app-region:no-drag}
+.tb-b button{width:30px;height:26px;border:none;background:0 0;color:#666;font-size:13px;cursor:pointer;border-radius:4px}
+.tb-b button:hover{background:#1a1a25;color:#d4ff3f}
+.tb-b .x:hover{background:#e81123;color:#fff}
+.scr{display:none;height:calc(100vh - 32px);overflow-y:auto;padding:16px}
+.scr.on{display:block}
+.pair{display:flex;flex-direction:column;align-items:center;padding-top:80px}
+.logo{font-size:48px;font-weight:900;letter-spacing:8px;color:#d4ff3f}
+.sub{color:#444;font-size:11px;margin:8px 0 40px}
+.modes{display:flex;flex-direction:column;gap:12px;width:280px}
+.mb{padding:16px;border:1px solid #1a1a25;background:#111118;color:#d4ff3f;font-size:13px;font-weight:600;cursor:pointer;text-align:center;border-radius:10px;transition:all .2s;font-family:inherit}
+.mb:hover{border-color:#d4ff3f;background:#1a1a25}
+.mb small{display:block;font-size:10px;color:#555;font-weight:400;margin-top:4px}
+.cd{display:none;margin-top:24px;text-align:center}
+.cds{display:flex;gap:6px;justify-content:center}
+.cc{width:40px;height:50px;background:#111118;border:2px solid #1a1a25;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700}
+.pw{color:#555;font-size:11px;margin-top:12px}
+.pig{display:none;gap:8px;margin-top:20px;width:280px}
+.pi{flex:1;padding:12px;background:#111118;border:1px solid #1a1a25;border-radius:8px;color:#d4ff3f;font-size:16px;font-family:monospace;text-align:center;text-transform:uppercase;letter-spacing:3px}
+.pi::placeholder{color:#333;text-transform:none;letter-spacing:0}
+.pi:focus{outline:none;border-color:#d4ff3f}
+.ps{padding:12px 20px;background:#d4ff3f;color:#000;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer}
+.sb{background:#111118;border-radius:12px;padding:14px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between}
+.sbl{display:flex;align-items:center;gap:10px}
+.sd{width:10px;height:10px;border-radius:50%;background:#e81123}
+.sd.on{background:#0f0;box-shadow:0 0 8px #0f066}
+.st{font-size:13px;font-weight:600}
+.sm{font-size:9px;color:#666;background:#1a1a25;padding:4px 10px;border-radius:12px}
+.card{background:#111118;border-radius:12px;padding:14px;margin-bottom:10px}
+.ct{font-size:9px;text-transform:uppercase;letter-spacing:2px;color:#444;margin-bottom:8px}
+.cv{font-size:12px;color:#bbb;font-family:'Cascadia Code','Consolas',monospace;word-break:break-all}
+.tg{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}
+.tb2{background:#111118;border:1px solid #1a1a25;border-radius:10px;padding:14px 8px;color:#d4ff3f;cursor:pointer;text-align:center;transition:all .2s;font-family:inherit}
+.tb2:hover{border-color:#d4ff3f;background:#1a1a25}
+.tb2:active{transform:scale(.96)}
+.ti{font-size:22px;margin-bottom:4px}
+.tl{font-size:9px;color:#666}
+.ar{display:flex;gap:8px;margin-bottom:12px}
+.ab{flex:1;padding:12px;border:1px solid #1a1a25;border-radius:10px;background:#111118;color:#d4ff3f;font-size:11px;font-weight:600;cursor:pointer;transition:all .2s;font-family:inherit}
+.ab:hover{border-color:#d4ff3f;background:#1a1a25}
+.ab.d{border-color:#e81123;color:#e81123}
+.ab.d:hover{background:#e8112322}
+.lb{background:#0a0a0f;border:1px solid #1a1a25;border-radius:8px;padding:8px;max-height:140px;overflow-y:auto;font-family:'Cascadia Code',monospace;font-size:9px;color:#555}
+.le{padding:2px 0}
+.le .ts{color:#333}
+.le .tg2{color:#d4ff3f}
+.le .er{color:#e81123}
+.rp{background:0 0;border:1px solid #333;color:#555;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:10px;font-family:inherit;margin-top:12px}
+.rp:hover{border-color:#d4ff3f;color:#d4ff3f}
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-track{background:0 0}
+::-webkit-scrollbar-thumb{background:#222;border-radius:2px}
+::-webkit-scrollbar-thumb:hover{background:#333}
+</style>
+</head>
+<body>
+<div class="tb"><span>FIND</span><div class="tb-b"><button onclick="ipc('minimize')">─</button><button onclick="ipc('maximize')">□</button><button class="x" onclick="ipc('close')">✕</button></div></div>
+
+<div id="pScr" class="scr pair on">
+<div class="logo">FIND</div>
+<div class="sub">Real-time Device Tracker for Windows</div>
+<div class="modes" id="mSel">
+<button class="mb" onclick="genCode()">Generate Pair Code<small>This laptop will be tracked — show code to your phone</small></button>
+<button class="mb" onclick="showInp()">Enter Pair Code<small>Connect this laptop to existing session</small></button>
+</div>
+<div class="cd" id="cDisp"><div class="cds" id="cChars"></div><div class="pw" id="pWait">Generating...</div></div>
+<div class="pig" id="iGrp"><input class="pi" id="cInp" maxlength="8" placeholder="8-char code"><button class="ps" onclick="connPair()">Connect</button></div>
+</div>
+
+<div id="dScr" class="scr">
+<div class="sb"><div class="sbl"><div class="sd" id="wsDot"></div><span class="st" id="wsSt">Disconnected</span></div><span class="sm" id="mTag">AGENT</span></div>
+<div class="card"><div class="ct">System</div><div class="cv" id="sysInfo">Loading...</div></div>
+<div class="card"><div class="ct">Location</div><div class="cv" id="locInfo">No location yet</div></div>
+<div class="ct" style="padding:0 4px 6px">Tools</div>
+<div class="tg">
+<div class="tb2" onclick="send('locate')"><div class="ti">📍</div><div class="tl">Locate</div></div>
+<div class="tb2" onclick="send('screenshot')"><div class="ti">📸</div><div class="tl">Screenshot</div></div>
+<div class="tb2" onclick="send('lock')"><div class="ti">🔒</div><div class="tl">Lock PC</div></div>
+<div class="tb2" onclick="send('siren')"><div class="ti">🔊</div><div class="tl">Siren</div></div>
+<div class="tb2" onclick="send('wifi-scan')"><div class="ti">📶</div><div class="tl">WiFi Scan</div></div>
+<div class="tb2" onclick="send('arp-scan')"><div class="ti">🌐</div><div class="tl">ARP Scan</div></div>
+<div class="tb2" onclick="send('port-audit')"><div class="ti">🔍</div><div class="tl">Ports</div></div>
+<div class="tb2" onclick="send('process-audit')"><div class="ti">⚙️</div><div class="tl">Processes</div></div>
+<div class="tb2" onclick="send('usb-audit')"><div class="ti">🔌</div><div class="tl">USB Devices</div></div>
+<div class="tb2" onclick="send('dns-dump')"><div class="ti">📡</div><div class="tl">DNS Cache</div></div>
+<div class="tb2" onclick="send('wifi-passwords')"><div class="ti">🔑</div><div class="tl">WiFi Pass</div></div>
+<div class="tb2" onclick="send('bt-proximity')"><div class="ti">🔵</div><div class="tl">Bluetooth</div></div>
+</div>
+<div class="ar"><button class="ab d" onclick="send('lost-mode-on')">Mark Lost</button><button class="ab" onclick="send('lost-mode-off')">Found</button></div>
+<div class="card"><div class="ct">Log</div><div class="lb" id="logBox"></div></div>
+<button class="rp" onclick="rePair()">Re-Pair / Reset</button>
+</div>
+
+<script>
+const{ipcRenderer}=require('electron');
+function ipc(c){return ipcRenderer.invoke(c)}
+
+document.getElementById('cInp').addEventListener('keyup',e=>{if(e.key==='Enter')connPair()});
+
+async function genCode(){
+    document.getElementById('mSel').style.display='none';
+    document.getElementById('cDisp').style.display='block';
+    const r=await ipcRenderer.invoke('generate');
+    if(r&&r.success){
+        renderCode(r.pairCode);
+        document.getElementById('pWait').textContent='Waiting for phone...';
+        pollPair(r.pairCode);
+    } else {
+        document.getElementById('pWait').textContent='Error: '+(r?r.error:'Network');
+    }
+}
+function showInp(){
+    document.getElementById('mSel').style.display='none';
+    document.getElementById('iGrp').style.display='flex';
+}
+async function connPair(){
+    const code=document.getElementById('cInp').value.toUpperCase().trim();
+    if(code.length<8)return;
+    const r=await ipcRenderer.invoke('pair',code);
+    if(r&&r.success) enterDash();
+    else alert(r?r.error:'Invalid code');
+}
+function renderCode(code){
+    const c=document.getElementById('cChars');c.innerHTML='';
+    for(const ch of code){const d=document.createElement('div');d.className='cc';d.textContent=ch;c.appendChild(d);}
+}
+function pollPair(code){
+    const iv=setInterval(async()=>{
+        try{const r=await fetch(SERVER+'/api/pair-info/'+code);const d=await r.json();if(d.success&&d.phone){clearInterval(iv);enterDash();}}catch(e){}
+    },3000);
+}
+async function enterDash(){
+    document.getElementById('pScr').classList.remove('on');
+    document.getElementById('dScr').classList.add('on');
+    const info=await ipcRenderer.invoke('sys-info');
+    document.getElementById('sysInfo').innerHTML='Host: '+info.hostname+'<br>OS: Windows '+info.release+'<br>Arch: '+info.arch+'<br>CPU: '+info.cpus+' cores<br>RAM: '+info.ram;
+    ipcRenderer.invoke('set-agent',true);
+}
+function send(type){
+    ipcRenderer.invoke('get-config').then(cfg=>{
+        fetch(SERVER+'/api/command',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({deviceId:cfg.pairCode,commandType:type})})
+        .then(()=>log('Sent: '+type,'CMD')).catch(()=>log('Failed: '+type,'ERR'));
+    });
+}
+function log(msg,tag){
+    const b=document.getElementById('logBox'),d=document.createElement('div');d.className='le';
+    const t=new Date().toLocaleTimeString('en-US',{hour12:false});
+    d.innerHTML='<span class="ts">['+t+']</span> <span class="'+(tag==='ERR'?'er':'tg2')+'">['+tag+']</span> '+msg;
+    b.appendChild(d);b.scrollTop=b.scrollHeight;if(b.children.length>50)b.removeChild(b.firstChild);
+}
+function rePair(){ipcRenderer.invoke('set-agent',false);location.reload()}
+const SERVER='https://laptop-tracker-k9vi.onrender.com';
+
+ipcRenderer.on('agent-status',(e,connected)=>{
+    const dot=document.getElementById('wsDot'),txt=document.getElementById('wsSt');
+    if(connected){dot.classList.add('on');txt.textContent='Agent Connected';log('Agent online','SYS');}
+    else{dot.classList.remove('on');txt.textContent='Disconnected';log('Agent offline','SYS');}
+});
+
+ipcRenderer.invoke('get-config').then(c=>{if(c.pairCode&&c.isAgentMode)enterDash()});
+</script>
+</body>
+</html>

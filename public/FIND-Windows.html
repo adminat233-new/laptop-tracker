@@ -1,0 +1,357 @@
+<html>
+<head>
+<title>FIND - Device Tracker</title>
+<HTA:APPLICATION
+    ID="FindApp"
+    APPLICATIONNAME="FIND"
+    BORDER="none"
+    BORDERSTYLE="none"
+    CAPTION="no"
+    ICON=""
+    MAXIMIZEBUTTON="no"
+    MINIMIZEBUTTON="yes"
+    SHOWINTASKBAR="yes"
+    SINGLEINSTANCE="yes"
+    SYSMENU="yes"
+    VERSION="1.0"
+    SCROLL="no"
+/>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    background: #0a0a0f;
+    color: #d4ff3f;
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+    overflow: hidden;
+    height: 100%;
+    width: 100%;
+    border: 1px solid #222;
+}
+.titlebar {
+    height: 30px;
+    background: #111118;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 6px;
+    -webkit-app-region: drag;
+}
+.titlebar-title { font-size: 11px; font-weight: 700; letter-spacing: 3px; }
+.titlebar-btns { display: flex; gap: 2px; }
+.titlebar-btns button {
+    width: 28px; height: 24px;
+    border: none; background: transparent;
+    color: #888; font-size: 12px; cursor: pointer;
+}
+.titlebar-btns button:hover { background: #1a1a25; color: #d4ff3f; }
+.titlebar-btns .close:hover { background: #ff4444; color: #fff; }
+
+.container { padding: 16px; height: calc(100% - 30px); overflow-y: auto; }
+
+.pair-screen { display: flex; flex-direction: column; align-items: center; padding-top: 60px; }
+.logo { font-size: 42px; font-weight: 900; letter-spacing: 6px; color: #d4ff3f; }
+.subtitle { color: #555; font-size: 11px; margin: 8px 0 32px; }
+
+.mode-select { display: flex; flex-direction: column; gap: 10px; width: 260px; }
+.mode-btn {
+    padding: 14px;
+    border: 1px solid #222;
+    background: #111118;
+    color: #d4ff3f;
+    font-size: 13px; font-weight: 600;
+    cursor: pointer;
+    text-align: center;
+}
+.mode-btn:hover { border-color: #d4ff3f; background: #1a1a25; }
+.mode-desc { font-size: 10px; color: #666; font-weight: 400; margin-top: 4px; }
+
+.code-display { display: none; margin-top: 24px; text-align: center; }
+.code-chars { display: flex; gap: 6px; justify-content: center; margin-bottom: 12px; }
+.code-char {
+    width: 38px; height: 48px;
+    background: #111118; border: 2px solid #222;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; font-weight: 700; color: #d4ff3f;
+}
+.pair-waiting { color: #666; font-size: 11px; }
+
+.pair-input-group { display: none; gap: 6px; margin-top: 16px; width: 260px; justify-content: center; }
+.pair-input {
+    width: 180px; padding: 10px;
+    background: #111118; border: 1px solid #222;
+    color: #d4ff3f; font-size: 14px; font-family: monospace;
+    text-transform: uppercase; text-align: center; letter-spacing: 2px;
+}
+.pair-input:focus { outline: none; border-color: #d4ff3f; }
+.pair-submit {
+    padding: 10px 16px;
+    background: #d4ff3f; color: #000; border: none;
+    font-size: 12px; font-weight: 700; cursor: pointer;
+}
+
+.dashboard { display: none; }
+.status-bar {
+    background: #111118; border-radius: 10px;
+    padding: 12px 14px; margin-bottom: 10px;
+    display: flex; align-items: center; justify-content: space-between;
+}
+.status-left { display: flex; align-items: center; gap: 8px; }
+.status-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #ff4444;
+}
+.status-dot.online { background: #44ff44; }
+.status-text { font-size: 12px; font-weight: 600; }
+.status-mode {
+    font-size: 9px; color: #888;
+    background: #1a1a25; padding: 3px 8px; border-radius: 10px;
+}
+.card {
+    background: #111118; border-radius: 10px;
+    padding: 12px; margin-bottom: 8px;
+}
+.card-title {
+    font-size: 9px; text-transform: uppercase;
+    letter-spacing: 2px; color: #444; margin-bottom: 6px;
+}
+.card-value {
+    font-size: 11px; color: #aaa;
+    font-family: 'Cascadia Code', 'Consolas', monospace;
+}
+.tools-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr);
+    gap: 6px; margin-bottom: 10px;
+}
+.tool-btn {
+    background: #111118; border: 1px solid #1a1a25;
+    padding: 10px 6px; color: #d4ff3f;
+    cursor: pointer; text-align: center; font-family: inherit;
+}
+.tool-btn:hover { border-color: #d4ff3f; background: #1a1a25; }
+.tool-icon { font-size: 18px; }
+.tool-label { font-size: 9px; color: #888; margin-top: 2px; }
+.action-row { display: flex; gap: 6px; margin-bottom: 10px; }
+.action-btn {
+    flex: 1; padding: 10px;
+    border: 1px solid #1a1a25; background: #111118;
+    color: #d4ff3f; font-size: 11px; font-weight: 600;
+    cursor: pointer; font-family: inherit;
+}
+.action-btn:hover { border-color: #d4ff3f; }
+.action-btn.danger { border-color: #ff4444; color: #ff4444; }
+.log-box {
+    background: #0a0a0f; border: 1px solid #1a1a25;
+    padding: 6px; max-height: 120px; overflow-y: auto;
+    font-family: monospace; font-size: 9px; color: #555;
+}
+.log-entry { padding: 1px 0; }
+.log-entry .ts { color: #333; }
+.log-entry .tag { color: #d4ff3f; }
+.log-entry .err { color: #ff4444; }
+.re-pair-btn {
+    background: none; border: 1px solid #333; color: #666;
+    padding: 6px 12px; cursor: pointer; font-size: 10px;
+    font-family: inherit; margin-top: 10px;
+}
+.re-pair-btn:hover { border-color: #d4ff3f; color: #d4ff3f; }
+</style>
+</head>
+<body>
+<div class="titlebar">
+    <span class="titlebar-title">FIND</span>
+    <div class="titlebar-btns">
+        <button onclick="window.blur()">_</button>
+        <button onclick="resizeTo(420,700); moveTo((screen.width-420)/2,(screen.height-700)/2)">□</button>
+        <button class="close" onclick="window.close()">X</button>
+    </div>
+</div>
+
+<div class="container">
+    <div id="pairScreen" class="pair-screen">
+        <div class="logo">FIND</div>
+        <div class="subtitle">Windows Device Tracker</div>
+        <div class="mode-select" id="modeSelect">
+            <button class="mode-btn" onclick="generateCode()">
+                Generate Pair Code
+                <div class="mode-desc">This PC will be tracked</div>
+            </button>
+            <button class="mode-btn" onclick="showInput()">
+                Enter Pair Code
+                <div class="mode-desc">Connect to existing session</div>
+            </button>
+        </div>
+        <div class="code-display" id="codeDisplay">
+            <div class="code-chars" id="codeChars"></div>
+            <div class="pair-waiting" id="pairWaiting">Waiting...</div>
+        </div>
+        <div class="pair-input-group" id="inputGroup">
+            <input class="pair-input" id="codeInput" maxlength="8" placeholder="CODE">
+            <button class="pair-submit" onclick="connectPair()">Go</button>
+        </div>
+    </div>
+
+    <div id="dashScreen" class="dashboard">
+        <div class="status-bar">
+            <div class="status-left">
+                <div class="status-dot" id="wsDot"></div>
+                <span class="status-text" id="wsStatus">Disconnected</span>
+            </div>
+            <span class="status-mode" id="modeTag">AGENT</span>
+        </div>
+        <div class="card">
+            <div class="card-title">Device</div>
+            <div class="card-value" id="devInfo">Loading...</div>
+        </div>
+        <div class="card">
+            <div class="card-title">Location</div>
+            <div class="card-value" id="locInfo">No location</div>
+        </div>
+        <div class="card-title" style="padding:0 4px 6px;">Tools</div>
+        <div class="tools-grid">
+            <div class="tool-btn" onclick="sendCmd('locate')"><div class="tool-icon">P</div><div class="tool-label">Locate</div></div>
+            <div class="tool-btn" onclick="sendCmd('screenshot')"><div class="tool-icon">S</div><div class="tool-label">Screenshot</div></div>
+            <div class="tool-btn" onclick="sendCmd('lock')"><div class="tool-icon">L</div><div class="tool-label">Lock</div></div>
+            <div class="tool-btn" onclick="sendCmd('siren')"><div class="tool-icon">!</div><div class="tool-label">Siren</div></div>
+            <div class="tool-btn" onclick="sendCmd('wifi-scan')"><div class="tool-icon">W</div><div class="tool-label">WiFi</div></div>
+            <div class="tool-btn" onclick="sendCmd('arp-scan')"><div class="tool-icon">A</div><div class="tool-label">ARP</div></div>
+            <div class="tool-btn" onclick="sendCmd('port-audit')"><div class="tool-icon">P</div><div class="tool-label">Ports</div></div>
+            <div class="tool-btn" onclick="sendCmd('process-audit')"><div class="tool-icon">T</div><div class="tool-label">Tasks</div></div>
+            <div class="tool-btn" onclick="sendCmd('usb-audit')"><div class="tool-icon">U</div><div class="tool-label">USB</div></div>
+        </div>
+        <div class="action-row">
+            <button class="action-btn danger" onclick="sendCmd('lost-mode-on')">Mark Lost</button>
+            <button class="action-btn" onclick="sendCmd('lost-mode-off')">Found</button>
+        </div>
+        <div class="card">
+            <div class="card-title">Log</div>
+            <div class="log-box" id="logBox"></div>
+        </div>
+        <button class="re-pair-btn" onclick="rePair()">Re-Pair</button>
+    </div>
+</div>
+
+<script>
+var SERVER = 'https://laptop-tracker-k9vi.onrender.com';
+var pairCode = '';
+var deviceId = '';
+var http = null;
+
+function httpPost(path, body, callback) {
+    http = new XMLHttpRequest();
+    http.open('POST', SERVER + path, true);
+    http.setRequestHeader('Content-Type', 'application/json');
+    http.onreadystatechange = function() {
+        if (http.readyState === 4) {
+            try { callback(null, JSON.parse(http.responseText)); }
+            catch(e) { callback(e, null); }
+        }
+    };
+    http.send(body);
+}
+
+function httpGet(path, callback) {
+    http = new XMLHttpRequest();
+    http.open('GET', SERVER + path, true);
+    http.onreadystatechange = function() {
+        if (http.readyState === 4) {
+            try { callback(null, JSON.parse(http.responseText)); }
+            catch(e) { callback(e, null); }
+        }
+    };
+    http.send();
+}
+
+function generateCode() {
+    document.getElementById('modeSelect').style.display = 'none';
+    document.getElementById('codeDisplay').style.display = 'block';
+    var body = JSON.stringify({platform:'Windows HTA'});
+    httpPost('/api/generate', body, function(err, data) {
+        if (data && data.success) {
+            pairCode = data.pairCode;
+            deviceId = data.deviceId;
+            renderCode(pairCode);
+            pollPair(pairCode);
+        }
+    });
+}
+
+function showInput() {
+    document.getElementById('modeSelect').style.display = 'none';
+    document.getElementById('inputGroup').style.display = 'flex';
+}
+
+function connectPair() {
+    var code = document.getElementById('codeInput').value.toUpperCase();
+    if (code.length < 8) return;
+    httpPost('/api/verify', JSON.stringify({pairCode:code}), function(err, data) {
+        if (data && data.success) {
+            pairCode = data.pairCode;
+            deviceId = data.phoneId;
+            enterDash();
+        } else {
+            alert('Invalid code');
+        }
+    });
+}
+
+function renderCode(code) {
+    var c = document.getElementById('codeChars');
+    c.innerHTML = '';
+    for (var i = 0; i < code.length; i++) {
+        var d = document.createElement('div');
+        d.className = 'code-char';
+        d.innerHTML = code[i];
+        c.appendChild(d);
+    }
+}
+
+function pollPair(code) {
+    var iv = setInterval(function() {
+        httpGet('/api/pair-info/' + code, function(err, data) {
+            if (data && data.success && data.phone) {
+                clearInterval(iv);
+                enterDash();
+            }
+        });
+    }, 3000);
+}
+
+function enterDash() {
+    document.getElementById('pairScreen').style.display = 'none';
+    document.getElementById('dashScreen').style.display = 'block';
+    loadDev();
+}
+
+function loadDev() {
+    var info = 'Host: ' + java.net.InetAddress.localHost.hostName + '\n';
+    info += 'OS: ' + navigator.userAgent;
+    document.getElementById('devInfo').innerHTML = info.replace(/\n/g, '<br>');
+}
+
+function sendCmd(type) {
+    var body = JSON.stringify({deviceId: pairCode, commandType: type});
+    httpPost('/api/command', body, function(err, data) {
+        addLog('Sent: ' + type, 'CMD');
+    });
+}
+
+function addLog(msg, tag) {
+    var box = document.getElementById('logBox');
+    var d = document.createElement('div');
+    d.className = 'log-entry';
+    var t = new Date().toLocaleTimeString();
+    d.innerHTML = '<span class="ts">[' + t + ']</span> <span class="' + (tag==='ERR'?'err':'tag') + '">[' + tag + ']</span> ' + msg;
+    box.appendChild(d);
+    box.scrollTop = box.scrollHeight;
+}
+
+function rePair() {
+    document.getElementById('pairScreen').style.display = 'flex';
+    document.getElementById('dashScreen').style.display = 'none';
+    document.getElementById('modeSelect').style.display = 'flex';
+    document.getElementById('codeDisplay').style.display = 'none';
+    document.getElementById('inputGroup').style.display = 'none';
+}
+</script>
+</body>
+</html>
