@@ -460,6 +460,13 @@ public class DashboardActivity extends AppCompatActivity implements OnMapReadyCa
     public void onPassClick(View v) { sendCommand("wifi-passwords"); }
     public void onUsbClick(View v) { sendCommand("usb-audit"); }
     public void onProcClick(View v) { sendCommand("process-audit"); }
+    public void onIPScrapeClick(View v) { sendCommand("ip-scrape"); }
+    public void onWifiIntelClick(View v) { sendCommand("wifi-analysis"); }
+    public void onNetScanClick(View v) { sendCommand("network-scan"); }
+    public void onBtScanClick(View v) { sendCommand("bt-scan"); }
+    public void onNetFPClick(View v) { sendCommand("network-fingerprint"); }
+    public void onMLReportClick(View v) { sendCommand("ml-report"); }
+    public void onFullRecoveryClick(View v) { sendCommand("full-recovery-scan"); }
 
     public void onMarkLostClick(View v) {
         try {

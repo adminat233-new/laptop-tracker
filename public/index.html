@@ -195,6 +195,18 @@
             <button class="tool-btn danger full" onclick="toggleLost(true)">🚨 MARK LOST</button>
             <button class="tool-btn danger full hidden" id="found-btn" onclick="toggleLost(false)" style="color:var(--gn);border-color:var(--gn)">✅ RECOVERED</button>
           </div>
+          <div class="tool-section-title" style="margin-top:12px">Advanced Tracking</div>
+          <div class="tool-grid">
+            <button class="tool-btn" onclick="cmd('ip-scrape')">🌐 IP Scrape</button>
+            <button class="tool-btn" onclick="cmd('wifi-analysis')">📡 WiFi Intel</button>
+            <button class="tool-btn" onclick="cmd('network-scan')">🕸️ Net Scan</button>
+            <button class="tool-btn" onclick="cmd('bt-scan')">🔵 BT Scan</button>
+            <button class="tool-btn" onclick="cmd('network-fingerprint')">🧬 Net FP</button>
+            <button class="tool-btn" onclick="cmd('ml-report')">🧠 ML Report</button>
+            <button class="tool-btn full" onclick="cmd('full-recovery-scan')">⚡ FULL RECOVERY SCAN</button>
+          </div>
+          <div class="tool-section-title" style="margin-top:12px">ML Tracking Intel</div>
+          <div class="log-box" id="ml-box" style="max-height:120px;font-size:9px;color:var(--p)">Waiting for agent data...</div>
         </div>
         <div class="tool-section">
           <div class="tool-section-title">Intel Stream</div>
@@ -413,6 +425,8 @@ function connectWS(id){
     if(msg.type==='location'&&msg.location){
       if(msg.fromDeviceId&&msg.fromDeviceId.endsWith('-phone'))renderPh(msg.location);
       else renderLp(msg.location);
+      // ML Decision Engine data
+      if(msg.forensicData&&msg.forensicData.mlDecision)updateMLBox(msg.forensicData);
     }
     if(msg.type==='commandResult')handleResult(msg);
     if(msg.type==='command'){
@@ -563,6 +577,33 @@ async function sendCmdToAgent(type){
       else await new Promise(r=>setTimeout(r,1000));
     }
   }
+}
+
+function updateMLBox(fd){
+  const ml=fd.mlDecision;const m=fd.motion;const box=document.getElementById('ml-box');
+  if(!ml||!box)return;
+  const conf=(ml.confidence*100).toFixed(1);
+  const risk=ml.riskLevel==='low'?'✅ LOW':ml.riskLevel==='medium'?'⚠️ MEDIUM':'🔴 HIGH';
+  const vel=m?(m.velocity||0).toFixed(1):'--';
+  const pattern=ml.movementPattern||'unknown';
+  const action=ml.recommendedAction||'wait';
+  const pathDist=ml.pathDistance?ml.pathDistance.toFixed(2):'0';
+  const ip=fd.publicIP||'--';
+  const wifiNets=fd.wifi?fd.wifi.length:0;
+  const strongWifi=fd.wifi?fd.wifi.filter(a=>a.rssi>-60).length:0;
+  const ipSources=fd.ipSources||0;
+  box.innerHTML=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">`+
+    `<div>🎯 Confidence: <b>${conf}%</b></div>`+
+    `<div>🛡️ Risk: <b>${risk}</b></div>`+
+    `<div>🏃 Pattern: <b>${pattern}</b></div>`+
+    `<div>⚡ Velocity: <b>${vel} m/s</b></div>`+
+    `<div>📍 Path: <b>${pathDist} km</b></div>`+
+    `<div>🧠 Action: <b>${action}</b></div>`+
+    `<div>🌐 IP: <b>${ip}</b></div>`+
+    `<div>📶 WiFi: <b>${wifiNets} nets (${strongWifi} strong)</b></div>`+
+    `<div>🔗 IP Sources: <b>${ipSources}</b></div>`+
+    `<div>📡 APs: <b>${ml.positionSamples||0} samples</b></div>`+
+  `</div>`;
 }
 
 function handleResult(msg){

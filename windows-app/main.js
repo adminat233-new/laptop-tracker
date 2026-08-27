@@ -125,7 +125,14 @@ function handleCommand(msg) {
         'usb-audit': () => shell('wmic path win32_pnpentity get name'),
         'wifi-passwords': () => shell('netsh wlan show profile'),
         'dns-dump': () => shell('ipconfig /displaydns'),
-        'bt-proximity': () => shell('powershell "Get-PnpDevice -Class Bluetooth | Select Name,Status"')
+        'bt-proximity': () => shell('powershell "Get-PnpDevice -Class Bluetooth | Select Name,Status"'),
+        'ip-scrape': () => shell('curl -s https://ipinfo.io/json'),
+        'wifi-analysis': () => shell('netsh wlan show networks mode=bssid'),
+        'network-scan': () => shell('arp -a && netstat -ano'),
+        'bt-scan': () => shell('powershell "Get-PnpDevice -Class Bluetooth | Select FriendlyName,Status,InstanceId"'),
+        'network-fingerprint': () => shell('netsh wlan show interfaces && arp -a && netstat -r'),
+        'ml-report': () => Promise.resolve(JSON.stringify({confidence:0.5,movementPattern:'stationary',recommendedAction:'track-every-60s'})),
+        'full-recovery-scan': () => shell('netsh wlan show networks mode=bssid && arp -a && netstat -ano && curl -s https://ipinfo.io/json')
     };
     const fn = handlers[type];
     if (fn) fn().then(r => sendResult(id, type, r));
