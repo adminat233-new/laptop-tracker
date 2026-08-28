@@ -226,6 +226,16 @@ body{background:var(--bg);color:var(--tx);font-family:'Segoe UI',system-ui,sans-
   </div>
 
   <button class="rp" onclick="rePair()">🔄 Re-Pair / Reset</button>
+
+  <div class="sec">
+    <div class="sec-head" onclick="toggleSec(this)"><h3>App Update</h3><span class="arrow">▼</span></div>
+    <div class="sec-body">
+      <div class="tg">
+        <div class="tb2 full" onclick="checkUpdate()" id="updateBtn">⬆️ Check for Update</div>
+      </div>
+      <div id="updateStatus" style="margin-top:8px;padding:8px;border-radius:8px;font-size:11px;color:var(--mu);display:none"></div>
+    </div>
+  </div>
 </div>
 
 <div class="main-area">
@@ -240,7 +250,7 @@ body{background:var(--bg);color:var(--tx);font-family:'Segoe UI',system-ui,sans-
 </div>
 
 <script>
-const{ipcRenderer}=require('electron');
+const{ipcRenderer,shell}=require('electron');
 function ipc(c){return ipcRenderer.invoke(c)}
 
 let locationAllowed = false;
@@ -256,6 +266,48 @@ let PC=null;
 function toggleSec(el){
   el.classList.toggle('open');
   el.nextElementSibling.classList.toggle('open');
+}
+
+function checkUpdate(){
+    const statusEl=document.getElementById('updateStatus');
+    const btn=document.getElementById('updateBtn');
+    statusEl.style.display='block';
+    statusEl.style.background='rgba(255,255,255,0.04)';
+    statusEl.style.color='var(--mu)';
+    statusEl.textContent='Checking for updates...';
+    btn.textContent='⏳ Checking...';
+    btn.style.pointerEvents='none';
+
+    fetch('https://laptop-tracker-k9vi.onrender.com/api/version')
+    .then(r=>r.json())
+    .then(info=>{
+        const currentVersion='2.2.0';
+        if(info.version && info.version!==currentVersion){
+            statusEl.style.background='rgba(0,255,136,0.1)';
+            statusEl.style.color='var(--gn)';
+            statusEl.innerHTML='<b>v'+info.version+' available!</b><br>'+(info.releaseNotes||'Bug fixes and improvements')+'<br><br><button onclick="downloadUpdate()" style="padding:8px 16px;background:var(--gn);color:#000;border:none;border-radius:6px;font-weight:700;cursor:pointer;margin-top:4px">⬇️ Download Update</button>';
+            btn.textContent='⬆️ Update Available!';
+        } else {
+            statusEl.style.background='rgba(0,255,136,0.05)';
+            statusEl.style.color='var(--gn)';
+            statusEl.textContent='✅ You are up to date (v'+currentVersion+')';
+            btn.textContent='⬆️ Check for Update';
+            btn.style.pointerEvents='auto';
+        }
+    })
+    .catch(err=>{
+        statusEl.style.background='rgba(255,68,68,0.1)';
+        statusEl.style.color='var(--rd)';
+        statusEl.textContent='❌ Failed to check updates: '+err.message;
+        btn.textContent='⬆️ Check for Update';
+        btn.style.pointerEvents='auto';
+    });
+}
+
+function downloadUpdate(){
+    shell.openExternal('https://laptop-tracker-k9vi.onrender.com');
+    const statusEl=document.getElementById('updateStatus');
+    statusEl.innerHTML='<b>Downloading...</b><br>The download page will open. Extract the new ZIP and replace this app.';
 }
 
 async function genCode(){
