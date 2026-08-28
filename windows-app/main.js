@@ -246,34 +246,35 @@ function extractAndUpdate(zipPath, extractPath, appPath) {
     const { exec } = require('child_process');
     const fs = require('fs');
 
-    // Extract ZIP
     const cmd = `powershell -Command "Expand-Archive -Path '${zipPath}' -DestinationPath '${extractPath}' -Force"`;
     exec(cmd, { timeout: 120000 }, (err) => {
         if (err) {
             require('electron').dialog.showErrorBox('Update Failed', 'Extract failed: ' + err.message);
             return;
         }
-        // Find the extracted FIND-win32-x64 folder
         try {
             const items = fs.readdirSync(extractPath);
             const findDir = items.find(i => i.includes('FIND'));
-            if (!findDir) { require('electron').dialog.showErrorBox('Update Failed', 'FIND folder not found in update'); return; }
+            if (!findDir) { require('electron').dialog.showErrorBox('Update Failed', 'FIND folder not found. Contents: ' + items.join(', ')); return; }
 
             const srcDir = path.join(extractPath, findDir);
-            // Copy files over current app
+            // robocopy exit codes 0-7 are success conditions
             const robocopy = `robocopy "${srcDir}" "${appPath}" /E /IS /IT /NFL /NDL /NJH /NJS /nc /ns /np`;
             exec(robocopy, { timeout: 120000 }, (err2) => {
-                // Cleanup
                 try { fs.rmSync(extractPath, { recursive: true, force: true }); } catch(e) {}
                 try { fs.rmSync(zipPath, { force: true }); } catch(e) {}
 
+                const exitCode = err2 ? err2.code || 0 : 0;
+                if (exitCode > 7) {
+                    require('electron').dialog.showErrorBox('Update Failed', 'Copy failed with code: ' + exitCode);
+                    return;
+                }
                 require('electron').dialog.showMessageBox(mainWindow, {
                     type: 'info',
                     title: 'Update Installed',
-                    message: 'Updated to v' + APP_VERSION + '. The app will restart now.',
+                    message: 'Updated successfully. The app will restart now.',
                     buttons: ['OK']
                 }).then(() => {
-                    // Restart app
                     app.relaunch();
                     app.exit(0);
                 });
@@ -284,6 +285,7 @@ function extractAndUpdate(zipPath, extractPath, appPath) {
     });
 }
 
+let agentReconnectDelay = 1000;
 function startAgent() {
     if (!pairCode) return;
     stopAgent();
@@ -291,13 +293,13 @@ function startAgent() {
     ws = new WebSocket(wsUrl);
 
     ws.on('open', () => {
+        agentReconnectDelay = 1000;
         ws.send(JSON.stringify({ type: 'register', deviceId: pairCode, deviceType: 'agent' }));
         // Send heartbeat + location via HTTP every 10s
         heartbeatInterval = setInterval(async () => {
             if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({ type: 'heartbeat', deviceId: pairCode }));
             }
-            // Send heartbeat via HTTP to update lastSeen + store location
             try {
                 const loc = await getQuickLocation();
                 const body = JSON.stringify({ deviceId: pairCode, location: loc });
@@ -322,10 +324,13 @@ function startAgent() {
         } catch (e) {}
     });
 
-    ws.on('close', () => {
-        if (heartbeatInterval) clearInterval(heartbeatInterval);
+    ws.on('close', (code) => {
+        if (heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
         if (mainWindow) mainWindow.webContents.send('agent-status', false);
-        if (isAgentMode) setTimeout(startAgent, 5000);
+        if (isAgentMode) {
+            setTimeout(startAgent, agentReconnectDelay);
+            agentReconnectDelay = Math.min(agentReconnectDelay * 2, 30000);
+        }
     });
 
     ws.on('error', () => {});
@@ -453,11 +458,22 @@ function shell(cmd) {
 function sendResult(id, type, result) {
     if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: 'commandResult', commandId: id, commandType: type, deviceId: pairCode, result }));
-        // For locate commands, also send a location message so the map updates
         if (type === 'locate' || type === 'location') {
             try {
                 const loc = typeof result === 'string' ? JSON.parse(result) : result;
                 if (loc && loc.lat && loc.lng) {
+                    // Send location via HTTP to store in DB + broadcast to browsers
+                    const body = JSON.stringify({ deviceId: pairCode, location: loc });
+                    const url = new URL(SERVER + '/api/heartbeat');
+                    const req = https.request({
+                        hostname: url.hostname, port: 443, path: url.pathname,
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
+                    }, () => {});
+                    req.on('error', () => {});
+                    req.write(body);
+                    req.end();
+                    // Also send via WS
                     ws.send(JSON.stringify({ type: 'location', deviceId: pairCode, location: loc }));
                 }
             } catch(e) {}

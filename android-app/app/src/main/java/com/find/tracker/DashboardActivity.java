@@ -108,32 +108,27 @@ public class DashboardActivity extends AppCompatActivity {
     }
 
     private void requestAllPermissions() {
-        String[] perms = {
-            Manifest.permission.ACCESS_FINE_LOCATION,
-            Manifest.permission.ACCESS_COARSE_LOCATION,
-        };
-        boolean needRequest = false;
-        for (String p : perms) {
-            if (ActivityCompat.checkSelfPermission(this, p) != PackageManager.PERMISSION_GRANTED) {
-                needRequest = true;
-                break;
-            }
+        List<String> perms = new ArrayList<>();
+        if (!hasPermission(Manifest.permission.ACCESS_FINE_LOCATION)) {
+            perms.add(Manifest.permission.ACCESS_FINE_LOCATION);
+            perms.add(Manifest.permission.ACCESS_COARSE_LOCATION);
         }
-        if (needRequest) {
+        // Android 13+ notification permission
+        if (android.os.Build.VERSION.SDK_INT >= 33 && !hasPermission("android.permission.POST_NOTIFICATIONS")) {
+            perms.add("android.permission.POST_NOTIFICATIONS");
+        }
+        if (perms.size() > 0) {
+            String[] arr = perms.toArray(new String[0]);
             try {
                 new androidx.appcompat.app.AlertDialog.Builder(this)
-                    .setTitle("Location Permission")
-                    .setMessage("FIND needs access to your location to track this device. Please allow location access.")
-                    .setPositiveButton("Allow", (d, w) -> {
-                        ActivityCompat.requestPermissions(this, perms, PERM_REQ);
-                    })
-                    .setNegativeButton("Deny", (d, w) -> {
-                        Toast.makeText(this, "Location access denied — tracking limited", Toast.LENGTH_LONG).show();
-                    })
+                    .setTitle("Permissions Needed")
+                    .setMessage("FIND needs location and notification access to track this device.")
+                    .setPositiveButton("Allow", (d, w) -> ActivityCompat.requestPermissions(this, arr, PERM_REQ))
+                    .setNegativeButton("Deny", (d, w) -> Toast.makeText(this, "Limited tracking", Toast.LENGTH_LONG).show())
                     .setCancelable(true)
                     .show();
             } catch (Exception e) {
-                ActivityCompat.requestPermissions(this, perms, PERM_REQ);
+                ActivityCompat.requestPermissions(this, arr, PERM_REQ);
             }
         }
     }
@@ -316,55 +311,41 @@ public class DashboardActivity extends AppCompatActivity {
         }
         FusedLocationProviderClient fusedClient = LocationServices.getFusedLocationProviderClient(this);
         try {
-            fusedClient.getLastLocation().addOnSuccessListener(loc -> {
-                if (loc != null) {
-                    JSONObject locData = new JSONObject();
-                    try {
-                        locData.put("lat", loc.getLatitude());
-                        locData.put("lng", loc.getLongitude());
-                        locData.put("accuracy", loc.getAccuracy());
-                        locData.put("source", "android-gps");
-                    } catch (Exception e) {}
-                    ws.sendLocation(deviceId, locData);
-                    updatePhoneLocation(loc.getLatitude(), loc.getLongitude());
-                    addLog("Location sent: " + loc.getLatitude() + ", " + loc.getLongitude(), "GPS");
-                } else {
-                    // GPS unavailable — try fresh fix, then IP fallback
-                    addLog("No GPS fix — requesting fresh fix", "GPS");
-                    try {
-                        com.google.android.gms.location.LocationRequest locReq = new com.google.android.gms.location.LocationRequest.Builder(5000, com.google.android.gms.location.Priority.PRIORITY_HIGH_ACCURACY).build();
-                        fusedClient.requestLocationUpdates(locReq,
-                            new com.google.android.gms.location.LocationCallback() {
-                                @Override
-                                public void onLocationResult(com.google.android.gms.location.LocationResult result) {
-                                    if (result != null && result.getLastLocation() != null) {
-                                        Location l = result.getLastLocation();
-                                        JSONObject locData = new JSONObject();
-                                        try {
-                                            locData.put("lat", l.getLatitude());
-                                            locData.put("lng", l.getLongitude());
-                                            locData.put("accuracy", l.getAccuracy());
-                                            locData.put("source", "android-gps-fresh");
-                                        } catch (Exception e) {}
-                                        ws.sendLocation(deviceId, locData);
-                                        updatePhoneLocation(l.getLatitude(), l.getLongitude());
-                                        addLog("Fresh GPS: " + l.getLatitude() + ", " + l.getLongitude(), "GPS");
-                                        try { fusedClient.removeLocationUpdates(this); } catch (Exception ex) {}
-                                    } else {
-                                        // No GPS at all — use IP geolocation
-                                        try { fusedClient.removeLocationUpdates(this); } catch (Exception ex) {}
-                                        sendIPLocation();
-                                    }
-                                }
-                            },
-                            Looper.getMainLooper()
-                        );
-                    } catch (Exception ex) {
-                        addLog("Location request failed — using IP", "GPS");
-                        sendIPLocation();
+            // Always request fresh location — don't use stale cached getLastLocation()
+            com.google.android.gms.location.LocationRequest locReq = new com.google.android.gms.location.LocationRequest.Builder(3000, com.google.android.gms.location.Priority.PRIORITY_HIGH_ACCURACY)
+                .setMaxUpdates(1)
+                .setDurationMillis(8000)
+                .build();
+            fusedClient.requestLocationUpdates(locReq,
+                new com.google.android.gms.location.LocationCallback() {
+                    @Override
+                    public void onLocationResult(com.google.android.gms.location.LocationResult result) {
+                        if (result != null && result.getLastLocation() != null) {
+                            Location loc = result.getLastLocation();
+                            JSONObject locData = new JSONObject();
+                            try {
+                                locData.put("lat", loc.getLatitude());
+                                locData.put("lng", loc.getLongitude());
+                                locData.put("accuracy", loc.getAccuracy());
+                                locData.put("source", "android-gps");
+                            } catch (Exception e) {}
+                            ws.sendLocation(deviceId, locData);
+                            updatePhoneLocation(loc.getLatitude(), loc.getLongitude());
+                            addLog("GPS: " + loc.getLatitude() + ", " + loc.getLongitude() + " (±" + Math.round(loc.getAccuracy()) + "m)", "GPS");
+                            try { fusedClient.removeLocationUpdates(this); } catch (Exception ex) {}
+                        }
                     }
+                },
+                Looper.getMainLooper()
+            );
+            // Timeout fallback: if no GPS in 8s, use IP
+            new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                try { fusedClient.removeLocationUpdates(new com.google.android.gms.location.LocationCallback() {}); } catch (Exception ex) {}
+                if (phoneLat == 0 && phoneLng == 0) {
+                    addLog("GPS timeout — using IP fallback", "GPS");
+                    sendIPLocation();
                 }
-            });
+            }, 8000);
         } catch (Exception e) {
             addLog("Location error — using IP fallback", "GPS");
             sendIPLocation();

@@ -402,11 +402,11 @@ function startStatusPoll(){
                 const dot=document.getElementById('wsDot'),txt=document.getElementById('wsSt');
                 const lpOn=d.laptop&&d.laptop.online,phOn=d.phone&&d.phone.online;
                 if(!ws||ws.readyState!==1){dot.classList.toggle('on',lpOn);txt.textContent=lpOn?(phOn?'Both Online':'Laptop Online'):(phOn?'Phone Online':'Offline');}
-                if(d.laptop&&d.laptop.location)renderLp(d.laptop.location);
-                if(d.phone&&d.phone.location)renderPh(d.phone.location);
+                if(d.laptopLocation)renderLp(d.laptopLocation);
+                if(d.phoneLocation)renderPh(d.phoneLocation);
             }
         }catch(e){}
-    },5000);
+    },3000);
 }
 
 function handleResult(msg){
