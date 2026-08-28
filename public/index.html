@@ -291,7 +291,7 @@ if(isAndroid){document.getElementById('get-app-btn').style.display='flex'}
 if(isWindows){document.getElementById('get-win-btn').style.display='flex'}
 
 function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),3000)}
-function show(s){document.querySelectorAll('.screen').forEach(x=>x.classList.remove('active'));document.getElementById(s).classList.add('active');if(s==='dashboard')initMap()}
+function show(s){document.querySelectorAll('.screen').forEach(x=>x.classList.remove('active'));document.getElementById(s).classList.add('active');if(s==='dashboard')initMap();setTimeout(()=>{if(map)map.invalidateSize()},200)}
 async function apiP(u,d){const r=await fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)});return r.json()}
 async function apiG(u){return(await fetch(u)).json()}
 
@@ -509,8 +509,12 @@ async function doHB(){
     loc={lat:p.coords.latitude,lng:p.coords.longitude,accuracy:p.coords.accuracy,source:ROLE==='phone'?'phone-gps':'browser-gps'};
     if(ROLE==='phone')renderPh(loc);else renderLp(loc);
   }catch(e){
-    // GPS denied — try to get location from WiFi scan on agent
-    if(ROLE==='laptop'){log('GPS denied — using WiFi location','SYS');requestWiFiLocation()}
+    if(ROLE==='laptop'){
+      try{
+        const ipData=await(await fetch('https://ipinfo.io/json')).json();
+        if(ipData&&ipData.loc){const[lat,lng]=ipData.loc.split(',').map(Number);loc={lat,lng,accuracy:3000,source:'ip-browser',city:ipData.city,region:ipData.region,country:ipData.country};renderLp(loc)}
+      }catch(e2){}
+    }
   }
 
   try{
@@ -933,6 +937,7 @@ async function updateTrackLine(){
 function renderLp(loc){
   if(!loc||!map||loc.lat==null)return;
   const p=[loc.lat,loc.lng];if(p[0]===0&&p[1]===0)return;
+  map.invalidateSize();
   document.getElementById('lp-coords').textContent=`Coords: ${p[0].toFixed(6)}, ${p[1].toFixed(6)}`;
   document.getElementById('lp-acc').textContent='Accuracy: ±'+Math.round(loc.accuracy||0)+'m';
   if(lpM)lpM.setLatLng(p);
