@@ -13,7 +13,7 @@ const server = http.createServer(app);
 const wss = new Server({ server, pingInterval: 30000, pingTimeout: 10000 });
 const agentSockets = new Map(); // deviceId -> ws (agent connection)
 const browserSockets = new Map(); // deviceId -> ws (browser connection)
-const APP_VERSION = '2.3.0';
+const APP_VERSION = '2.3.1';
 const lostDevices = new Set();
 
 app.use(express.json({ limit: '1mb' }));
