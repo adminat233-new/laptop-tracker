@@ -281,7 +281,7 @@ function checkUpdate(){
     fetch('https://laptop-tracker-k9vi.onrender.com/api/version')
     .then(r=>r.json())
     .then(info=>{
-        const currentVersion='2.3.0';
+        const currentVersion='2.4.0';
         if(info.version && info.version!==currentVersion){
             statusEl.style.background='rgba(0,255,136,0.1)';
             statusEl.style.color='var(--gn)';

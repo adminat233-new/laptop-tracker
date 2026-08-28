@@ -331,7 +331,7 @@ app.get('/api/version', (req, res) => {
     version: APP_VERSION,
     apkUrl: '/FIND.apk',
     windowsUrl: '/FIND-Windows.zip',
-    releaseNotes: 'v' + APP_VERSION + ': ML fusion engine (trilateration, Kalman filter, IP cross-reference), Windows in-app update button, Android crash fix, full 107MB Windows Electron app'
+    releaseNotes: 'v' + APP_VERSION + ': Fixed laptop map tracking (fresh GPS + IP fallback), phone GPS accuracy fix, Windows update fix, agent reconnect stability, Android notification permissions, command delivery fix'
   });
 });
 
