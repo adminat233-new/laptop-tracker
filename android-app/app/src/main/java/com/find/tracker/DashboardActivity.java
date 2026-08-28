@@ -329,7 +329,8 @@ public class DashboardActivity extends AppCompatActivity {
                     updatePhoneLocation(loc.getLatitude(), loc.getLongitude());
                     addLog("Location sent: " + loc.getLatitude() + ", " + loc.getLongitude(), "GPS");
                 } else {
-                    addLog("No location available — requesting fresh fix", "GPS");
+                    // GPS unavailable — try fresh fix, then IP fallback
+                    addLog("No GPS fix — requesting fresh fix", "GPS");
                     try {
                         com.google.android.gms.location.LocationRequest locReq = new com.google.android.gms.location.LocationRequest.Builder(5000, com.google.android.gms.location.Priority.PRIORITY_HIGH_ACCURACY).build();
                         fusedClient.requestLocationUpdates(locReq,
@@ -337,31 +338,73 @@ public class DashboardActivity extends AppCompatActivity {
                                 @Override
                                 public void onLocationResult(com.google.android.gms.location.LocationResult result) {
                                     if (result != null && result.getLastLocation() != null) {
-                                        Location loc = result.getLastLocation();
+                                        Location l = result.getLastLocation();
                                         JSONObject locData = new JSONObject();
                                         try {
-                                            locData.put("lat", loc.getLatitude());
-                                            locData.put("lng", loc.getLongitude());
-                                            locData.put("accuracy", loc.getAccuracy());
-                                            locData.put("source", "android-gps");
+                                            locData.put("lat", l.getLatitude());
+                                            locData.put("lng", l.getLongitude());
+                                            locData.put("accuracy", l.getAccuracy());
+                                            locData.put("source", "android-gps-fresh");
                                         } catch (Exception e) {}
                                         ws.sendLocation(deviceId, locData);
-                                        updatePhoneLocation(loc.getLatitude(), loc.getLongitude());
-                                        addLog("Fresh location: " + loc.getLatitude() + ", " + loc.getLongitude(), "GPS");
+                                        updatePhoneLocation(l.getLatitude(), l.getLongitude());
+                                        addLog("Fresh GPS: " + l.getLatitude() + ", " + l.getLongitude(), "GPS");
                                         try { fusedClient.removeLocationUpdates(this); } catch (Exception ex) {}
+                                    } else {
+                                        // No GPS at all — use IP geolocation
+                                        try { fusedClient.removeLocationUpdates(this); } catch (Exception ex) {}
+                                        sendIPLocation();
                                     }
                                 }
                             },
                             Looper.getMainLooper()
                         );
                     } catch (Exception ex) {
-                        addLog("Location request failed: " + ex.getMessage(), "ERR");
+                        addLog("Location request failed — using IP", "GPS");
+                        sendIPLocation();
                     }
                 }
             });
         } catch (Exception e) {
-            addLog("Location error: " + e.getMessage(), "ERR");
+            addLog("Location error — using IP fallback", "GPS");
+            sendIPLocation();
         }
+    }
+
+    private void sendIPLocation() {
+        new Thread(() -> {
+            try {
+                java.net.HttpURLConnection conn = (java.net.HttpURLConnection) new java.net.URL("https://ipinfo.io/json").openConnection();
+                conn.setConnectTimeout(5000);
+                conn.setReadTimeout(5000);
+                java.io.InputStream is = conn.getInputStream();
+                java.io.BufferedReader br = new java.io.BufferedReader(new java.io.InputStreamReader(is));
+                StringBuilder sb = new StringBuilder();
+                String line;
+                while ((line = br.readLine()) != null) sb.append(line);
+                br.close();
+                JSONObject ipData = new JSONObject(sb.toString());
+                if (ipData.has("loc")) {
+                    String[] parts = ipData.getString("loc").split(",");
+                    double lat = Double.parseDouble(parts[0]);
+                    double lng = Double.parseDouble(parts[1]);
+                    JSONObject locData = new JSONObject();
+                    locData.put("lat", lat);
+                    locData.put("lng", lng);
+                    locData.put("accuracy", 3000);
+                    locData.put("source", "android-ip");
+                    locData.put("city", ipData.optString("city", ""));
+                    locData.put("region", ipData.optString("region", ""));
+                    ws.sendLocation(deviceId, locData);
+                    runOnUiThread(() -> {
+                        updatePhoneLocation(lat, lng);
+                        addLog("IP location: " + lat + ", " + lng + " (" + ipData.optString("city") + ")", "IP");
+                    });
+                }
+            } catch (Exception e) {
+                runOnUiThread(() -> addLog("IP location failed: " + e.getMessage(), "ERR"));
+            }
+        }).start();
     }
 
     private void updateLaptopLocation(double lat, double lng) {
@@ -402,29 +445,26 @@ public class DashboardActivity extends AppCompatActivity {
 
                                 if (!response.isNull("laptop")) {
                                     JSONObject laptop = response.getJSONObject("laptop");
-                                    if (!laptop.isNull("location")) {
-                                        JSONObject ll = laptop.getJSONObject("location");
-                                        double lat = ll.getDouble("lat");
-                                        double lng = ll.getDouble("lng");
-                                        if (lat != 0 || lng != 0) {
-                                            updateLaptopLocation(lat, lng);
-                                        }
-                                    }
                                     if (lpOs != null && !laptop.isNull("systemInfo")) {
                                         JSONObject si = laptop.getJSONObject("systemInfo");
                                         lpName.setText("💻 " + si.optString("hostname", "Laptop"));
                                         lpOs.setText("OS: " + si.optString("platform", "--"));
                                     }
                                 }
-                                if (!response.isNull("phone")) {
-                                    JSONObject phone = response.getJSONObject("phone");
-                                    if (!phone.isNull("location")) {
-                                        JSONObject pl = phone.getJSONObject("location");
-                                        double lat = pl.getDouble("lat");
-                                        double lng = pl.getDouble("lng");
-                                        if (lat != 0 || lng != 0) {
-                                            updatePhoneLocation(lat, lng);
-                                        }
+                                if (!response.isNull("laptopLocation")) {
+                                    JSONObject ll = response.getJSONObject("laptopLocation");
+                                    double lat = ll.getDouble("lat");
+                                    double lng = ll.getDouble("lng");
+                                    if (lat != 0 || lng != 0) {
+                                        updateLaptopLocation(lat, lng);
+                                    }
+                                }
+                                if (!response.isNull("phoneLocation")) {
+                                    JSONObject pl = response.getJSONObject("phoneLocation");
+                                    double lat = pl.getDouble("lat");
+                                    double lng = pl.getDouble("lng");
+                                    if (lat != 0 || lng != 0) {
+                                        updatePhoneLocation(lat, lng);
                                     }
                                 }
 

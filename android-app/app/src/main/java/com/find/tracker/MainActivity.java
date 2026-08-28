@@ -132,14 +132,25 @@ public class MainActivity extends AppCompatActivity {
                             long id = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1);
                             if (id == downloadId) {
                                 try {
-                                    File apkFile = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "FIND-update.apk");
-                                    if (apkFile.exists()) {
-                                        Uri apkUri = FileProvider.getUriForFile(MainActivity.this, getPackageName() + ".fileprovider", apkFile);
+                                    // Use DownloadManager URI directly — works on all Android versions
+                                    Uri downloadUri = manager.getUriForDownloadedFile(downloadId);
+                                    if (downloadUri != null) {
                                         Intent install = new Intent(Intent.ACTION_VIEW);
-                                        install.setDataAndType(apkUri, "application/vnd.android.package-archive");
+                                        install.setDataAndType(downloadUri, "application/vnd.android.package-archive");
                                         install.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
                                         install.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                                         startActivity(install);
+                                    } else {
+                                        // Fallback: try file-based approach for older Android
+                                        File apkFile = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "FIND-update.apk");
+                                        if (apkFile.exists()) {
+                                            Uri apkUri = FileProvider.getUriForFile(MainActivity.this, getPackageName() + ".fileprovider", apkFile);
+                                            Intent install = new Intent(Intent.ACTION_VIEW);
+                                            install.setDataAndType(apkUri, "application/vnd.android.package-archive");
+                                            install.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                                            install.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                                            startActivity(install);
+                                        }
                                     }
                                 } catch (Exception e) {
                                     Toast.makeText(MainActivity.this, "Install failed: " + e.getMessage(), Toast.LENGTH_LONG).show();

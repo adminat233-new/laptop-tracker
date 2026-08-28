@@ -51,6 +51,8 @@ public class LocationService extends Service {
         deviceId = intent.getStringExtra("deviceId");
         startForeground(NOTIFICATION_ID, buildNotification());
         requestLocationUpdates();
+        // Also send IP-based location as initial fallback
+        sendIPLocation();
         return START_STICKY;
     }
 
@@ -83,12 +85,54 @@ public class LocationService extends Service {
                 public void onError(String error) { Log.e(TAG, "Heartbeat failed: " + error); }
             });
             // Broadcast to UI
-            Intent intent = new Intent("FIND_LOCATION_UPDATE");
+            Intent intent = new Intent("location-update");
             intent.putExtra("lat", loc.getLatitude());
             intent.putExtra("lng", loc.getLongitude());
             intent.putExtra("accuracy", loc.getAccuracy());
             androidx.localbroadcastmanager.content.LocalBroadcastManager.getInstance(this).sendBroadcast(intent);
         } catch (Exception e) { Log.e(TAG, "Send location error", e); }
+    }
+
+    private void sendIPLocation() {
+        new Thread(() -> {
+            try {
+                java.net.HttpURLConnection conn = (java.net.HttpURLConnection) new java.net.URL("https://ipinfo.io/json").openConnection();
+                conn.setConnectTimeout(5000);
+                conn.setReadTimeout(5000);
+                java.io.InputStream is = conn.getInputStream();
+                java.io.BufferedReader br = new java.io.BufferedReader(new java.io.InputStreamReader(is));
+                StringBuilder sb = new StringBuilder();
+                String line;
+                while ((line = br.readLine()) != null) sb.append(line);
+                br.close();
+                JSONObject ipData = new JSONObject(sb.toString());
+                if (ipData.has("loc")) {
+                    String[] parts = ipData.getString("loc").split(",");
+                    double lat = Double.parseDouble(parts[0]);
+                    double lng = Double.parseDouble(parts[1]);
+                    JSONObject payload = new JSONObject();
+                    payload.put("deviceId", deviceId);
+                    JSONObject location = new JSONObject();
+                    location.put("lat", lat);
+                    location.put("lng", lng);
+                    location.put("accuracy", 3000);
+                    location.put("source", "android-ip");
+                    payload.put("location", location);
+                    payload.put("systemInfo", getSystemInfo());
+                    api.post("/api/heartbeat", payload, new ApiClient.ApiCallback() {
+                        @Override
+                        public void onSuccess(JSONObject response) {}
+                        @Override
+                        public void onError(String error) { Log.e(TAG, "IP heartbeat failed: " + error); }
+                    });
+                    Intent intent = new Intent("location-update");
+                    intent.putExtra("lat", lat);
+                    intent.putExtra("lng", lng);
+                    intent.putExtra("accuracy", 3000.0);
+                    androidx.localbroadcastmanager.content.LocalBroadcastManager.getInstance(this).sendBroadcast(intent);
+                }
+            } catch (Exception e) { Log.e(TAG, "IP location failed", e); }
+        }).start();
     }
 
     private JSONObject getSystemInfo() {
