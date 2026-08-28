@@ -13,7 +13,7 @@ let pairCode = '', deviceId = '';
 let isAgentMode = false;
 let heartbeatInterval;
 const SERVER = 'https://laptop-tracker-k9vi.onrender.com';
-const APP_VERSION = '2.3.0';
+const APP_VERSION = '2.4.0';
 const CONFIG_PATH = path.join(app.getPath('userData'), 'find-config.json');
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -365,7 +365,7 @@ function handleCommand(msg) {
         'locate': async () => {
             // Collect ALL sources and feed into ML engine
             const gpsData = await new Promise(resolve => {
-                exec('powershell -Command "Add-Type System.Device; $w=New-Object System.Device.Location.GeoCoordinateWatcher; $w.Start(); Start-Sleep 2; $l=$w.Position.Location; if($l.IsUnknown){"{}"} else{\'{"lat\":"+$l.Latitude+\',\"lng\':"+$l.Longitude+\',\"accuracy\':"+$l.HorizontalAccuracy+\',\"source\":\"gps\"}\'}"', { maxBuffer: 1024*1024 }, (e, stdout) => {
+                exec('powershell -Command "Add-Type System.Device; $w=New-Object System.Device.Location.GeoCoordinateWatcher; $w.Start(); Start-Sleep 2; $l=$w.Position.Location; if($l.IsUnknown){"{}"} else{\'{\\"lat\\":\'+($l.Latitude -replace \',\' ,\'.\')+\',\\"lng\\":\'+($l.Longitude -replace \',\' ,\'.\')+\',\\"accuracy\\":\'+($l.HorizontalAccuracy -replace \',\' ,\'.\')+\',\\"source\\":\\"gps\\"}\'}"', { maxBuffer: 1024*1024 }, (e, stdout) => {
                     try { const d = JSON.parse(stdout); if (d.lat) resolve(d); else resolve(null); } catch(e) { resolve(null); }
                 });
             });

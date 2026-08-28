@@ -917,7 +917,7 @@ async function getWindowsGps() {
   const res = await runPowerShell(ps, 20000);
   if (res.success && res.stdout.startsWith('GEO|')) {
     const p = res.stdout.split('|');
-    return { lat: parseFloat(p[1]), lng: parseFloat(p[2]), accuracy: parseFloat(p[3]), heading: parseFloat(p[4]), speed: parseFloat(p[5]), source: 'windows-gps', timestamp: Date.now() };
+    return { lat: parseFloat(p[1].replace(',', '.')), lng: parseFloat(p[2].replace(',', '.')), accuracy: parseFloat(p[3].replace(',', '.')), heading: parseFloat(p[4].replace(',', '.')), speed: parseFloat(p[5].replace(',', '.')), source: 'windows-gps', timestamp: Date.now() };
   }
   return null;
 }
@@ -1915,6 +1915,8 @@ function connect() {
     await registerWithServer();
     send({ type: 'register', deviceId: pairCode || deviceId, deviceType: 'agent', hostname: os.hostname(), platform: os.platform() });
     sendForensicHeartbeat().catch(e => log('error', 'Heartbeat failed:', e.message));
+    if (ws.pingInterval) clearInterval(ws.pingInterval);
+    ws.pingInterval = setInterval(() => { if (ws && ws.readyState === WebSocket.OPEN) ws.ping(); }, 25000);
   });
   ws.on('message', (data) => {
     try {
@@ -1924,6 +1926,7 @@ function connect() {
     } catch(e) {}
   });
   ws.on('close', () => {
+    if (ws.pingInterval) clearInterval(ws.pingInterval);
     log('warn', 'WS closed. Reconnecting...');
     setTimeout(connect, Math.min(RECONNECT_DELAY * ++reconnectAttempts, 30000));
   });

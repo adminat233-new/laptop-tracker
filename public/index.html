@@ -504,7 +504,7 @@ async function doHB(){
   try{
     const p=await new Promise((ok,no)=>{
       if(!navigator.geolocation){no(new Error('No GPS'));return}
-      navigator.geolocation.getCurrentPosition(ok,no,{enableHighAccuracy:true,timeout:10000,maximumAge:5000});
+      navigator.geolocation.getCurrentPosition(ok,no,{enableHighAccuracy:true,timeout:30000,maximumAge:5000});
     });
     loc={lat:p.coords.latitude,lng:p.coords.longitude,accuracy:p.coords.accuracy,source:ROLE==='phone'?'phone-gps':'browser-gps'};
     if(ROLE==='phone')renderPh(loc);else renderLp(loc);
@@ -549,11 +549,11 @@ function startPhoneGPS(){
       },null,{enableHighAccuracy:true,maximumAge:5000});
     },
     err=>{
-      log('GPS permission denied — using IP location','GPS');
+      log('GPS permission denied or timeout — using IP location','GPS');
       // Fallback: try IP geolocation
       fetchIPCountry();
     },
-    {enableHighAccuracy:true,timeout:10000}
+    {enableHighAccuracy:true,timeout:30000}
   );
 }
 
