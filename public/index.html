@@ -102,16 +102,13 @@
     .panel-close:hover{background:rgba(255,68,68,0.2);color:var(--rd)}
     .panel-body pre{font-family:'JetBrains Mono';font-size:10px;background:rgba(0,0,0,0.3);padding:8px;border-radius:6px;max-height:200px;overflow:auto;white-space:pre-wrap;word-break:break-all}
 
-    .marker-lp{width:28px;height:28px;background:#000;border:3px solid var(--p);border-radius:50%;box-shadow:0 0 15px rgba(212,255,63,0.5);position:relative}
-    .marker-lp::after{content:'';width:8px;height:8px;background:var(--p);border-radius:50%;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%)}
-    .marker-ph{width:28px;height:28px;background:#000;border:3px solid var(--bl);border-radius:50%;box-shadow:0 0 15px rgba(0,212,255,0.5);position:relative}
-    .marker-ph::after{content:'';width:8px;height:8px;background:var(--bl);border-radius:50%;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%)}
-    .mp{position:absolute;width:100%;height:100%;border-radius:50%;animation:pulse 2s infinite}
-    .mp.lp{background:rgba(212,255,63,0.3)}.mp.ph{background:rgba(0,212,255,0.3)}
-    @keyframes pulse{0%{transform:scale(1);opacity:0.8}100%{transform:scale(3);opacity:0}}
-    .ml{position:absolute;top:-24px;left:50%;transform:translateX(-50%);white-space:nowrap;font-size:10px;font-weight:800;padding:3px 8px;border-radius:6px;background:rgba(0,0,0,0.85);pointer-events:none;text-transform:uppercase;letter-spacing:0.5px}
-    .ml.lp{color:var(--p);border:1px solid rgba(212,255,63,0.3)}
-    .ml.ph{color:var(--bl);border:1px solid rgba(0,212,255,0.3)}
+    .marker-lp{width:22px;height:22px;background:#000;border:3px solid var(--p);border-radius:50%;box-shadow:0 0 0 5px rgba(212,255,63,0.12);position:relative}
+    .marker-lp::after{content:'';width:6px;height:6px;background:var(--p);border-radius:50%;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%)}
+    .marker-ph{width:22px;height:22px;background:#000;border:3px solid var(--bl);border-radius:50%;box-shadow:0 0 0 5px rgba(0,212,255,0.12);position:relative}
+    .marker-ph::after{content:'';width:6px;height:6px;background:var(--bl);border-radius:50%;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%)}
+    .ml{position:absolute;bottom:26px;left:50%;transform:translateX(-50%);white-space:nowrap;font-size:9px;font-weight:800;padding:2px 8px;border-radius:4px;background:rgba(0,0,0,0.9);pointer-events:none;text-transform:uppercase;letter-spacing:0.5px}
+    .ml.lp{color:var(--p);border:1px solid rgba(212,255,63,0.35)}
+    .ml.ph{color:var(--bl);border:1px solid rgba(0,212,255,0.35)}
 
     .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(80px);background:#1a1a1a;border:1px solid var(--p);color:#fff;padding:10px 20px;border-radius:40px;font-size:13px;font-weight:600;z-index:10000;transition:0.3s cubic-bezier(0.18,0.89,0.32,1.28)}
     .toast.show{transform:translateX(-50%) translateY(0)}
@@ -941,7 +938,7 @@ function renderLp(loc){
   document.getElementById('lp-coords').textContent=`Coords: ${p[0].toFixed(6)}, ${p[1].toFixed(6)}`;
   document.getElementById('lp-acc').textContent='Accuracy: ±'+Math.round(loc.accuracy||0)+'m';
   if(lpM)lpM.setLatLng(p);
-  else{lpM=L.marker(p,{icon:L.divIcon({className:'',html:'<div class="marker-lp"><div class="mp lp"></div></div><div class="ml lp">💻 LAPTOP</div>',iconSize:[28,28],iconAnchor:[14,14]})}).addTo(map)}
+  else{lpM=L.marker(p,{icon:L.divIcon({className:'',html:'<div class="marker-lp"><div class="ml lp">💻 LAPTOP</div></div>',iconSize:[22,22],iconAnchor:[11,11]})}).addTo(map)}
   lpLatLng=p;
   updateTrackLine();
   if(!phM)map.setView(p,16);
@@ -952,7 +949,7 @@ function renderPh(loc){
   const p=[loc.lat,loc.lng];if(p[0]===0&&p[1]===0)return;
   document.getElementById('ph-coords').textContent=`Coords: ${p[0].toFixed(6)}, ${p[1].toFixed(6)}`;
   if(phM)phM.setLatLng(p);
-  else{phM=L.marker(p,{icon:L.divIcon({className:'',html:'<div class="marker-ph"><div class="mp ph"></div></div><div class="ml ph">📱 PHONE</div>',iconSize:[28,28],iconAnchor:[14,14]})}).addTo(map)}
+  else{phM=L.marker(p,{icon:L.divIcon({className:'',html:'<div class="marker-ph"><div class="ml ph">📱 PHONE</div></div>',iconSize:[22,22],iconAnchor:[11,11]})}).addTo(map)}
   phLatLng=p;
   updateTrackLine();
 }

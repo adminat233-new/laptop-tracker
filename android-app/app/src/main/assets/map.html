@@ -5,76 +5,147 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <style>
 html,body,#map{width:100%;height:100%;margin:0;padding:0;background:#0a0a0a;overflow:hidden}
-.leaflet-control-attribution{display:none!important}
-.leaflet-control-zoom{display:none!important}
-.marker-lp{width:28px;height:28px;background:#000;border:3px solid #d4ff3f;border-radius:50%;box-shadow:0 0 12px rgba(212,255,63,0.6);position:relative}
-.marker-lp::after{content:'';width:8px;height:8px;background:#d4ff3f;border-radius:50%;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%)}
-.marker-ph{width:28px;height:28px;background:#000;border:3px solid #00d4ff;border-radius:50%;box-shadow:0 0 12px rgba(0,212,255,0.6);position:relative}
-.marker-ph::after{content:'';width:8px;height:8px;background:#00d4ff;border-radius:50%;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%)}
-.pulse{position:absolute;width:100%;height:100%;border-radius:50%;animation:pulse 2s infinite}
-.pulse.lp{background:rgba(212,255,63,0.3)}
-.pulse.ph{background:rgba(0,212,255,0.3)}
-@keyframes pulse{0%{transform:scale(1);opacity:0.8}100%{transform:scale(3);opacity:0}}
-.lbl{position:absolute;top:-22px;left:50%;transform:translateX(-50%);white-space:nowrap;font-size:10px;font-weight:800;padding:2px 8px;border-radius:4px;background:rgba(0,0,0,0.85);pointer-events:none;text-transform:uppercase}
-.lbl.lp{color:#d4ff3f;border:1px solid rgba(212,255,63,0.3)}
-.lbl.ph{color:#00d4ff;border:1px solid rgba(0,212,255,0.3)}
-#status{position:absolute;top:12px;left:50%;transform:translateX(-50%);z-index:9999;background:rgba(18,18,18,0.9);padding:6px 14px;border-radius:20px;font-family:monospace;font-size:11px;color:#888;border:1px solid rgba(255,255,255,0.08)}
+.leaflet-control-attribution,.leaflet-control-zoom{display:none!important}
+
+/* LAPTOP marker — clean lime dot */
+.mk-lp{
+  width:20px;height:20px;
+  background:#000;
+  border:3px solid #d4ff3f;
+  border-radius:50%;
+  box-shadow:0 0 0 4px rgba(212,255,63,0.15);
+  position:relative;
+}
+.mk-lp::after{
+  content:'';width:6px;height:6px;
+  background:#d4ff3f;border-radius:50%;
+  position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+}
+
+/* PHONE marker — clean cyan dot */
+.mk-ph{
+  width:20px;height:20px;
+  background:#000;
+  border:3px solid #00d4ff;
+  border-radius:50%;
+  box-shadow:0 0 0 4px rgba(0,212,255,0.15);
+  position:relative;
+}
+.mk-ph::after{
+  content:'';width:6px;height:6px;
+  background:#00d4ff;border-radius:50%;
+  position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+}
+
+/* Labels above markers */
+.lbl{
+  position:absolute;
+  bottom:26px;left:50%;transform:translateX(-50%);
+  white-space:nowrap;
+  font-size:9px;font-weight:800;
+  padding:2px 7px;border-radius:4px;
+  background:rgba(0,0,0,0.9);
+  pointer-events:none;letter-spacing:0.5px;
+}
+.lbl.lp{color:#d4ff3f;border:1px solid rgba(212,255,63,0.4)}
+.lbl.ph{color:#00d4ff;border:1px solid rgba(0,212,255,0.4)}
+
+/* Distance pill floating on the line midpoint */
+#dist-pill{
+  position:absolute;
+  bottom:16px;left:50%;transform:translateX(-50%);
+  z-index:1000;
+  background:rgba(10,10,10,0.92);
+  border:1px solid rgba(255,255,255,0.1);
+  border-radius:999px;
+  padding:8px 20px;
+  font-family:monospace;font-size:14px;font-weight:800;
+  color:#d4ff3f;
+  letter-spacing:1px;
+  display:none;
+  backdrop-filter:blur(10px);
+  pointer-events:none;
+}
 </style>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 </head>
 <body>
-<div id="status">Loading map...</div>
+<div id="dist-pill">--</div>
 <div id="map"></div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-var map=L.map('map',{zoomControl:false,attributionControl:false}).setView([20,0],2);
-var street=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,subdomains:'abc',attribution:''});
-var sat=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:18,attribution:''});
-var terrain=L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',{maxZoom:17,subdomains:'abc',attribution:''});
+var map = L.map('map', {zoomControl:false, attributionControl:false}).setView([5.6, -0.2], 14);
+
+var street  = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',  {maxZoom:19});
+var sat     = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:18});
+var terrain = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {maxZoom:17, subdomains:'abc'});
 street.addTo(map);
-document.getElementById('status').style.display='none';
-var lpM=null,phM=null,lpLL=null,phLL=null,trackLine=null;
-function updateLp(lat,lng){
-  lpLL=[lat,lng];
-  if(lpM){lpM.setLatLng([lat,lng])}else{
-    lpM=L.marker([lat,lng],{icon:L.divIcon({className:'',html:'<div class="marker-lp"><div class="pulse lp"></div></div><div class="lbl lp">LAPTOP</div>',iconSize:[28,28],iconAnchor:[14,14]})}).addTo(map);
-    if(!phM)map.setView([lat,lng],16);
-    else fitBoth();
-  }
-  if(phLL)fitBoth();
-  updateTrack();
+
+var lpM = null, phM = null, lpLL = null, phLL = null, trackLine = null;
+
+function makeIcon(cls) {
+  return L.divIcon({
+    className: '',
+    html: '<div class="' + cls + '"><div class="lbl ' + (cls === 'mk-lp' ? 'lp' : 'ph') + '">' + (cls === 'mk-lp' ? '💻 LAPTOP' : '📱 PHONE') + '</div></div>',
+    iconSize: [20, 20],
+    iconAnchor: [10, 10]
+  });
 }
-function updatePh(lat,lng){
-  phLL=[lat,lng];
-  if(phM){phM.setLatLng([lat,lng])}else{
-    phM=L.marker([lat,lng],{icon:L.divIcon({className:'',html:'<div class="marker-ph"><div class="pulse ph"></div></div><div class="lbl ph">PHONE</div>',iconSize:[28,28],iconAnchor:[14,14]})}).addTo(map);
-  }
-  if(lpLL)fitBoth();
-  updateTrack();
+
+function updateLp(lat, lng) {
+  lpLL = [lat, lng];
+  if (lpM) { lpM.setLatLng(lpLL); }
+  else { lpM = L.marker(lpLL, {icon: makeIcon('mk-lp')}).addTo(map); }
+  afterUpdate();
 }
-function fitBoth(){
-  if(!lpLL||!phLL)return;
-  var bounds=L.latLngBounds([lpLL,phLL]);
-  map.fitBounds(bounds,{padding:[50,50],maxZoom:16});
+
+function updatePh(lat, lng) {
+  phLL = [lat, lng];
+  if (phM) { phM.setLatLng(phLL); }
+  else { phM = L.marker(phLL, {icon: makeIcon('mk-ph')}).addTo(map); }
+  afterUpdate();
 }
-function updateTrack(){
-  if(!lpLL||!phLL)return;
-  if(trackLine)map.removeLayer(trackLine);
-  trackLine=L.polyline([lpLL,phLL],{color:'#d4ff3f',weight:3,opacity:0.7,dashArray:'8,6'}).addTo(map);
-  var R=6371e3,p=Math.PI/180;
-  var dLat=(phLL[0]-lpLL[0])*p,dLng=(phLL[1]-lpLL[1])*p;
+
+function afterUpdate() {
+  if (lpLL && phLL) {
+    fitBoth();
+    drawLine();
+  } else if (lpLL) { map.setView(lpLL, 16); }
+  else if (phLL)   { map.setView(phLL, 16); }
+}
+
+function fitBoth() {
+  if (!lpLL || !phLL) return;
+  map.fitBounds(L.latLngBounds([lpLL, phLL]), {padding: [50, 50], maxZoom: 17});
+}
+
+function drawLine() {
+  if (!lpLL || !phLL) return;
+  if (trackLine) { map.removeLayer(trackLine); trackLine = null; }
+  trackLine = L.polyline([lpLL, phLL], {color:'#d4ff3f', weight:2, opacity:0.6, dashArray:'6,5'}).addTo(map);
+
+  // Haversine distance
+  var R=6371e3, p=Math.PI/180;
+  var dLat=(phLL[0]-lpLL[0])*p, dLng=(phLL[1]-lpLL[1])*p;
   var a=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(lpLL[0]*p)*Math.cos(phLL[0]*p)*Math.sin(dLng/2)*Math.sin(dLng/2);
   var dist=R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
-  var txt=dist>=1000?(dist/1000).toFixed(1)+'km':Math.round(dist)+'m';
-  try{window.AndroidBridge.trackUpdate(txt)}catch(e){}
+  var txt = dist>=1000 ? (dist/1000).toFixed(2)+' km' : Math.round(dist)+' m';
+
+  var pill=document.getElementById('dist-pill');
+  pill.textContent = '📍 '+txt+' apart';
+  pill.style.display='block';
+
+  try { window.AndroidBridge.trackUpdate(txt); } catch(e) {}
 }
-function setMapType(type){
-  map.removeLayer(street);map.removeLayer(sat);map.removeLayer(terrain);
-  if(type==='street')street.addTo(map);
-  else if(type==='sat')sat.addTo(map);
+
+function setMapType(type) {
+  map.removeLayer(street); map.removeLayer(sat); map.removeLayer(terrain);
+  if (type==='street') street.addTo(map);
+  else if (type==='sat') sat.addTo(map);
   else terrain.addTo(map);
 }
-function setCenter(lat,lng,z){map.setView([lat,lng],z||16)}
+
+function setCenter(lat, lng, z) { map.setView([lat, lng], z || 16); }
 </script>
 </body>
 </html>

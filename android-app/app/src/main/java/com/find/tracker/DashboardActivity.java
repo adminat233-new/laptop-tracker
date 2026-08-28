@@ -12,6 +12,10 @@ import android.graphics.Typeface;
 import android.location.Location;
 import android.media.AudioAttributes;
 import android.media.AudioManager;
+import android.media.MediaPlayer;
+import android.media.RingtoneManager;
+import android.net.Uri;
+import android.media.ToneGenerator;
 import android.media.ToneGenerator;
 import android.net.http.SslError;
 import android.os.Bundle;
@@ -53,6 +57,8 @@ public class DashboardActivity extends AppCompatActivity {
     private ApiClient api;
     private FindWebSocket ws;
     private SharedPreferences prefs;
+    private MediaPlayer mediaPlayer;
+    private boolean isLocked = false;
 
     String pairCode, deviceId, role;
     WebView mapView;
@@ -292,6 +298,15 @@ public class DashboardActivity extends AppCompatActivity {
         } catch (Exception e) {
             Log.e(TAG, "Handle msg error: " + e.getMessage());
         }
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (isLocked) {
+            Toast.makeText(this, "Device is locked by FIND", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        super.onBackPressed();
     }
 
     private void executeCommand(String cmdType, String cmdId) {
@@ -670,6 +685,9 @@ public class DashboardActivity extends AppCompatActivity {
             overlay.setOrientation(android.widget.LinearLayout.VERTICAL);
             overlay.setGravity(android.view.Gravity.CENTER);
             overlay.setBackgroundColor(0xFF000000);
+            overlay.setClickable(true);
+            overlay.setFocusable(true);
+            isLocked = true;
 
             android.widget.TextView icon = new android.widget.TextView(this);
             icon.setText("🔒"); icon.setTextSize(72); icon.setGravity(android.view.Gravity.CENTER);
@@ -694,6 +712,7 @@ public class DashboardActivity extends AppCompatActivity {
 
     private void hideLockOverlay() {
         runOnUiThread(() -> {
+            isLocked = false;
             android.view.ViewGroup root = (android.view.ViewGroup) getWindow().getDecorView();
             for (int i = root.getChildCount() - 1; i >= 0; i--) {
                 android.view.View child = root.getChildAt(i);
@@ -707,7 +726,22 @@ public class DashboardActivity extends AppCompatActivity {
         runOnUiThread(() -> {
             try {
                 sirenActive = true;
-                if (toneGen != null) toneGen.startTone(ToneGenerator.TONE_CDMA_EMERGENCY_RINGBACK, 15000);
+                AudioManager am = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+                if (am != null) {
+                    am.setStreamVolume(AudioManager.STREAM_ALARM, am.getStreamMaxVolume(AudioManager.STREAM_ALARM), 0);
+                }
+                Uri alarmUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM);
+                if (alarmUri == null) alarmUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE);
+                if (mediaPlayer == null) {
+                    mediaPlayer = MediaPlayer.create(this, alarmUri);
+                    if (mediaPlayer != null) {
+                        mediaPlayer.setAudioAttributes(new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM).setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build());
+                        mediaPlayer.setLooping(true);
+                    }
+                }
+                if (mediaPlayer != null) mediaPlayer.start();
+                else if (toneGen != null) toneGen.startTone(ToneGenerator.TONE_CDMA_EMERGENCY_RINGBACK, 15000);
+
                 if (vibrator != null) {
                     long[] pattern = {0, 500, 300, 500, 300, 500};
                     if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
@@ -720,6 +754,7 @@ public class DashboardActivity extends AppCompatActivity {
                 Toast.makeText(this, "🚨 ALARM ACTIVATED", Toast.LENGTH_LONG).show();
                 new Handler(Looper.getMainLooper()).postDelayed(() -> {
                     if (vibrator != null) vibrator.cancel();
+                    if (mediaPlayer != null && mediaPlayer.isPlaying()) mediaPlayer.pause();
                     sirenActive = false;
                     addLog("🔇 Siren stopped", "ALARM");
                 }, 15000);

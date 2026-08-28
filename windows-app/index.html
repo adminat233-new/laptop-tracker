@@ -99,17 +99,14 @@ body{background:var(--bg);color:var(--tx);font-family:'Segoe UI',system-ui,sans-
 .map-ctrl.active{background:var(--p);color:#000}
 .map-ctrl:hover:not(.active){color:var(--tx)}
 
-/* Markers */
-.marker-lp{width:24px;height:24px;background:#000;border:2px solid var(--p);border-radius:50%;box-shadow:0 0 10px rgba(212,255,63,0.5);position:relative}
+/* Markers — clean crisp dots, no animation trail */
+.marker-lp{width:20px;height:20px;background:#000;border:3px solid var(--p);border-radius:50%;box-shadow:0 0 0 4px rgba(212,255,63,0.12);position:relative}
 .marker-lp::after{content:'';width:6px;height:6px;background:var(--p);border-radius:50%;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%)}
-.marker-ph{width:24px;height:24px;background:#000;border:2px solid var(--bl);border-radius:50%;box-shadow:0 0 10px rgba(0,212,255,0.5);position:relative}
+.marker-ph{width:20px;height:20px;background:#000;border:3px solid var(--bl);border-radius:50%;box-shadow:0 0 0 4px rgba(0,212,255,0.12);position:relative}
 .marker-ph::after{content:'';width:6px;height:6px;background:var(--bl);border-radius:50%;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%)}
-.mp{position:absolute;width:100%;height:100%;border-radius:50%;animation:pulse 2s infinite}
-.mp.lp{background:rgba(212,255,63,0.3)}.mp.ph{background:rgba(0,212,255,0.3)}
-@keyframes pulse{0%{transform:scale(1);opacity:0.8}100%{transform:scale(3);opacity:0}}
-.ml{position:absolute;top:-20px;left:50%;transform:translateX(-50%);white-space:nowrap;font-size:9px;font-weight:800;padding:2px 8px;border-radius:4px;background:rgba(0,0,0,0.85);pointer-events:none;text-transform:uppercase}
-.ml.lp{color:var(--p);border:1px solid rgba(212,255,63,0.3)}
-.ml.ph{color:var(--bl);border:1px solid rgba(0,212,255,0.3)}
+.ml{position:absolute;bottom:24px;left:50%;transform:translateX(-50%);white-space:nowrap;font-size:9px;font-weight:800;padding:2px 7px;border-radius:4px;background:rgba(0,0,0,0.9);pointer-events:none;text-transform:uppercase;letter-spacing:0.5px}
+.ml.lp{color:var(--p);border:1px solid rgba(212,255,63,0.35)}
+.ml.ph{color:var(--bl);border:1px solid rgba(0,212,255,0.35)}
 
 ::-webkit-scrollbar{width:5px}
 ::-webkit-scrollbar-track{background:0 0}
@@ -481,7 +478,7 @@ function renderLp(loc){
     lpLatLng=p;
     if(lpM)lpM.setLatLng(p);
     else{
-        lpM=L.marker(p,{icon:L.divIcon({className:'',html:'<div class="marker-lp"><div class="mp lp"></div></div><div class="ml lp">💻 LAPTOP</div>',iconSize:[24,24],iconAnchor:[12,12]})}).addTo(map);
+        lpM=L.marker(p,{icon:L.divIcon({className:'',html:'<div class="marker-lp"><div class="ml lp">💻 LAPTOP</div></div>',iconSize:[20,20],iconAnchor:[10,10]})}).addTo(map);
         if(!phM)map.setView(p,16);
     }
     updateTrackLine();
@@ -492,7 +489,7 @@ function renderPh(loc){
     phLatLng=p;
     if(phM)phM.setLatLng(p);
     else{
-        phM=L.marker(p,{icon:L.divIcon({className:'',html:'<div class="marker-ph"><div class="mp ph"></div></div><div class="ml ph">📱 PHONE</div>',iconSize:[24,24],iconAnchor:[12,12]})}).addTo(map);
+        phM=L.marker(p,{icon:L.divIcon({className:'',html:'<div class="marker-ph"><div class="ml ph">📱 PHONE</div></div>',iconSize:[20,20],iconAnchor:[10,10]})}).addTo(map);
     }
     updateTrackLine();
 }

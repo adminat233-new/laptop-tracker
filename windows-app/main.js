@@ -418,7 +418,7 @@ function handleCommand(msg) {
             return result;
         },
         'lock': () => shell('rundll32.exe user32.dll,LockWorkStation'),
-        'siren': () => { shell('powershell -Command "$p=New-Object Media.SoundPlayer; $p.SoundLocation=\'C:\\Windows\\Media\\Alarm01.wav\'; $p.PlayLooping()"'); setTimeout(() => shell('taskkill /IM wmplayer.exe /F'), 15000); return Promise.resolve('{"ok":true}'); },
+        'siren': () => { shell('powershell -Command "(New-Object Media.SoundPlayer \'C:\\Windows\\Media\\Alarm01.wav\').PlayLooping(); Start-Sleep -Seconds 15"'); return Promise.resolve('{"ok":true}'); },
         'screenshot': () => shell('powershell -Command "Add-Type System.Windows.Forms; $s=[System.Windows.Forms.Screen]::PrimaryScreen; $b=New-Object Drawing.Bitmap($s.Bounds.Width,$s.Bounds.Height); $g=[Drawing.Graphics]::FromImage($b); $g.CopyFromScreen($s.Bounds.Location,[Drawing.Point]::Empty,$s.Bounds.Size); $b.Save(\'C:\\Windows\\Temp\\find-ss.png\'); $b.Dispose(); $g.Dispose()"'),
         'wifi-scan': () => shell('netsh wlan show networks mode=bssid'),
         'arp-scan': () => shell('arp -a'),
