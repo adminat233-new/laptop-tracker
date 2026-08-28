@@ -327,7 +327,8 @@ function startAgent() {
     ws.on('close', (code) => {
         if (heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
         if (mainWindow) mainWindow.webContents.send('agent-status', false);
-        if (isAgentMode) {
+        // Reconnect as long as a pairCode exists — agent stays alive while paired
+        if (pairCode) {
             setTimeout(startAgent, agentReconnectDelay);
             agentReconnectDelay = Math.min(agentReconnectDelay * 2, 30000);
         }
@@ -337,8 +338,26 @@ function startAgent() {
 }
 
 async function getQuickLocation() {
+    // ip-api.com is significantly more accurate for Africa/Ghana (city-level, ~2km radius)
+    const ipApiResult = await new Promise(resolve => {
+        https.get('https://ip-api.com/json/?fields=status,lat,lon,city,regionName,country,isp,query', { timeout: 5000 }, res => {
+            let d = '';
+            res.on('data', c => d += c);
+            res.on('end', () => {
+                try {
+                    const j = JSON.parse(d);
+                    if (j.status === 'success' && j.lat && j.lon) {
+                        resolve({ lat: j.lat, lng: j.lon, accuracy: 2000, source: 'ip-api.com', city: j.city, region: j.regionName, country: j.country, ip: j.query });
+                    } else resolve(null);
+                } catch(e) { resolve(null); }
+            });
+        }).on('error', () => resolve(null));
+    });
+    if (ipApiResult) return ipApiResult;
+
+    // Fallback: ipinfo.io
     return new Promise(resolve => {
-        https.get('https://ipinfo.io/json', {timeout: 5000}, res => {
+        https.get('https://ipinfo.io/json', { timeout: 5000 }, res => {
             let d = '';
             res.on('data', c => d += c);
             res.on('end', () => {
@@ -347,7 +366,7 @@ async function getQuickLocation() {
                     if (j.loc) {
                         const parts = j.loc.split(',');
                         resolve({ lat: parseFloat(parts[0]), lng: parseFloat(parts[1]), accuracy: 3000, source: 'ipinfo-heartbeat', city: j.city, region: j.region, country: j.country });
-                    } else { resolve(null); }
+                    } else resolve(null);
                 } catch(e) { resolve(null); }
             });
         }).on('error', () => resolve(null));
@@ -508,5 +527,5 @@ ipcMain.handle('sys-info', () => ({
     free: (os.freemem() / 1073741824).toFixed(1) + ' GB'
 }));
 
-app.whenReady().then(() => { loadConfig(); createWindow(); createTray(); if (isAgentMode && pairCode) startAgent(); setTimeout(checkForUpdate, 3000); });
+app.whenReady().then(() => { loadConfig(); createWindow(); createTray(); if (pairCode) startAgent(); setTimeout(checkForUpdate, 3000); }); // Agent starts whenever paired — no separate isAgentMode check needed
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });

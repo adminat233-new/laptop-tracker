@@ -72,6 +72,8 @@ public class DashboardActivity extends AppCompatActivity {
     double laptopLat = 0, laptopLng = 0, phoneLat = 0, phoneLng = 0;
     boolean mapReady = false;
     List<String> pendingPermissions = new ArrayList<>();
+    // Stored reference so we can properly cancel the GPS location callback (fix: was using new anonymous instance which never cancels)
+    private com.google.android.gms.location.LocationCallback activeLocCallback = null;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -196,16 +198,17 @@ public class DashboardActivity extends AppCompatActivity {
 
     private void setupMap() {
         mapView = findViewById(R.id.mapView);
-        WebSettings ws = mapView.getSettings();
-        ws.setJavaScriptEnabled(true);
-        ws.setDomStorageEnabled(true);
-        ws.setAllowFileAccess(true);
-        ws.setAllowContentAccess(true);
-        ws.setAllowFileAccessFromFileURLs(true);
-        ws.setAllowUniversalAccessFromFileURLs(true);
-        ws.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
-        ws.setUseWideViewPort(true);
-        ws.setLoadWithOverviewMode(true);
+        // Renamed from 'ws' to 'webSettings' — 'ws' is already a class field (FindWebSocket), using it here was a semantic shadowing error
+        WebSettings webSettings = mapView.getSettings();
+        webSettings.setJavaScriptEnabled(true);
+        webSettings.setDomStorageEnabled(true);
+        webSettings.setAllowFileAccess(true);
+        webSettings.setAllowContentAccess(true);
+        webSettings.setAllowFileAccessFromFileURLs(true);
+        webSettings.setAllowUniversalAccessFromFileURLs(true);
+        webSettings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+        webSettings.setUseWideViewPort(true);
+        webSettings.setLoadWithOverviewMode(true);
 
         mapView.setWebViewClient(new WebViewClient() {
             @Override
@@ -292,14 +295,36 @@ public class DashboardActivity extends AppCompatActivity {
     }
 
     private void executeCommand(String cmdType, String cmdId) {
+        // Phone receives commands FROM the laptop and executes them LOCALLY
+        // Do NOT call sendCommand() here — that would loop the command back to the laptop
         switch (cmdType) {
-            case "locate": sendLocation(); break;
-            case "lock": sendCommand("lock"); break;
-            case "siren": sendCommand("siren"); break;
-            case "screenshot": sendCommand("screenshot"); break;
-            case "lost-mode-on": sendCommand("lost-mode-on"); addLog("LOST MODE ACTIVATED", "SYS"); break;
-            case "lost-mode-off": sendCommand("lost-mode-off"); addLog("Device recovered", "SYS"); break;
-            default: sendCommand(cmdType); break;
+            case "locate":
+                // Laptop is asking: where is the phone? Send our GPS location back
+                sendLocation();
+                break;
+            case "lock":
+                // Show a lock overlay on this phone
+                showLockOverlay();
+                break;
+            case "siren":
+                // Play alarm siren on this phone
+                playSiren();
+                break;
+            case "screenshot":
+                // Android apps cannot take screenshots without root
+                addLog("Screenshot not supported on phone", "CMD");
+                break;
+            case "lost-mode-on":
+                showLostMode();
+                addLog("LOST MODE ACTIVATED", "SYS");
+                break;
+            case "lost-mode-off":
+                hideLostMode();
+                addLog("Device recovered", "SYS");
+                break;
+            default:
+                addLog("Cmd: " + cmdType + " (not handled on phone)", "CMD");
+                break;
         }
     }
 
@@ -311,36 +336,43 @@ public class DashboardActivity extends AppCompatActivity {
         }
         FusedLocationProviderClient fusedClient = LocationServices.getFusedLocationProviderClient(this);
         try {
-            // Always request fresh location — don't use stale cached getLastLocation()
+            // Cancel any in-flight location request before starting a new one
+            if (activeLocCallback != null) {
+                try { fusedClient.removeLocationUpdates(activeLocCallback); } catch (Exception ex) {}
+                activeLocCallback = null;
+            }
             com.google.android.gms.location.LocationRequest locReq = new com.google.android.gms.location.LocationRequest.Builder(3000, com.google.android.gms.location.Priority.PRIORITY_HIGH_ACCURACY)
                 .setMaxUpdates(1)
                 .setDurationMillis(8000)
                 .build();
-            fusedClient.requestLocationUpdates(locReq,
-                new com.google.android.gms.location.LocationCallback() {
-                    @Override
-                    public void onLocationResult(com.google.android.gms.location.LocationResult result) {
-                        if (result != null && result.getLastLocation() != null) {
-                            Location loc = result.getLastLocation();
-                            JSONObject locData = new JSONObject();
-                            try {
-                                locData.put("lat", loc.getLatitude());
-                                locData.put("lng", loc.getLongitude());
-                                locData.put("accuracy", loc.getAccuracy());
-                                locData.put("source", "android-gps");
-                            } catch (Exception e) {}
-                            ws.sendLocation(deviceId, locData);
-                            updatePhoneLocation(loc.getLatitude(), loc.getLongitude());
-                            addLog("GPS: " + loc.getLatitude() + ", " + loc.getLongitude() + " (±" + Math.round(loc.getAccuracy()) + "m)", "GPS");
-                            try { fusedClient.removeLocationUpdates(this); } catch (Exception ex) {}
-                        }
+            // Store the callback reference so we can cancel it in the timeout below
+            activeLocCallback = new com.google.android.gms.location.LocationCallback() {
+                @Override
+                public void onLocationResult(com.google.android.gms.location.LocationResult result) {
+                    if (result != null && result.getLastLocation() != null) {
+                        Location loc = result.getLastLocation();
+                        JSONObject locData = new JSONObject();
+                        try {
+                            locData.put("lat", loc.getLatitude());
+                            locData.put("lng", loc.getLongitude());
+                            locData.put("accuracy", loc.getAccuracy());
+                            locData.put("source", "android-gps");
+                        } catch (Exception e) {}
+                        ws.sendLocation(deviceId, locData);
+                        updatePhoneLocation(loc.getLatitude(), loc.getLongitude());
+                        addLog("GPS: " + loc.getLatitude() + ", " + loc.getLongitude() + " (±" + Math.round(loc.getAccuracy()) + "m)", "GPS");
+                        // Cancel after first result
+                        try { fusedClient.removeLocationUpdates(activeLocCallback); activeLocCallback = null; } catch (Exception ex) {}
                     }
-                },
-                Looper.getMainLooper()
-            );
-            // Timeout fallback: if no GPS in 8s, use IP
+                }
+            };
+            fusedClient.requestLocationUpdates(locReq, activeLocCallback, Looper.getMainLooper());
+            // Timeout: if no GPS in 8s, cancel the STORED callback and fall back to IP
             new Handler(Looper.getMainLooper()).postDelayed(() -> {
-                try { fusedClient.removeLocationUpdates(new com.google.android.gms.location.LocationCallback() {}); } catch (Exception ex) {}
+                if (activeLocCallback != null) {
+                    try { fusedClient.removeLocationUpdates(activeLocCallback); } catch (Exception ex) {}
+                    activeLocCallback = null;
+                }
                 if (phoneLat == 0 && phoneLng == 0) {
                     addLog("GPS timeout — using IP fallback", "GPS");
                     sendIPLocation();
@@ -626,6 +658,87 @@ public class DashboardActivity extends AppCompatActivity {
             return;
         }
         sendCommand(cmdType);
+    }
+
+    // ========================= PHONE-SIDE COMMAND HANDLERS =========================
+    // These execute commands received FROM the laptop, locally on the phone
+
+    private void showLockOverlay() {
+        runOnUiThread(() -> {
+            android.widget.LinearLayout overlay = new android.widget.LinearLayout(this);
+            overlay.setTag("find-lock-overlay");
+            overlay.setOrientation(android.widget.LinearLayout.VERTICAL);
+            overlay.setGravity(android.view.Gravity.CENTER);
+            overlay.setBackgroundColor(0xFF000000);
+
+            android.widget.TextView icon = new android.widget.TextView(this);
+            icon.setText("🔒"); icon.setTextSize(72); icon.setGravity(android.view.Gravity.CENTER);
+            android.widget.TextView title = new android.widget.TextView(this);
+            title.setText("DEVICE LOCKED"); title.setTextSize(28); title.setTextColor(0xFFFF4444);
+            title.setTypeface(null, android.graphics.Typeface.BOLD); title.setGravity(android.view.Gravity.CENTER);
+            android.widget.TextView msg = new android.widget.TextView(this);
+            msg.setText("This device has been locked by FIND"); msg.setTextSize(14);
+            msg.setTextColor(0xFF888888); msg.setGravity(android.view.Gravity.CENTER);
+            msg.setPadding(32, 16, 32, 0);
+
+            overlay.addView(icon); overlay.addView(title); overlay.addView(msg);
+            android.view.ViewGroup root = (android.view.ViewGroup) getWindow().getDecorView();
+            overlay.setLayoutParams(new android.view.ViewGroup.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT));
+            root.addView(overlay);
+            addLog("🔒 Lock overlay shown", "LOCK");
+            Toast.makeText(this, "🔒 Device Locked by FIND", Toast.LENGTH_LONG).show();
+        });
+    }
+
+    private void hideLockOverlay() {
+        runOnUiThread(() -> {
+            android.view.ViewGroup root = (android.view.ViewGroup) getWindow().getDecorView();
+            for (int i = root.getChildCount() - 1; i >= 0; i--) {
+                android.view.View child = root.getChildAt(i);
+                if ("find-lock-overlay".equals(child.getTag())) { root.removeView(child); break; }
+            }
+            addLog("🔓 Lock overlay removed", "LOCK");
+        });
+    }
+
+    private void playSiren() {
+        runOnUiThread(() -> {
+            try {
+                sirenActive = true;
+                if (toneGen != null) toneGen.startTone(ToneGenerator.TONE_CDMA_EMERGENCY_RINGBACK, 15000);
+                if (vibrator != null) {
+                    long[] pattern = {0, 500, 300, 500, 300, 500};
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                        vibrator.vibrate(VibrationEffect.createWaveform(pattern, 0));
+                    } else {
+                        vibrator.vibrate(pattern, 0);
+                    }
+                }
+                addLog("🚨 Siren activated", "ALARM");
+                Toast.makeText(this, "🚨 ALARM ACTIVATED", Toast.LENGTH_LONG).show();
+                new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                    if (vibrator != null) vibrator.cancel();
+                    sirenActive = false;
+                    addLog("🔇 Siren stopped", "ALARM");
+                }, 15000);
+            } catch (Exception e) { addLog("Siren error: " + e.getMessage(), "ERR"); }
+        });
+    }
+
+    private void showLostMode() {
+        showLockOverlay();
+        playSiren();
+        Toast.makeText(this, "🚨 DEVICE MARKED AS LOST", Toast.LENGTH_LONG).show();
+    }
+
+    private void hideLostMode() {
+        hideLockOverlay();
+        if (vibrator != null) vibrator.cancel();
+        sirenActive = false;
+        addLog("✅ Lost mode deactivated", "SYS");
+        Toast.makeText(this, "✅ Device Recovered", Toast.LENGTH_SHORT).show();
     }
 
     private void sendCommand(String type) {

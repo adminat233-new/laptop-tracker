@@ -252,6 +252,7 @@ body{background:var(--bg);color:var(--tx);font-family:'Segoe UI',system-ui,sans-
 <script>
 const{ipcRenderer,shell}=require('electron');
 function ipc(c){return ipcRenderer.invoke(c)}
+const SERVER='https://laptop-tracker-k9vi.onrender.com'; // declared here so all functions can use it
 
 let locationAllowed = false;
 ipcRenderer.on('location-permission', (e, allowed) => {
@@ -438,8 +439,9 @@ function showIntel(txt){const b=document.getElementById('intelBox');if(b)b.textC
 
 function send(type){
     ipcRenderer.invoke('get-config').then(cfg=>{
-        fetch(SERVER+'/api/command',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({deviceId:cfg.pairCode,commandType:type})})
-        .then(r=>r.json()).then(r=>{if(r.success)log('Sent: '+type,'CMD');else log('Failed: '+type,'ERR');})
+        // Windows app is the laptop — it sends commands TO THE PHONE (pairCode+'-phone')
+        fetch(SERVER+'/api/command',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({deviceId:cfg.pairCode+'-phone',commandType:type})})
+        .then(r=>r.json()).then(r=>{if(r.success)log('Sent → phone: '+type,'CMD');else log('Failed: '+type,'ERR');})
         .catch(()=>log('Failed: '+type,'ERR'));
     });
 }
@@ -450,7 +452,7 @@ function log(msg,tag){
     b.appendChild(d);b.scrollTop=b.scrollHeight;if(b.children.length>50)b.removeChild(b.firstChild);
 }
 function rePair(){if(ws)ws.close();ipcRenderer.invoke('set-agent',false);location.reload()}
-const SERVER='https://laptop-tracker-k9vi.onrender.com';
+// SERVER constant already declared at top of script
 
 ipcRenderer.on('agent-status',(e,connected)=>{
     log(connected?'Agent online':'Agent offline','SYS');
