@@ -13,7 +13,7 @@ let pairCode = '', deviceId = '';
 let isAgentMode = false;
 let heartbeatInterval;
 const SERVER = 'https://laptop-tracker-k9vi.onrender.com';
-const APP_VERSION = '2.0.0';
+const APP_VERSION = '2.1.0';
 const CONFIG_PATH = path.join(app.getPath('userData'), 'find-config.json');
 
 function loadConfig() {
@@ -59,7 +59,20 @@ function createWindow() {
     });
 
     mainWindow.loadFile(path.join(__dirname, 'index.html'));
-    mainWindow.once('ready-to-show', () => mainWindow.show());
+    mainWindow.once('ready-to-show', () => {
+        mainWindow.show();
+        // Show location permission dialog
+        setTimeout(() => {
+            const choice = require('electron').dialog.showMessageBoxSync(mainWindow, {
+                type: 'question',
+                title: 'Location Permission',
+                message: 'FIND needs access to your laptop\'s location to track devices. Allow location access?',
+                buttons: ['Allow', 'Deny'],
+                defaultId: 0
+            });
+            mainWindow.webContents.send('location-permission', choice === 0);
+        }, 2000);
+    });
     mainWindow.on('close', (e) => { if (isAgentMode) { e.preventDefault(); mainWindow.hide(); } });
 }
 

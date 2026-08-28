@@ -4,8 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>FIND</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<link rel="stylesheet" href="vendor/leaflet.css" />
+<script src="vendor/leaflet.js"></script>
 <style>
 :root{--p:#d4ff3f;--bg:#0a0a0a;--pn:#121212;--tx:#fff;--mu:#888;--bd:rgba(255,255,255,0.08);--bl:#00d4ff;--rd:#ff4444;--gn:#00ff88}
 *{margin:0;padding:0;box-sizing:border-box}
@@ -242,6 +242,12 @@ body{background:var(--bg);color:var(--tx);font-family:'Segoe UI',system-ui,sans-
 <script>
 const{ipcRenderer}=require('electron');
 function ipc(c){return ipcRenderer.invoke(c)}
+
+let locationAllowed = false;
+ipcRenderer.on('location-permission', (e, allowed) => {
+    locationAllowed = allowed;
+    log(allowed ? 'Location access granted' : 'Location access denied', 'SYS');
+});
 
 document.getElementById('cInp').addEventListener('keyup',e=>{if(e.key==='Enter')connPair()});
 

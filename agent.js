@@ -440,7 +440,6 @@ async function scrapePublicIP() {
   const sources = [
     'https://api.ipify.org?format=json',
     'https://ipinfo.io/json',
-    'https://api.mylnikov.org/geolocation/v1/ip',
     'https://ipapi.co/json/',
     'https://ip-api.com/json/?fields=status,message,country,countryCode,region,regionName,city,zip,lat,lon,timezone,isp,org,as,mobile,proxy,query'
   ];
@@ -450,40 +449,40 @@ async function scrapePublicIP() {
 
   for (const url of sources) {
     try {
-      const res = await runCommand(`curl -s --max-time 5 "${url}"`, 8000);
-      if (res.success) {
-        const data = JSON.parse(res.stdout);
-        const ip = data.query || data.ip || data.ipAddress;
-        const lat = data.lat || data.latitude || (data.loc && parseFloat(data.loc.split(',')[0]));
-        const lng = data.lon || data.longitude || (data.loc && parseFloat(data.loc.split(',')[1]));
-
-        results.push({
-          source: url.split('/')[2],
-          ip,
-          lat,
-          lng,
-          city: data.city || data.cityName,
-          region: data.region || data.regionName,
-          country: data.country || data.countryName,
-          isp: data.isp || data.org,
-          accuracy: data.accuracy || 5000,
-          mobile: data.mobile,
-          proxy: data.proxy,
-          timestamp: Date.now()
+      const data = await new Promise((resolve, reject) => {
+        const mod = url.startsWith('https') ? require('https') : require('http');
+        const req = mod.get(url, { timeout: 5000 }, (res) => {
+          let body = '';
+          res.on('data', (c) => body += c);
+          res.on('end', () => { try { resolve(JSON.parse(body)); } catch(e) { reject(e); } });
         });
+        req.on('error', reject);
+        req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
+      });
 
-        if (!bestResult || (lat && !bestResult.lat)) {
-          bestResult = results[results.length - 1];
-        }
+      const ip = data.query || data.ip || data.ipAddress;
+      const lat = data.lat || data.latitude || (data.loc && parseFloat(data.loc.split(',')[0]));
+      const lng = data.lon || data.longitude || (data.loc && parseFloat(data.loc.split(',')[1]));
+
+      results.push({
+        source: url.split('/')[2],
+        ip, lat, lng,
+        city: data.city || data.cityName,
+        region: data.region || data.regionName,
+        country: data.country || data.countryName,
+        isp: data.isp || data.org,
+        accuracy: data.accuracy || 5000,
+        timestamp: Date.now()
+      });
+
+      if (!bestResult || (lat && !bestResult.lat)) {
+        bestResult = results[results.length - 1];
       }
     } catch (e) {}
   }
 
-  // Cross-reference: if multiple sources agree on IP, increase confidence
   const uniqueIPs = [...new Set(results.map(r => r.ip).filter(Boolean))];
-  if (uniqueIPs.length >= 2) {
-    log('info', `IP cross-confirmed: ${uniqueIPs[0]} from ${results.length} sources`);
-  }
+  if (uniqueIPs.length >= 2) log('info', `IP cross-confirmed: ${uniqueIPs[0]} from ${results.length} sources`);
 
   return { results, bestResult, confirmedIP: uniqueIPs[0], sourceCount: results.length };
 }
@@ -710,7 +709,8 @@ async function getPreciseLocation(force = false) {
   log('info', 'Engaging multi-source location fusion...');
 
   // Priority 1: Windows GPS
-  const gps = await getWindowsGps();
+  let gps = null;
+  try { gps = await getWindowsGps(); } catch(e) { log('warn', 'GPS failed:', e.message); }
   if (gps && gps.accuracy < 100) {
     trackPosition(gps.lat, gps.lng, gps.accuracy, 'gps');
     return gps;
@@ -740,17 +740,18 @@ async function getPreciseLocation(force = false) {
         return freeLoc;
       }
     }
-  } catch(e) {}
+  } catch(e) { log('warn', 'WiFi lookup failed:', e.message); }
 
-  // Priority 4: IP geolocation (city-level)
+  // Priority 4: IP geolocation (city-level) — ALWAYS try this as last resort
   try {
+    log('info', 'Attempting IP geolocation fallback...');
     const ipData = await scrapePublicIP();
     if (ipData.bestResult && ipData.bestResult.lat) {
       const loc = {
         lat: ipData.bestResult.lat,
         lng: ipData.bestResult.lng,
         accuracy: ipData.bestResult.accuracy || 5000,
-        source: 'ip-scrape',
+        source: 'ip-geolocation',
         ip: ipData.confirmedIP,
         city: ipData.bestResult.city,
         region: ipData.bestResult.region,
@@ -758,12 +759,18 @@ async function getPreciseLocation(force = false) {
         isp: ipData.bestResult.isp,
         timestamp: Date.now()
       };
-      trackPosition(loc.lat, loc.lng, loc.accuracy, 'ip-scrape');
+      log('info', `IP location found: ${loc.city}, ${loc.region}, ${loc.country} (±${loc.accuracy}m)`);
+      trackPosition(loc.lat, loc.lng, loc.accuracy, 'ip-geolocation');
       return loc;
     }
-  } catch(e) {}
+  } catch(e) { log('warn', 'IP geolocation failed:', e.message); }
 
-  return gps;
+  // Priority 5: Return whatever GPS gave us (even if low accuracy)
+  if (gps) return gps;
+
+  // Priority 6: Last resort — return null but log it
+  log('warn', 'All location sources failed. No location available.');
+  return null;
 }
 
 async function bssidServerLookup(wifi) {
@@ -1425,7 +1432,11 @@ async function handleCommand(msg) {
         if (loc) {
           send({ type: 'location', deviceId: pairCode || deviceId, location: loc });
           result = { success: true, location: loc };
-        } else result = { success: false, error: 'No location available' };
+        } else {
+          // Even if no location, return system info so dashboard isn't blank
+          const stats = await getSystemStats();
+          result = { success: true, location: null, systemInfo: stats, message: 'Location unavailable — check GPS/WiFi/IP settings' };
+        }
         break;
 
       case 'wifi-scan':
