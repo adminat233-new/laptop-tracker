@@ -605,13 +605,19 @@ function updateMLBox(fd){
   const wifiNets=fd.wifi?fd.wifi.length:0;
   const strongWifi=fd.wifi?fd.wifi.filter(a=>a.rssi>-60).length:0;
   const ipSources=fd.ipSources||0;
+  const fusedLat=ml.fusedLat?ml.fusedLat.toFixed(6):'--';
+  const fusedLng=ml.fusedLng?ml.fusedLng.toFixed(6):'--';
+  const fusedAcc=ml.fusedAccuracy?Math.round(ml.fusedAccuracy):'--';
+  const sources=(ml.sourcesUsed||[]).join(', ')||'none';
   box.innerHTML=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">`+
     `<div>🎯 Confidence: <b>${conf}%</b></div>`+
     `<div>🛡️ Risk: <b>${risk}</b></div>`+
     `<div>🏃 Pattern: <b>${pattern}</b></div>`+
     `<div>⚡ Velocity: <b>${vel} m/s</b></div>`+
-    `<div>📍 Path: <b>${pathDist} km</b></div>`+
+    `<div>📍 Fused: <b>${fusedLat}, ${fusedLng}</b></div>`+
+    `<div>📐 Accuracy: <b>±${fusedAcc}m</b></div>`+
     `<div>🧠 Action: <b>${action}</b></div>`+
+    `<div>📡 Sources: <b>${sources}</b></div>`+
     `<div>🌐 IP: <b>${ip}</b></div>`+
     `<div>📶 WiFi: <b>${wifiNets} nets (${strongWifi} strong)</b></div>`+
     `<div>🔗 IP Sources: <b>${ipSources}</b></div>`+

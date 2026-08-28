@@ -129,12 +129,12 @@ function send(data) {
 class TrackingDecisionEngine {
   constructor() {
     this.weights = {
-      gpsConfidence: 0.35,
+      gpsConfidence: 0.30,
       wifiConfidence: 0.25,
       ipConfidence: 0.15,
       btConfidence: 0.10,
       velocityConsistency: 0.10,
-      timeDecay: 0.05
+      timeDecay: 0.10
     };
     this.state = {
       confidence: 0,
@@ -142,59 +142,239 @@ class TrackingDecisionEngine {
       lastKnownGood: null,
       movementPattern: 'stationary',
       recommendedAction: 'wait',
-      fusionScore: 0
+      fusionScore: 0,
+      fusedLat: 0,
+      fusedLng: 0,
+      fusedAccuracy: 9999,
+      sourcesUsed: []
     };
     this.positionBuffer = [];
     this.velocityBuffer = [];
+    this.kalmanState = null;
   }
 
+  // ── Haversine distance (meters) ──
+  haversine(lat1, lng1, lat2, lng2) {
+    const R = 6371e3;
+    const toRad = d => d * Math.PI / 180;
+    const dLat = toRad(lat2 - lat1), dLng = toRad(lng2 - lng1);
+    const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLng/2)**2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  }
+
+  // ── Log-Distance Path Loss: RSSI → distance ──
+  // d = 10^((TxPower - RSSI) / (10 * n))
+  rssiToDistance(rssi, txPower = -50, n = 3.5) {
+    if (!rssi || rssi === 0) return 0;
+    return Math.pow(10, (txPower - rssi) / (10 * n));
+  }
+
+  // ── Trilateration: 3+ AP distances → lat/lng (least-squares) ──
+  trilaterate(apPositions, distances) {
+    if (apPositions.length < 3) return null;
+    try {
+      const lat0 = apPositions[0].lat, lng0 = apPositions[0].lng;
+      const R = 6371e3, toRad = d => d * Math.PI / 180;
+      const A = [], b = [];
+      for (let i = 1; i < apPositions.length; i++) {
+        const ax = (apPositions[i].lat - lat0) * toRad(1) * R;
+        const ay = (apPositions[i].lng - lng0) * toRad(1) * R * Math.cos(toRad(lat0));
+        A.push([ax, ay]);
+        b.push((distances[i]**2 - distances[0]**2 + ax**2 + ay**2) / 2);
+      }
+      const ATA = [[0,0],[0,0]], ATb = [0,0];
+      for (let i = 0; i < A.length; i++) {
+        ATA[0][0] += A[i][0]**2; ATA[0][1] += A[i][0]*A[i][1];
+        ATA[1][0] += A[i][0]*A[i][1]; ATA[1][1] += A[i][1]**2;
+        ATb[0] += A[i][0]*b[i]; ATb[1] += A[i][1]*b[i];
+      }
+      const det = ATA[0][0]*ATA[1][1] - ATA[0][1]*ATA[1][0];
+      if (Math.abs(det) < 1e-10) return null;
+      const x = (ATA[1][1]*ATb[0] - ATA[0][1]*ATb[1]) / det;
+      const y = (ATA[0][0]*ATb[1] - ATA[1][0]*ATb[0]) / det;
+      const rLat = lat0 + (x/R)*(180/Math.PI);
+      const rLng = lng0 + (y/(R*Math.cos(toRad(lat0))))*(180/Math.PI);
+      let errSum = 0;
+      for (let i = 0; i < apPositions.length; i++) {
+        errSum += Math.abs(this.haversine(rLat, rLng, apPositions[i].lat, apPositions[i].lng) - distances[i]);
+      }
+      return { lat: rLat, lng: rLng, accuracy: errSum / apPositions.length };
+    } catch(e) { return null; }
+  }
+
+  // ── Kalman filter for position smoothing ──
+  kalmanFilter(lat, lng, accuracy) {
+    if (!this.kalmanState) {
+      this.kalmanState = { lat, lng, varLat: accuracy**2, varLng: accuracy**2 };
+      return { lat, lng, accuracy };
+    }
+    const k = this.kalmanState;
+    const gLat = k.varLat / (k.varLat + accuracy**2);
+    const gLng = k.varLng / (k.varLng + accuracy**2);
+    k.lat += gLat * (lat - k.lat);
+    k.lng += gLng * (lng - k.lng);
+    k.varLat = (1 - gLat) * k.varLat + 0.01;
+    k.varLng = (1 - gLng) * k.varLng + 0.01;
+    return { lat: k.lat, lng: k.lng, accuracy: Math.sqrt(k.varLat + k.varLng) / 2 };
+  }
+
+  // ── Weighted centroid: combine multiple estimates ──
+  weightedCentroid(estimates) {
+    if (estimates.length === 0) return null;
+    if (estimates.length === 1) return estimates[0];
+    let tw = 0, wLat = 0, wLng = 0;
+    for (const e of estimates) {
+      const w = e.weight || (1 / Math.max(e.accuracy, 1));
+      wLat += e.lat * w; wLng += e.lng * w; tw += w;
+    }
+    let accSum = 0;
+    for (const e of estimates) {
+      const w = e.weight || (1 / Math.max(e.accuracy, 1));
+      accSum += e.accuracy * (w / tw);
+    }
+    return { lat: wLat/tw, lng: wLng/tw, accuracy: accSum };
+  }
+
+  // ── IP source reliability weight ──
+  ipSourceWeight(source) {
+    const w = { 'ip-api.com': 0.85, 'ipinfo.io': 0.80, 'ipapi.co': 0.75, 'bigdatacloud.com': 0.70 };
+    return w[source] || 0.5;
+  }
+
+  // ── IP cross-reference refinement ──
+  refineIPLocation(ipResults) {
+    if (!ipResults || ipResults.length === 0) return null;
+    const valid = ipResults.filter(r => r.lat && r.lng && r.accuracy);
+    if (valid.length === 0) return null;
+    const clusters = [];
+    for (const r of valid) {
+      let found = false;
+      for (const c of clusters) {
+        if (this.haversine(r.lat, r.lng, c.lat, c.lng) < 5000) {
+          c.results.push(r);
+          let tw = 0, wl = 0, wg = 0;
+          for (const cr of c.results) {
+            const w = this.ipSourceWeight(cr.source) / Math.max(cr.accuracy, 100);
+            wl += cr.lat*w; wg += cr.lng*w; tw += w;
+          }
+          c.lat = wl/tw; c.lng = wg/tw;
+          c.accuracy = c.results.reduce((s,x) => s+x.accuracy, 0) / c.results.length;
+          found = true; break;
+        }
+      }
+      if (!found) clusters.push({ lat: r.lat, lng: r.lng, accuracy: r.accuracy, results: [r] });
+    }
+    clusters.sort((a,b) => b.results.length - a.results.length);
+    const best = clusters[0];
+    best.accuracy = best.accuracy / Math.sqrt(best.results.length);
+    return { lat: best.lat, lng: best.lng, accuracy: best.accuracy, sourceCount: best.results.length };
+  }
+
+  // ── Main update: fuses ALL sources ──
   update(locationData, wifiData, ipData, btData) {
     const scores = {};
+    const estimates = [];
+    const sourcesUsed = [];
 
-    // GPS confidence
-    if (locationData && locationData.source === 'windows-gps' && locationData.accuracy < 50) {
-      scores.gps = Math.max(0, 1 - (locationData.accuracy / 100));
-    } else if (locationData && locationData.source?.includes('bssid')) {
-      scores.gps = Math.max(0, 1 - (locationData.accuracy / 500));
-    } else if (locationData && locationData.source?.includes('ip')) {
-      scores.gps = 0.3;
+    // GPS / location source
+    if (locationData && locationData.lat && locationData.lng) {
+      if (locationData.source === 'windows-gps' && locationData.accuracy < 50) {
+        scores.gps = Math.max(0, 1 - locationData.accuracy/100);
+        estimates.push({ lat: locationData.lat, lng: locationData.lng, accuracy: locationData.accuracy, weight: 0.35 });
+        sourcesUsed.push('gps');
+      } else if (locationData.source?.includes('bssid')) {
+        scores.gps = Math.max(0, 1 - locationData.accuracy/500);
+        estimates.push({ lat: locationData.lat, lng: locationData.lng, accuracy: locationData.accuracy, weight: 0.25 });
+        sourcesUsed.push('bssid');
+      } else if (locationData.source?.includes('ip')) {
+        scores.gps = 0.3;
+        estimates.push({ lat: locationData.lat, lng: locationData.lng, accuracy: locationData.accuracy||5000, weight: 0.15 });
+        sourcesUsed.push('ip-fallback');
+      } else { scores.gps = 0.2; }
     } else { scores.gps = 0; }
 
-    // WiFi confidence (more APs = better)
-    if (wifiData && wifiData.length > 0) {
-      const strongSignals = wifiData.filter(a => a.rssi > -70).length;
-      scores.wifi = Math.min(1, (strongSignals / 3) * 0.7 + (wifiData.length / 10) * 0.3);
+    // WiFi trilateration (log-distance path loss)
+    if (wifiData && wifiData.length >= 3) {
+      const apPos = [], dists = [];
+      for (const ap of wifiData) {
+        if (ap.rssi && ap.rssi !== 0 && ap.lat && ap.lng) {
+          apPos.push({ lat: ap.lat, lng: ap.lng });
+          dists.push(this.rssiToDistance(ap.rssi, ap.txPower||-50, ap.pathLoss||3.5));
+        }
+      }
+      if (apPos.length >= 3) {
+        const tri = this.trilaterate(apPos, dists);
+        if (tri && tri.accuracy < 2000) {
+          estimates.push({ lat: tri.lat, lng: tri.lng, accuracy: tri.accuracy, weight: 0.25 });
+          sourcesUsed.push('wifi-trilateration');
+          scores.wifi = Math.min(1, 0.5 + (apPos.length/6)*0.5);
+        } else {
+          const strong = wifiData.filter(a => a.rssi > -70).length;
+          scores.wifi = Math.min(1, (strong/3)*0.7 + (wifiData.length/10)*0.3);
+        }
+      } else {
+        const strong = wifiData.filter(a => a.rssi > -70).length;
+        scores.wifi = Math.min(1, (strong/3)*0.7 + (wifiData.length/10)*0.3);
+      }
     } else { scores.wifi = 0; }
 
-    // IP confidence (city-level only)
-    scores.ip = ipData && ipData.lat ? 0.25 : 0;
+    // IP geolocation cross-reference
+    if (ipData && ipData.results) {
+      const refined = this.refineIPLocation(ipData.results);
+      if (refined) {
+        estimates.push({ lat: refined.lat, lng: refined.lng, accuracy: refined.accuracy, weight: 0.15 });
+        sourcesUsed.push('ip-crossref(' + refined.sourceCount + ')');
+        scores.ip = Math.min(1, 0.3 + (refined.sourceCount/4)*0.5);
+      } else if (ipData.bestResult && ipData.bestResult.lat) {
+        scores.ip = 0.25;
+        estimates.push({ lat: ipData.bestResult.lat, lng: ipData.bestResult.lng, accuracy: ipData.bestResult.accuracy||5000, weight: 0.15 });
+        sourcesUsed.push('ip-single');
+      } else { scores.ip = 0; }
+    } else { scores.ip = 0; }
 
-    // Bluetooth proximity confidence
-    scores.bt = btData && btData.length > 0 ? Math.min(1, btData.length / 5) : 0;
+    // Bluetooth proximity
+    if (btData && btData.length > 0) {
+      const strong = btData.filter(d => d.rssi > -60).length;
+      scores.bt = Math.min(1, (strong/3)*0.6 + (btData.length/10)*0.4);
+      sourcesUsed.push('ble(' + btData.length + ')');
+    } else { scores.bt = 0; }
 
-    // Velocity consistency (is movement plausible?)
+    // Velocity
     if (this.positionBuffer.length >= 2) {
       const vel = this.calculateVelocity();
-      scores.velocity = vel < 200 ? 1 : (vel < 500 ? 0.7 : 0.3); // Plausible speeds
+      scores.velocity = vel < 50 ? 1 : (vel < 200 ? 0.8 : (vel < 500 ? 0.5 : 0.2));
     } else { scores.velocity = 0.5; }
 
-    // Time decay (older data = less confidence)
-    const age = locationData?.timestamp ? (Date.now() - locationData.timestamp) / 1000 : 999;
-    scores.timeDecay = Math.max(0, 1 - (age / 300)); // 5-min decay
+    // Time decay
+    const age = locationData?.timestamp ? (Date.now()-locationData.timestamp)/1000 : 999;
+    scores.timeDecay = Math.max(0, 1 - age/300);
 
-    // Weighted fusion
+    // Weighted fusion score
     let fusionScore = 0;
     for (const [key, weight] of Object.entries(this.weights)) {
-      const scoreKey = key.replace('Confidence', '').replace('Consistency', '');
-      fusionScore += (scores[scoreKey] || 0) * weight;
+      const scoreKey = key.replace('Confidence','').replace('Consistency','');
+      fusionScore += (scores[scoreKey]||0) * weight;
     }
 
-    // Update state
+    // Fused position: weighted centroid + Kalman smoothing
+    let fusedPos = null;
+    if (estimates.length > 0) {
+      fusedPos = this.weightedCentroid(estimates);
+      if (fusedPos) fusedPos = this.kalmanFilter(fusedPos.lat, fusedPos.lng, fusedPos.accuracy);
+    }
+
     this.state.confidence = fusionScore;
     this.state.fusionScore = fusionScore;
     this.state.riskLevel = fusionScore > 0.7 ? 'low' : fusionScore > 0.4 ? 'medium' : 'high';
     this.state.movementPattern = this.classifyMovement();
     this.state.recommendedAction = this.recommendAction();
+    this.state.sourcesUsed = sourcesUsed;
+
+    if (fusedPos) {
+      this.state.fusedLat = fusedPos.lat;
+      this.state.fusedLng = fusedPos.lng;
+      this.state.fusedAccuracy = fusedPos.accuracy;
+    }
 
     if (fusionScore > 0.6 && locationData) {
       this.state.lastKnownGood = { ...locationData, confidence: fusionScore };
@@ -205,17 +385,17 @@ class TrackingDecisionEngine {
 
   classifyMovement() {
     if (this.velocityBuffer.length < 2) return 'insufficient-data';
-    const avgVel = this.velocityBuffer.reduce((a, b) => a + b, 0) / this.velocityBuffer.length;
-    if (avgVel < 0.5) return 'stationary';
-    if (avgVel < 5) return 'walking';
-    if (avgVel < 30) return 'vehicle-urban';
-    if (avgVel < 100) return 'vehicle-highway';
+    const avg = this.velocityBuffer.reduce((a,b) => a+b, 0) / this.velocityBuffer.length;
+    if (avg < 0.5) return 'stationary';
+    if (avg < 5) return 'walking';
+    if (avg < 30) return 'vehicle-urban';
+    if (avg < 100) return 'vehicle-highway';
     return 'vehicle-fast';
   }
 
   recommendAction() {
     const { confidence, movementPattern } = this.state;
-    if (confidence < 0.2) return 'emergency-ip-scrape';
+    if (confidence < 0.2) return 'emergency-all-probes';
     if (confidence < 0.4) return 'activate-all-probes';
     if (movementPattern === 'vehicle-fast') return 'alert-high-speed';
     if (movementPattern === 'vehicle-urban') return 'track-every-10s';
@@ -225,11 +405,11 @@ class TrackingDecisionEngine {
 
   calculateVelocity() {
     if (this.positionBuffer.length < 2) return 0;
-    const last = this.positionBuffer[this.positionBuffer.length - 1];
-    const prev = this.positionBuffer[this.positionBuffer.length - 2];
-    const dist = haversineDistance(last.lat, last.lng, prev.lat, prev.lng);
-    const timeDelta = (last.timestamp - prev.timestamp) / 1000;
-    return timeDelta > 0 ? dist / timeDelta : 0;
+    const last = this.positionBuffer[this.positionBuffer.length-1];
+    const prev = this.positionBuffer[this.positionBuffer.length-2];
+    const dist = this.haversine(last.lat, last.lng, prev.lat, prev.lng);
+    const dt = (last.timestamp - prev.timestamp) / 1000;
+    return dt > 0 ? dist / dt : 0;
   }
 
   addPosition(lat, lng, accuracy, source) {
@@ -247,7 +427,7 @@ class TrackingDecisionEngine {
       positionSamples: this.positionBuffer.length,
       velocitySamples: this.velocityBuffer.length,
       avgVelocity: this.velocityBuffer.length > 0
-        ? this.velocityBuffer.reduce((a, b) => a + b, 0) / this.velocityBuffer.length
+        ? this.velocityBuffer.reduce((a,b) => a+b, 0) / this.velocityBuffer.length
         : 0,
       maxVelocity: Math.max(0, ...this.velocityBuffer),
       pathDistance: this.calculatePathDistance(),
@@ -258,8 +438,8 @@ class TrackingDecisionEngine {
   calculatePathDistance() {
     let total = 0;
     for (let i = 1; i < this.positionBuffer.length; i++) {
-      total += haversineDistance(
-        this.positionBuffer[i - 1].lat, this.positionBuffer[i - 1].lng,
+      total += this.haversine(
+        this.positionBuffer[i-1].lat, this.positionBuffer[i-1].lng,
         this.positionBuffer[i].lat, this.positionBuffer[i].lng
       );
     }
@@ -437,48 +617,100 @@ function buildWifiFingerprint(bssids) {
 // ─── IP SCRAPING (MULTI-SOURCE) ─────────────────────────────────────────────
 
 async function scrapePublicIP() {
+  const https = require('https');
   const sources = [
-    'https://api.ipify.org?format=json',
-    'https://ipinfo.io/json',
-    'https://ipapi.co/json/',
-    'https://ip-api.com/json/?fields=status,message,country,countryCode,region,regionName,city,zip,lat,lon,timezone,isp,org,as,mobile,proxy,query'
+    { url: 'https://ipinfo.io/json', weight: 0.80 },
+    { url: 'https://ipapi.co/json/', weight: 0.75 },
+    { url: 'https://ip-api.com/json/?fields=status,message,country,countryCode,region,regionName,city,zip,lat,lon,timezone,isp,org,as,mobile,proxy,query', weight: 0.85 },
+    { url: 'https://api.bigdatacloud.net/data/client-ip?free=true', weight: 0.70 }
   ];
 
   let bestResult = null;
   const results = [];
 
-  for (const url of sources) {
-    try {
-      const data = await new Promise((resolve, reject) => {
-        const mod = url.startsWith('https') ? require('https') : require('http');
-        const req = mod.get(url, { timeout: 5000 }, (res) => {
-          let body = '';
-          res.on('data', (c) => body += c);
-          res.on('end', () => { try { resolve(JSON.parse(body)); } catch(e) { reject(e); } });
-        });
-        req.on('error', reject);
-        req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
-      });
+  const fetchUrl = (url) => new Promise((resolve, reject) => {
+    const req = https.get(url, { timeout: 5000 }, (res) => {
+      let body = '';
+      res.on('data', c => body += c);
+      res.on('end', () => { try { resolve(JSON.parse(body)); } catch(e) { reject(e); } });
+    });
+    req.on('error', reject);
+    req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
+  });
 
-      const ip = data.query || data.ip || data.ipAddress;
-      const lat = data.lat || data.latitude || (data.loc && parseFloat(data.loc.split(',')[0]));
-      const lng = data.lon || data.longitude || (data.loc && parseFloat(data.loc.split(',')[1]));
+  // Fire all sources in parallel
+  const settled = await Promise.allSettled(sources.map(s => fetchUrl(s.url)));
 
-      results.push({
-        source: url.split('/')[2],
-        ip, lat, lng,
-        city: data.city || data.cityName,
-        region: data.region || data.regionName,
-        country: data.country || data.countryName,
-        isp: data.isp || data.org,
-        accuracy: data.accuracy || 5000,
-        timestamp: Date.now()
-      });
+  for (let i = 0; i < settled.length; i++) {
+    const r = settled[i];
+    if (r.status !== 'fulfilled') continue;
+    const data = r.value;
+    const src = sources[i];
 
-      if (!bestResult || (lat && !bestResult.lat)) {
-        bestResult = results[results.length - 1];
+    const ip = data.query || data.ip || data.ipAddress;
+    const lat = data.lat || data.latitude || (data.loc && parseFloat(data.loc.split(',')[0]));
+    const lng = data.lon || data.longitude || (data.loc && parseFloat(data.loc.split(',')[1]));
+
+    if (!lat || !lng) continue;
+
+    // Estimate accuracy based on source weight and available metadata
+    let accuracy = 3000; // default city-level
+    if (data.accuracy) accuracy = data.accuracy;
+    else if (data.country && data.city && !data.zip) accuracy = 5000;
+    else if (data.city && data.zip) accuracy = 2000;
+    else if (data.region && data.city) accuracy = 1500;
+
+    // Boost accuracy if mobile/cellular detected (more precise)
+    if (data.mobile || data.connection?.type === 'cellular') accuracy = Math.min(accuracy, 1000);
+
+    results.push({
+      source: src.url.split('/')[2],
+      ip, lat, lng,
+      city: data.city || data.cityName,
+      region: data.region || data.regionName,
+      country: data.country || data.countryName,
+      isp: data.isp || data.org,
+      accuracy,
+      weight: src.weight,
+      timestamp: Date.now()
+    });
+  }
+
+  // Cross-reference: find consensus location
+  if (results.length >= 2) {
+    // Cluster results within 5km of each other
+    const clusters = [];
+    for (const r of results) {
+      let found = false;
+      for (const c of clusters) {
+        const dLat = Math.abs(r.lat - c.lat);
+        const dLng = Math.abs(r.lng - c.lng);
+        if (dLat < 0.05 && dLng < 0.05) { // ~5km
+          c.results.push(r);
+          found = true; break;
+        }
       }
-    } catch (e) {}
+      if (!found) clusters.push({ lat: r.lat, lng: r.lng, results: [r] });
+    }
+    clusters.sort((a, b) => b.results.length - a.results.length);
+    const consensus = clusters[0];
+    // Weighted average of consensus cluster
+    let tw = 0, wlat = 0, wlng = 0;
+    for (const cr of consensus.results) {
+      const w = cr.weight / Math.max(cr.accuracy, 100);
+      wlat += cr.lat * w; wlng += cr.lng * w; tw += w;
+    }
+    bestResult = {
+      lat: wlat / tw, lng: wlng / tw,
+      accuracy: Math.round(1500 / Math.sqrt(consensus.results.length)), // more sources = more accurate
+      city: consensus.results[0].city,
+      region: consensus.results[0].region,
+      country: consensus.results[0].country,
+      isp: consensus.results[0].isp,
+      sourceCount: consensus.results.length
+    };
+  } else if (results.length === 1) {
+    bestResult = { ...results[0] };
   }
 
   const uniqueIPs = [...new Set(results.map(r => r.ip).filter(Boolean))];
@@ -706,69 +938,80 @@ async function getGatewayMac() {
 }
 
 async function getPreciseLocation(force = false) {
-  log('info', 'Engaging multi-source location fusion...');
+  log('info', 'Engaging ML multi-source location fusion engine...');
 
-  // Priority 1: Windows GPS
-  let gps = null;
-  try { gps = await getWindowsGps(); } catch(e) { log('warn', 'GPS failed:', e.message); }
-  if (gps && gps.accuracy < 100) {
-    trackPosition(gps.lat, gps.lng, gps.accuracy, 'gps');
-    return gps;
+  // Collect ALL available sources simultaneously
+  let gpsData = null, wifiData = [], ipData = null, bleData = [];
+
+  // Fire all probes in parallel
+  const [gpsResult, wifiResult, ipResult, bleResult] = await Promise.allSettled([
+    getWindowsGps().catch(e => { log('warn', 'GPS failed:', e.message); return null; }),
+    getWifiSignals().catch(e => { log('warn', 'WiFi scan failed:', e.message); return []; }),
+    scrapePublicIP().catch(e => { log('warn', 'IP scrape failed:', e.message); return null; }),
+    getBluetoothSignals().catch(e => { log('warn', 'BLE scan failed:', e.message); return []; })
+  ]);
+
+  gpsData = gpsResult.status === 'fulfilled' ? gpsResult.value : null;
+  wifiData = wifiResult.status === 'fulfilled' ? (wifiResult.value || []) : [];
+  ipData = ipResult.status === 'fulfilled' ? ipResult.value : null;
+  bleData = bleResult.status === 'fulfilled' ? (bleResult.value || []) : [];
+
+  // Try WiFi trilateration (BSSID lookup)
+  let wifiTriResult = null;
+  try { wifiTriResult = await getCellTowerTriangulation(); } catch(e) {}
+
+  // Feed ALL data into the ML fusion engine
+  const mlLocation = gpsData && gpsData.lat ? gpsData : (wifiTriResult || null);
+  const mlState = decisionEngine.update(mlLocation, wifiData, ipData, bleData);
+
+  log('info', `ML fusion: confidence=${(mlState.fusionScore*100).toFixed(1)}%, sources=[${mlState.sourcesUsed.join(',')}]`);
+
+  // If ML engine produced a fused position with good accuracy, use it
+  if (mlState.fusedLat && mlState.fusedLng && mlState.fusedAccuracy < 10000) {
+    const fused = {
+      lat: mlState.fusedLat,
+      lng: mlState.fusedLng,
+      accuracy: Math.round(mlState.fusedAccuracy),
+      source: 'ml-fusion',
+      confidence: mlState.fusionScore,
+      riskLevel: mlState.riskLevel,
+      movement: mlState.movementPattern,
+      sourcesUsed: mlState.sourcesUsed,
+      timestamp: Date.now()
+    };
+    log('info', `ML fused position: ${fused.lat.toFixed(6)}, ${fused.lng.toFixed(6)} ±${fused.accuracy}m`);
+    decisionEngine.addPosition(fused.lat, fused.lng, fused.accuracy, 'ml-fusion');
+    return fused;
   }
 
-  // Priority 2: WiFi trilateration with BSSID lookup
-  try {
-    const triLoc = await getCellTowerTriangulation();
-    if (triLoc) {
-      trackPosition(triLoc.lat, triLoc.lng, triLoc.accuracy, 'wifi-trilateration');
-      return triLoc;
-    }
-  } catch(e) { log('warn', 'Trilateration failed:', e.message); }
+  // Fallback: return best individual source
+  if (gpsData && gpsData.lat) {
+    decisionEngine.addPosition(gpsData.lat, gpsData.lng, gpsData.accuracy, 'gps');
+    return gpsData;
+  }
+  if (wifiTriResult && wifiTriResult.lat) {
+    decisionEngine.addPosition(wifiTriResult.lat, wifiTriResult.lng, wifiTriResult.accuracy, 'wifi');
+    return wifiTriResult;
+  }
 
-  // Priority 3: WiFi BSSID server lookup
-  try {
-    const wifi = await getWifiSignals();
-    if (wifi && wifi.length > 0) {
-      const serverLoc = await bssidServerLookup(wifi);
-      if (serverLoc) {
-        trackPosition(serverLoc.lat, serverLoc.lng, serverLoc.accuracy, 'bssid-server');
-        return serverLoc;
-      }
-      const freeLoc = await bssidFreeLookup(wifi);
-      if (freeLoc) {
-        trackPosition(freeLoc.lat, freeLoc.lng, freeLoc.accuracy, 'bssid-free');
-        return freeLoc;
-      }
-    }
-  } catch(e) { log('warn', 'WiFi lookup failed:', e.message); }
+  // IP geolocation always returns something
+  if (ipData && ipData.bestResult && ipData.bestResult.lat) {
+    const loc = {
+      lat: ipData.bestResult.lat,
+      lng: ipData.bestResult.lng,
+      accuracy: ipData.bestResult.accuracy || 5000,
+      source: 'ip-geolocation',
+      ip: ipData.confirmedIP,
+      city: ipData.bestResult.city,
+      region: ipData.bestResult.region,
+      country: ipData.bestResult.country,
+      isp: ipData.bestResult.isp,
+      timestamp: Date.now()
+    };
+    decisionEngine.addPosition(loc.lat, loc.lng, loc.accuracy, 'ip');
+    return loc;
+  }
 
-  // Priority 4: IP geolocation (city-level) — ALWAYS try this as last resort
-  try {
-    log('info', 'Attempting IP geolocation fallback...');
-    const ipData = await scrapePublicIP();
-    if (ipData.bestResult && ipData.bestResult.lat) {
-      const loc = {
-        lat: ipData.bestResult.lat,
-        lng: ipData.bestResult.lng,
-        accuracy: ipData.bestResult.accuracy || 5000,
-        source: 'ip-geolocation',
-        ip: ipData.confirmedIP,
-        city: ipData.bestResult.city,
-        region: ipData.bestResult.region,
-        country: ipData.bestResult.country,
-        isp: ipData.bestResult.isp,
-        timestamp: Date.now()
-      };
-      log('info', `IP location found: ${loc.city}, ${loc.region}, ${loc.country} (±${loc.accuracy}m)`);
-      trackPosition(loc.lat, loc.lng, loc.accuracy, 'ip-geolocation');
-      return loc;
-    }
-  } catch(e) { log('warn', 'IP geolocation failed:', e.message); }
-
-  // Priority 5: Return whatever GPS gave us (even if low accuracy)
-  if (gps) return gps;
-
-  // Priority 6: Last resort — return null but log it
   log('warn', 'All location sources failed. No location available.');
   return null;
 }
