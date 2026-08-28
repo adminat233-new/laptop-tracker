@@ -631,6 +631,18 @@ function handleResult(msg){
     const r=typeof msg.result==='string'?JSON.parse(msg.result):msg.result;
     const cmd=msg.commandType||'';
     log('✅ '+cmd+' done','RES');
+    // Handle locate results — extract location and update map
+    if(cmd==='locate'||cmd==='location'){
+      const loc=r.location||r;
+      if(loc&&loc.lat&&loc.lng){
+        if(msg.deviceId&&msg.deviceId.endsWith('-phone'))renderPh(loc);
+        else renderLp(loc);
+        if(loc.source)log('📍 '+loc.source+': '+loc.lat.toFixed(6)+', '+loc.lng.toFixed(6)+' ±'+(loc.accuracy||'?')+'m','LOC');
+        if(loc.confidence)log('🧠 ML confidence: '+(loc.confidence*100).toFixed(1)+'%','ML');
+        if(loc.sourcesUsed)log('📡 Sources: '+loc.sourcesUsed.join(', '),'ML');
+        return;
+      }
+    }
     if(r.bssids){
       const lines=r.bssids.map(n=>`• ${n.ssid||'Hidden'}: ${n.rssi||'?'}dBm, Ch${n.channel||'?'}${n.bssid?' MAC:'+n.bssid:''}`);
       showIntel('📡 WiFi Scan ('+r.bssids.length+' networks):\n'+lines.join('\n'));

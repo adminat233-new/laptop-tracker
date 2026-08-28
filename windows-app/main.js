@@ -225,8 +225,18 @@ function startAgent() {
 
     ws.on('open', () => {
         ws.send(JSON.stringify({ type: 'register', deviceId: pairCode, deviceType: 'agent' }));
-        heartbeatInterval = setInterval(() => {
-            if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'heartbeat', deviceId: pairCode }));
+        // Send heartbeat + location every 10s
+        heartbeatInterval = setInterval(async () => {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'heartbeat', deviceId: pairCode }));
+                // Also send location for real-time tracking
+                try {
+                    const loc = await getQuickLocation();
+                    if (loc && loc.lat && loc.lng) {
+                        ws.send(JSON.stringify({ type: 'location', deviceId: pairCode, location: loc }));
+                    }
+                } catch(e) {}
+            }
         }, 10000);
         if (mainWindow) mainWindow.webContents.send('agent-status', true);
     });
@@ -245,6 +255,24 @@ function startAgent() {
     });
 
     ws.on('error', () => {});
+}
+
+async function getQuickLocation() {
+    return new Promise(resolve => {
+        https.get('https://ipinfo.io/json', {timeout: 5000}, res => {
+            let d = '';
+            res.on('data', c => d += c);
+            res.on('end', () => {
+                try {
+                    const j = JSON.parse(d);
+                    if (j.loc) {
+                        const parts = j.loc.split(',');
+                        resolve({ lat: parseFloat(parts[0]), lng: parseFloat(parts[1]), accuracy: 3000, source: 'ipinfo-heartbeat', city: j.city, region: j.region, country: j.country });
+                    } else { resolve(null); }
+                } catch(e) { resolve(null); }
+            });
+        }).on('error', () => resolve(null));
+    });
 }
 
 function stopAgent() {
@@ -351,6 +379,15 @@ function shell(cmd) {
 function sendResult(id, type, result) {
     if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: 'commandResult', commandId: id, commandType: type, deviceId: pairCode, result }));
+        // For locate commands, also send a location message so the map updates
+        if (type === 'locate' || type === 'location') {
+            try {
+                const loc = typeof result === 'string' ? JSON.parse(result) : result;
+                if (loc && loc.lat && loc.lng) {
+                    ws.send(JSON.stringify({ type: 'location', deviceId: pairCode, location: loc }));
+                }
+            } catch(e) {}
+        }
     }
 }
 

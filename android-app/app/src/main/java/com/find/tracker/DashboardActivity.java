@@ -330,27 +330,33 @@ public class DashboardActivity extends AppCompatActivity {
                     addLog("Location sent: " + loc.getLatitude() + ", " + loc.getLongitude(), "GPS");
                 } else {
                     addLog("No location available — requesting fresh fix", "GPS");
-                    fusedClient.requestLocationUpdates(
-                        new com.google.android.gms.location.LocationRequest.Builder(1000, 0).build(),
-                        new com.google.android.gms.location.LocationCallback() {
-                            @Override
-                            public void onLocationResult(com.google.android.gms.location.LocationResult result) {
-                                if (result != null && result.getLastLocation() != null) {
-                                    Location loc = result.getLastLocation();
-                                    JSONObject locData = new JSONObject();
-                                    try {
-                                        locData.put("lat", loc.getLatitude());
-                                        locData.put("lng", loc.getLongitude());
-                                        locData.put("accuracy", loc.getAccuracy());
-                                        locData.put("source", "android-gps");
-                                    } catch (Exception e) {}
-                                    ws.sendLocation(deviceId, locData);
-                                    updatePhoneLocation(loc.getLatitude(), loc.getLongitude());
+                    try {
+                        com.google.android.gms.location.LocationRequest locReq = new com.google.android.gms.location.LocationRequest.Builder(5000, com.google.android.gms.location.Priority.PRIORITY_HIGH_ACCURACY).build();
+                        fusedClient.requestLocationUpdates(locReq,
+                            new com.google.android.gms.location.LocationCallback() {
+                                @Override
+                                public void onLocationResult(com.google.android.gms.location.LocationResult result) {
+                                    if (result != null && result.getLastLocation() != null) {
+                                        Location loc = result.getLastLocation();
+                                        JSONObject locData = new JSONObject();
+                                        try {
+                                            locData.put("lat", loc.getLatitude());
+                                            locData.put("lng", loc.getLongitude());
+                                            locData.put("accuracy", loc.getAccuracy());
+                                            locData.put("source", "android-gps");
+                                        } catch (Exception e) {}
+                                        ws.sendLocation(deviceId, locData);
+                                        updatePhoneLocation(loc.getLatitude(), loc.getLongitude());
+                                        addLog("Fresh location: " + loc.getLatitude() + ", " + loc.getLongitude(), "GPS");
+                                        try { fusedClient.removeLocationUpdates(this); } catch (Exception ex) {}
+                                    }
                                 }
-                            }
-                        },
-                        Looper.getMainLooper()
-                    );
+                            },
+                            Looper.getMainLooper()
+                        );
+                    } catch (Exception ex) {
+                        addLog("Location request failed: " + ex.getMessage(), "ERR");
+                    }
                 }
             });
         } catch (Exception e) {
