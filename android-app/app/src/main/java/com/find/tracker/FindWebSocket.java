@@ -107,11 +107,31 @@ public class FindWebSocket {
 
     public void sendLocation(String deviceId, JSONObject location) {
         try {
+            // Send via WebSocket
             JSONObject msg = new JSONObject();
             msg.put("type", "location");
             msg.put("deviceId", deviceId);
             msg.put("location", location);
             send(msg);
+
+            // Also send via HTTP to store in DB + broadcast
+            new Thread(() -> {
+                try {
+                    java.net.HttpURLConnection conn = (java.net.HttpURLConnection) new java.net.URL(serverUrl + "/api/location/phone").openConnection();
+                    conn.setRequestMethod("POST");
+                    conn.setRequestProperty("Content-Type", "application/json");
+                    conn.setDoOutput(true);
+                    JSONObject body = new JSONObject();
+                    body.put("deviceId", deviceId);
+                    body.put("location", location);
+                    java.io.OutputStream os = conn.getOutputStream();
+                    os.write(body.toString().getBytes());
+                    os.flush();
+                    os.close();
+                    conn.getResponseCode();
+                    conn.disconnect();
+                } catch (Exception e) { Log.e(TAG, "HTTP location failed", e); }
+            }).start();
         } catch (Exception e) { Log.e(TAG, "Send location failed", e); }
     }
 

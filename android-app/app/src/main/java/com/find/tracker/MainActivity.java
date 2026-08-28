@@ -2,8 +2,10 @@ package com.find.tracker;
 
 import android.Manifest;
 import android.app.DownloadManager;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.net.Uri;
@@ -21,7 +23,9 @@ import android.widget.TextView;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
+import androidx.core.content.FileProvider;
 import org.json.JSONObject;
+import java.io.File;
 
 public class MainActivity extends AppCompatActivity {
     private static final String SERVER_URL = "https://laptop-tracker-k9vi.onrender.com";
@@ -108,17 +112,46 @@ public class MainActivity extends AppCompatActivity {
             .setTitle("Update Available (v" + version + ")")
             .setMessage("A new version is available:\n\n" + notes + "\n\nWould you like to download and install it?")
             .setPositiveButton("Update", (d, w) -> {
-                String fullUrl = SERVER_URL + apkUrl;
-                DownloadManager.Request request = new DownloadManager.Request(Uri.parse(fullUrl));
-                request.setTitle("Downloading FIND v" + version);
-                request.setDescription("Updating to latest version...");
-                request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
-                request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "FIND-update.apk");
-                request.setAllowedOverMetered(true);
-                request.setAllowedOverRoaming(true);
-                DownloadManager manager = (DownloadManager) getSystemService(Context.DOWNLOAD_SERVICE);
-                manager.enqueue(request);
-                Toast.makeText(this, "Downloading update... Install when ready", Toast.LENGTH_LONG).show();
+                try {
+                    String fullUrl = SERVER_URL + apkUrl;
+                    DownloadManager.Request request = new DownloadManager.Request(Uri.parse(fullUrl));
+                    request.setTitle("Downloading FIND v" + version);
+                    request.setDescription("Updating to latest version...");
+                    request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+                    request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "FIND-update.apk");
+                    request.setAllowedOverMetered(true);
+                    request.setAllowedOverRoaming(true);
+                    DownloadManager manager = (DownloadManager) getSystemService(Context.DOWNLOAD_SERVICE);
+                    long downloadId = manager.enqueue(request);
+                    Toast.makeText(this, "Downloading update...", Toast.LENGTH_LONG).show();
+
+                    // Register receiver to install APK when download completes
+                    BroadcastReceiver onComplete = new BroadcastReceiver() {
+                        @Override
+                        public void onReceive(Context context, Intent intent) {
+                            long id = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1);
+                            if (id == downloadId) {
+                                try {
+                                    File apkFile = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "FIND-update.apk");
+                                    if (apkFile.exists()) {
+                                        Uri apkUri = FileProvider.getUriForFile(MainActivity.this, getPackageName() + ".fileprovider", apkFile);
+                                        Intent install = new Intent(Intent.ACTION_VIEW);
+                                        install.setDataAndType(apkUri, "application/vnd.android.package-archive");
+                                        install.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                                        install.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                                        startActivity(install);
+                                    }
+                                } catch (Exception e) {
+                                    Toast.makeText(MainActivity.this, "Install failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                                }
+                                unregisterReceiver(this);
+                            }
+                        }
+                    };
+                    registerReceiver(onComplete, new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE));
+                } catch (Exception e) {
+                    Toast.makeText(this, "Download failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                }
             })
             .setNegativeButton("Later", null)
             .setCancelable(true)

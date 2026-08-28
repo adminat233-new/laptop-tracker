@@ -166,7 +166,6 @@ app.post('/api/heartbeat', async (req, res) => {
         });
       } catch(e) { console.log('Heartbeat location upsert error:', e.message.substring(0,80)); }
 
-      // Broadcast location to paired device AND all browsers watching this pair
       const dev = await prisma.device.findUnique({ where: { deviceId } });
       if (dev) {
         const siblings = await prisma.device.findMany({ where: { pairCode: dev.pairCode } });
@@ -175,12 +174,9 @@ app.post('/api/heartbeat', async (req, res) => {
             broadcast(sib.deviceId, { type: 'location', fromDeviceId: deviceId, location });
           }
         }
-        // Also broadcast to all browser connections
         const locMsg = JSON.stringify({ type: 'location', fromDeviceId: deviceId, location });
         for (const [bId, bWs] of browserSockets) {
-          if (bId !== deviceId) {
-            try { bWs.send(locMsg); } catch(e) {}
-          }
+          try { bWs.send(locMsg); } catch(e) {}
         }
       }
     }
@@ -215,9 +211,7 @@ app.post('/api/location/phone', async (req, res) => {
         }
         const locMsg = JSON.stringify({ type: 'location', fromDeviceId: deviceId, location });
         for (const [bId, bWs] of browserSockets) {
-          if (bId !== deviceId) {
-            try { bWs.send(locMsg); } catch(e) {}
-          }
+          try { bWs.send(locMsg); } catch(e) {}
         }
       }
     }
@@ -253,12 +247,9 @@ app.post('/api/result', async (req, res) => {
       for (const sib of siblings) {
         if (sib.deviceId !== cmd.deviceId) broadcastAll(sib.deviceId, resultMsg);
       }
-      // Also broadcast to all browsers
       const resultJson = JSON.stringify(resultMsg);
       for (const [bId, bWs] of browserSockets) {
-        if (bId !== cmd.deviceId) {
-          try { bWs.send(resultJson); } catch(e) {}
-        }
+        try { bWs.send(resultJson); } catch(e) {}
       }
     }
     res.json({ success: true });
@@ -408,19 +399,15 @@ wss.on('connection', (ws) => {
       if (myId) {
         const dev = await prisma.device.findUnique({ where: { deviceId: myId } });
         if (dev) {
-          // Find all devices with the same pairCode
           const siblings = await prisma.device.findMany({ where: { pairCode: dev.pairCode } });
           for (const sib of siblings) {
             if (sib.deviceId !== myId) {
               broadcast(sib.deviceId, { ...msg, fromDeviceId: myId }, false);
             }
           }
-          // Also broadcast to all browser connections watching this pairCode
           const pairMsg = JSON.stringify({ ...msg, fromDeviceId: myId });
           for (const [bId, bWs] of browserSockets) {
-            if (bId !== myId) {
-              try { bWs.send(pairMsg); } catch(e) {}
-            }
+            try { bWs.send(pairMsg); } catch(e) {}
           }
         }
       }

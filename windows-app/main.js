@@ -199,22 +199,89 @@ function checkForUpdate() {
                     const choice = require('electron').dialog.showMessageBoxSync(mainWindow, {
                         type: 'info',
                         title: 'Update Available',
-                        message: 'A new version (v' + info.version + ') is available.\n\n' + (info.releaseNotes || 'Bug fixes and improvements') + '\n\nDownload now?',
-                        buttons: ['Download', 'Later'],
+                        message: 'v' + info.version + ' is available.\n\n' + (info.releaseNotes || 'Bug fixes and improvements') + '\n\nUpdate now? The app will restart.',
+                        buttons: ['Update Now', 'Later'],
                         defaultId: 0
                     });
                     if (choice === 0) {
-                        require('electron').shell.openExternal(SERVER + info.windowsUrl);
-                        require('electron').dialog.showMessageBox(mainWindow, {
-                            type: 'info',
-                            title: 'Downloading',
-                            message: 'The download page will open. Extract the new ZIP and replace this app.'
-                        });
+                        downloadAndUpdate(info.version);
                     }
                 }
             } catch (e) {}
         });
     }).on('error', () => {});
+}
+
+function downloadAndUpdate(version) {
+    const fs = require('fs');
+    const { exec } = require('child_process');
+    const appPath = path.dirname(process.execPath);
+    const zipPath = path.join(app.getPath('temp'), 'FIND-update.zip');
+    const extractPath = path.join(app.getPath('temp'), 'FIND-extract');
+    const url = SERVER + '/FIND-Windows.zip';
+
+    // Show progress
+    mainWindow.webContents.send('update-status', 'Downloading v' + version + '...');
+
+    https.get(url, (res) => {
+        if (res.statusCode === 302 || res.statusCode === 301) {
+            https.get(res.headers.location, (res2) => downloadToFile(res2, zipPath, () => extractAndUpdate(zipPath, extractPath, appPath)));
+        } else {
+            downloadToFile(res, zipPath, () => extractAndUpdate(zipPath, extractPath, appPath));
+        }
+    }).on('error', (e) => {
+        require('electron').dialog.showErrorBox('Update Failed', 'Download failed: ' + e.message);
+    });
+}
+
+function downloadToFile(res, filePath, callback) {
+    const fs = require('fs');
+    const file = fs.createWriteStream(filePath);
+    res.pipe(file);
+    file.on('finish', () => { file.close(); callback(); });
+    file.on('error', (e) => { fs.unlink(filePath, ()=>{}); require('electron').dialog.showErrorBox('Update Failed', e.message); });
+}
+
+function extractAndUpdate(zipPath, extractPath, appPath) {
+    const { exec } = require('child_process');
+    const fs = require('fs');
+
+    // Extract ZIP
+    const cmd = `powershell -Command "Expand-Archive -Path '${zipPath}' -DestinationPath '${extractPath}' -Force"`;
+    exec(cmd, { timeout: 120000 }, (err) => {
+        if (err) {
+            require('electron').dialog.showErrorBox('Update Failed', 'Extract failed: ' + err.message);
+            return;
+        }
+        // Find the extracted FIND-win32-x64 folder
+        try {
+            const items = fs.readdirSync(extractPath);
+            const findDir = items.find(i => i.includes('FIND'));
+            if (!findDir) { require('electron').dialog.showErrorBox('Update Failed', 'FIND folder not found in update'); return; }
+
+            const srcDir = path.join(extractPath, findDir);
+            // Copy files over current app
+            const robocopy = `robocopy "${srcDir}" "${appPath}" /E /IS /IT /NFL /NDL /NJH /NJS /nc /ns /np`;
+            exec(robocopy, { timeout: 120000 }, (err2) => {
+                // Cleanup
+                try { fs.rmSync(extractPath, { recursive: true, force: true }); } catch(e) {}
+                try { fs.rmSync(zipPath, { force: true }); } catch(e) {}
+
+                require('electron').dialog.showMessageBox(mainWindow, {
+                    type: 'info',
+                    title: 'Update Installed',
+                    message: 'Updated to v' + APP_VERSION + '. The app will restart now.',
+                    buttons: ['OK']
+                }).then(() => {
+                    // Restart app
+                    app.relaunch();
+                    app.exit(0);
+                });
+            });
+        } catch (e) {
+            require('electron').dialog.showErrorBox('Update Failed', e.message);
+        }
+    });
 }
 
 function startAgent() {
@@ -225,18 +292,25 @@ function startAgent() {
 
     ws.on('open', () => {
         ws.send(JSON.stringify({ type: 'register', deviceId: pairCode, deviceType: 'agent' }));
-        // Send heartbeat + location every 10s
+        // Send heartbeat + location via HTTP every 10s
         heartbeatInterval = setInterval(async () => {
             if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({ type: 'heartbeat', deviceId: pairCode }));
-                // Also send location for real-time tracking
-                try {
-                    const loc = await getQuickLocation();
-                    if (loc && loc.lat && loc.lng) {
-                        ws.send(JSON.stringify({ type: 'location', deviceId: pairCode, location: loc }));
-                    }
-                } catch(e) {}
             }
+            // Send heartbeat via HTTP to update lastSeen + store location
+            try {
+                const loc = await getQuickLocation();
+                const body = JSON.stringify({ deviceId: pairCode, location: loc });
+                const url = new URL(SERVER + '/api/heartbeat');
+                const req = https.request({
+                    hostname: url.hostname, port: 443, path: url.pathname,
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
+                }, () => {});
+                req.on('error', () => {});
+                req.write(body);
+                req.end();
+            } catch(e) {}
         }, 10000);
         if (mainWindow) mainWindow.webContents.send('agent-status', true);
     });
@@ -410,6 +484,7 @@ ipcMain.handle('pair', async (e, code) => {
 });
 
 ipcMain.handle('set-agent', (e, mode) => { isAgentMode = mode; saveConfig(); mode ? startAgent() : stopAgent(); });
+ipcMain.handle('trigger-update', () => { checkForUpdate(); });
 ipcMain.handle('sys-info', () => ({
     hostname: os.hostname(), platform: os.platform(), release: os.release(),
     arch: os.arch(), cpus: os.cpus().length,
