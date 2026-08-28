@@ -13,7 +13,7 @@ let pairCode = '', deviceId = '';
 let isAgentMode = false;
 let heartbeatInterval;
 const SERVER = 'https://laptop-tracker-k9vi.onrender.com';
-const APP_VERSION = '2.2.0';
+const APP_VERSION = '2.3.0';
 const CONFIG_PATH = path.join(app.getPath('userData'), 'find-config.json');
 
 // ══════════════════════════════════════════════════════════════════════════════

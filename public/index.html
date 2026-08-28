@@ -120,8 +120,8 @@
   </style>
 </head>
 <body>
-  <a href="/FIND.apk" class="get-app-btn" id="get-app-btn"><span>📲</span> Get App</a>
-  <a href="/FIND-Windows.zip" class="get-win-btn" id="get-win-btn"><span>🪟</span> Get Windows App</a>
+  <a href="/FIND.apk" class="get-app-btn" id="get-app-btn"><span>📲</span> Get App <span id="app-ver" style="opacity:0.6;font-size:11px"></span></a>
+  <a href="/FIND-Windows.zip" class="get-win-btn" id="get-win-btn"><span>🪟</span> Get Windows App <span id="win-ver" style="opacity:0.6;font-size:11px"></span></a>
   <div id="pair-screen" class="screen active">
     <div class="pair-box">
       <div style="width:42px;height:42px;background:var(--p);border-radius:12px;display:flex;align-items:center;justify-content:center;font-weight:900;color:#000;font-size:22px;margin:0 auto 24px">F</div>
@@ -294,6 +294,14 @@ function toast(m){const t=document.getElementById('toast');t.textContent=m;t.cla
 function show(s){document.querySelectorAll('.screen').forEach(x=>x.classList.remove('active'));document.getElementById(s).classList.add('active');if(s==='dashboard')initMap()}
 async function apiP(u,d){const r=await fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)});return r.json()}
 async function apiG(u){return(await fetch(u)).json()}
+
+// ===== FETCH LATEST VERSION FOR DOWNLOAD BUTTONS =====
+fetch('/api/version').then(r=>r.json()).then(v=>{
+  if(v.version){
+    document.getElementById('app-ver').textContent='v'+v.version;
+    document.getElementById('win-ver').textContent='v'+v.version;
+  }
+}).catch(()=>{});
 
 // ===== PAIRING =====
 function setupDevice(role){

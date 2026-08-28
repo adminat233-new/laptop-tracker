@@ -13,7 +13,7 @@ const server = http.createServer(app);
 const wss = new Server({ server, pingInterval: 30000, pingTimeout: 10000 });
 const agentSockets = new Map(); // deviceId -> ws (agent connection)
 const browserSockets = new Map(); // deviceId -> ws (browser connection)
-const APP_VERSION = '2.2.0';
+const APP_VERSION = '2.3.0';
 const lostDevices = new Set();
 
 app.use(express.json({ limit: '1mb' }));
@@ -340,7 +340,7 @@ app.get('/api/version', (req, res) => {
     version: APP_VERSION,
     apkUrl: '/FIND.apk',
     windowsUrl: '/FIND-Windows.zip',
-    releaseNotes: 'Bug fixes and improvements'
+    releaseNotes: 'v' + APP_VERSION + ': ML fusion engine (trilateration, Kalman filter, IP cross-reference), Windows in-app update button, Android crash fix, full 107MB Windows Electron app'
   });
 });
 
