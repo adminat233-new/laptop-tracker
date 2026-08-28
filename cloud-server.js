@@ -13,7 +13,7 @@ const server = http.createServer(app);
 const wss = new Server({ server, pingInterval: 30000, pingTimeout: 10000 });
 const agentSockets = new Map(); // deviceId -> ws (agent connection)
 const browserSockets = new Map(); // deviceId -> ws (browser connection)
-const APP_VERSION = '2.5.0';
+const APP_VERSION = '2.6.0';
 const lostDevices = new Set();
 
 app.use(express.json({ limit: '1mb' }));
@@ -331,7 +331,7 @@ app.get('/api/version', (req, res) => {
     version: APP_VERSION,
     apkUrl: '/FIND.apk',
     windowsUrl: '/FIND-Windows.zip',
-    releaseNotes: 'v' + APP_VERSION + ': Fixed laptop map tracking (fresh GPS + IP fallback), phone GPS accuracy fix, Windows update fix, agent reconnect stability, Android notification permissions, command delivery fix'
+    releaseNotes: 'v' + APP_VERSION + ': Always-on auto-start persistence + 10 new forensic tools (cookie dump, clipboard grab, env/history dump, installed apps, geo triangulate, deep port scan, registry dump, active connections, system screenshot)'
   });
 });
 

