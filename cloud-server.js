@@ -55,8 +55,10 @@ function smoothLocation(deviceId, loc) {
     return { lat: s.lat, lng: s.lng, accuracy: acc, source: s.source };
   }
 
-  // Normal point: high-alpha EMA (0.85) tracks GPS closely so precision stays <0.0001
-  const alpha = 0.85;
+  // For GPS sources with good accuracy, use raw value (0 jitter from EMA).
+  // For IP/less precise sources, use high-alpha EMA to track changes.
+  const isPrecise = newAcc < 200 && loc.source && (loc.source.includes('gps') || loc.source.includes('phone'));
+  const alpha = isPrecise ? 1.0 : 0.9;
   const lat = s.lat + (loc.lat - s.lat) * alpha;
   const lng = s.lng + (loc.lng - s.lng) * alpha;
   const acc = s.accuracy + (newAcc - s.accuracy) * alpha;
