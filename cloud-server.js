@@ -8,6 +8,7 @@ const geolocationService = require('./geolocation-service');
 
 const app = express();
 const PORT = process.env.PORT || 9999;
+const SERVER_URL = process.env.SERVER_URL || 'https://laptop-tracker-k9vi.onrender.com';
 const prisma = new PrismaClient();
 const server = http.createServer(app);
 const wss = new Server({ server, pingInterval: 30000, pingTimeout: 10000 });
