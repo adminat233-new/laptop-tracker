@@ -49,14 +49,12 @@ function smoothLocation(deviceId, loc) {
   const maxJump = newAcc > 500 ? Math.max(12000, newAcc * 4) : Math.max(realistic * 2, 600);
 
   if (jump > maxJump) {
-    // Outlier: barely nudge toward it (3%) so position barely moves.
-    const t = 0.03;
-    const lat = s.lat + (loc.lat - s.lat) * t;
-    const lng = s.lng + (loc.lng - s.lng) * t;
-    // Widen accuracy but keep it bounded — don't let outlier ruin precision.
-    const acc = Math.min(Math.max(s.accuracy, newAcc) * 1.2, 5000);
-    locState.set(deviceId, { lat, lng, accuracy: acc, source: loc.source || s.source, ts: nowTs, accepted: false });
-    return { lat, lng, accuracy: acc, source: loc.source || s.source };
+    // Outlier: virtually ignore it — keep position pinned to last known good.
+    const lat = s.lat;
+    const lng = s.lng;
+    const acc = Math.min(Math.max(s.accuracy, newAcc) * 1.1, 5000);
+    locState.set(deviceId, { lat, lng, accuracy: acc, source: s.source, ts: nowTs, accepted: false });
+    return { lat, lng, accuracy: acc, source: s.source };
   }
 
   // Normal move: exponential moving average toward the new point.
