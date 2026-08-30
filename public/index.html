@@ -503,7 +503,7 @@ function handleIncomingCommand(msg){
       stopSiren();
       break;
     default:
-      log('⏳ '+commandType+' — requires native agent on this device','CMD');
+      log('⏳ '+commandType+' sent — waiting for agent response','CMD');
       break;
   }
 }
@@ -591,13 +591,22 @@ async function fetchIPCountry(){
 let cmdTimer=null,cmdWaiting=null;
 
 function getTargetDevice(){
-  // Phone = controller, Laptop = target. Phone commands go to laptop.
-  return ROLE==='phone'?PC:PC+'-phone';
+  // Agent always registers under pairCode. Send all commands there.
+  return PC;
 }
 
 async function cmd(type){
   if(!PC)return toast('Not paired');
-  // Send command to the OTHER device — it executes there
+  // Check if agent is online before sending native commands
+  try{
+    const d=await apiP('/api/pair-info/'+PC);
+    const agentOnline=(d.laptop&&d.laptop.agentConnected)||(d.phone&&d.phone.agentConnected);
+    if(!agentOnline){
+      toast('⚠️ Agent offline — install & run the Windows agent');
+      log('❌ '+type+' — agent offline. Commands require the native agent running.','CMD');
+      return;
+    }
+  }catch(e){}
   sendCmdToAgent(type);
 }
 
@@ -607,10 +616,15 @@ async function sendCmdToAgent(type){
     try{
       const r=await apiP('/api/command',{deviceId:target,commandType:type});
       if(r.success){
+        if(r.agentOnline===false){
+          toast('⚠️ Agent offline — cannot run '+type);
+          log('❌ '+type+' — agent offline, command stored for when agent connects','CMD');
+          return;
+        }
         toast('Sent → '+type);log('CMD → '+type,'CMD');
         cmdWaiting=type;
         if(cmdTimer)clearTimeout(cmdTimer);
-        cmdTimer=setTimeout(()=>{if(cmdWaiting===type){cmdWaiting=null;showIntel('⏳ '+type+': No response from target device.\n\nIs the agent running on the other device?')}},10000);
+        cmdTimer=setTimeout(()=>{if(cmdWaiting===type){cmdWaiting=null;showIntel('⏳ '+type+': No response — agent may be offline.\n\nMake sure the Windows agent is running and connected.')}},15000);
         return;
       }
       if(attempt===2)toast('Failed: '+(r.error||'Unknown'));

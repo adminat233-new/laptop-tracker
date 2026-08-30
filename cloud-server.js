@@ -279,9 +279,24 @@ app.post('/api/command', async (req, res) => {
     await prisma.command.create({
       data: { commandId, deviceId, commandType, params: params ? JSON.stringify(params) : null, status: 'pending', createdAt: now() }
     });
-    const sent = broadcastAll(deviceId, { type: 'command', commandId, commandType, params });
-    console.log(`Command ${commandType} sent to ${deviceId}: ${sent}`);
-    res.json({ success: true, commandId, sent });
+    // Route to AGENT ONLY — browser can't execute native commands
+    let sent = false;
+    if (agentSockets.has(deviceId)) {
+      try { agentSockets.get(deviceId).send(JSON.stringify({ type: 'command', commandId, commandType, params })); sent = true; } catch(e) {}
+    }
+    // Also notify all browsers watching this pair so they see the "sent" status
+    const dev = await prisma.device.findUnique({ where: { deviceId } });
+    if (dev) {
+      const siblings = await prisma.device.findMany({ where: { pairCode: dev.pairCode } });
+      for (const sib of siblings) {
+        if (sib.deviceId !== deviceId) broadcast(sib.deviceId, { type: 'command-sent', commandId, commandType, targetDeviceId: deviceId });
+      }
+    }
+    for (const [bId, bWs] of browserSockets) {
+      try { bWs.send(JSON.stringify({ type: 'command-sent', commandId, commandType, targetDeviceId: deviceId })); } catch(e) {}
+    }
+    console.log(`Command ${commandType} sent to ${deviceId} (agent: ${sent})`);
+    res.json({ success: true, commandId, sent, agentOnline: agentSockets.has(deviceId) });
   } catch (e) { res.json({ success: false, error: e.message }); }
 });
 
