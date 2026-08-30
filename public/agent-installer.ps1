@@ -40,6 +40,20 @@ try {
     exit 1
 }
 
+# Install npm dependencies (ws module)
+Write-Host "[..] Installing dependencies..." -ForegroundColor Yellow
+Push-Location $AgentDir
+try {
+    if (-not (Test-Path "package.json")) {
+        npm init -y 2>&1 | Out-Null
+    }
+    npm install ws 2>&1 | Out-Null
+    Write-Host "[OK] Dependencies installed" -ForegroundColor Green
+} catch {
+    Write-Host "[WARN] npm install failed, trying alternative..." -ForegroundColor Yellow
+}
+Pop-Location
+
 # Save config
 $Config = @{
     pairCode = $PairCode

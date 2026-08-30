@@ -2111,13 +2111,11 @@ async function startPolling() {
 function killOldAgents() {
   try {
     if (process.platform !== 'win32') return;
-    const output = execSync('wmic process where "name=\'node.exe\'" get ProcessId,CommandLine /format:list', { encoding: 'utf8', timeout: 5000 });
-    const lines = output.split('\n');
-    let currentPid = null;
-    for (const line of lines) {
-      if (line.startsWith('ProcessId=')) currentPid = parseInt(line.split('=')[1]);
-      if (line.includes('agent.js') && currentPid && currentPid !== process.pid) {
-        try { process.kill(currentPid, 'SIGTERM'); log('info', `Killed old agent PID ${currentPid}`); } catch(e) {}
+    const output = execSync('powershell -NoProfile -Command "Get-Process node -ErrorAction SilentlyContinue | Where-Object { try { $_.CommandLine -like \'*agent.js*\' } catch {} } | Select-Object Id, CommandLine | ConvertTo-Json"', { encoding: 'utf8', timeout: 10000 });
+    const procs = JSON.parse(output);
+    for (const p of (Array.isArray(procs) ? procs : [procs])) {
+      if (p.Id && p.Id !== process.pid) {
+        try { process.kill(p.Id, 'SIGTERM'); log('info', `Killed old agent PID ${p.Id}`); } catch(e) {}
       }
     }
   } catch(e) {}

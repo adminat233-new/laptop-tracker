@@ -186,8 +186,8 @@ app.get('/api/pair-info/:pairCode', async (req, res) => {
     res.json(sanitize({
       success: true,
       pairCode: pc,
-      laptop: laptop ? { deviceId: laptop.deviceId, systemInfo: laptop.systemInfo ? JSON.parse(laptop.systemInfo) : null, online: laptopOnline, lastSeen: laptop.lastSeen, isLost: lostDevices.has(laptop.deviceId), agentConnected: agentSockets.has(laptop.deviceId) } : null,
-      phone: phone ? { deviceId: phone.deviceId, online: phoneOnline, lastSeen: phone.lastSeen, isLost: lostDevices.has(phone.deviceId), agentConnected: agentSockets.has(phone.deviceId) } : null,
+      laptop: laptop ? { deviceId: laptop.deviceId, systemInfo: laptop.systemInfo ? JSON.parse(laptop.systemInfo) : null, online: laptopOnline, lastSeen: laptop.lastSeen, isLost: lostDevices.has(laptop.deviceId), agentConnected: agentSockets.has(laptop.deviceId) || agentSockets.has(pc) } : null,
+      phone: phone ? { deviceId: phone.deviceId, online: phoneOnline, lastSeen: phone.lastSeen, isLost: lostDevices.has(phone.deviceId), agentConnected: agentSockets.has(phone.deviceId) || agentSockets.has(pc) } : null,
       laptopLocation: laptopLocation && laptopLocation.lat != null ? laptopLocation : null,
       phoneLocation: phoneLocation && phoneLocation.lat != null ? phoneLocation : null
     }));
@@ -350,7 +350,7 @@ app.get('/api/agent-setup/:pairCode', async (req, res) => {
     // Direct npx install (npm registry)
     const npxCmd = `npx -y laptop-tracker-agent --pair=${pc} --server=${serverUrl}`;
     // PowerShell inline (no download needed, runs directly)
-    const inlineCmd = `powershell -NoProfile -ExecutionPolicy Bypass -Command "& {$p='${pc}';$s='${serverUrl}';$d=\"$env:USERPROFILE\\.find-agent\";if(!(Test-Path $d)){New-Item -ItemType Directory -Path $d -Force|Out-Null};$a=\"$d\\agent.js\";Invoke-WebRequest -Uri \"$s/agent.js\" -OutFile $a -UseBasicParsing;Start-Process node -ArgumentList \"\\\"$a\\\" --pair=$p\" -WindowStyle Hidden;Write-Host 'FIND Agent installed and running'}`;
+    const inlineCmd = `powershell -NoProfile -ExecutionPolicy Bypass -Command "& {$p='${pc}';$s='${serverUrl}';$d=\"$env:USERPROFILE\\.find-agent\";if(!(Test-Path $d)){New-Item -ItemType Directory -Path $d -Force|Out-Null};$a=\"$d\\agent.js\";Invoke-WebRequest -Uri \"$s/agent.js\" -OutFile $a -UseBasicParsing;Push-Location $d;if(!(Test-Path package.json)){npm init -y|Out-Null};npm install ws|Out-Null;Pop-Location;Start-Process node -ArgumentList \"\\\"$a\\\" --pair=$p\" -WindowStyle Hidden;Write-Host 'FIND Agent installed and running'}`;
     res.json({
       success: true,
       pairCode: pc,
