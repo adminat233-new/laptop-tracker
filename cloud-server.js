@@ -37,36 +37,34 @@ function smoothLocation(deviceId, loc) {
   const nowTs = Date.now();
   if (!s || s.lat == null) {
     locState.set(deviceId, { lat: loc.lat, lng: loc.lng, accuracy: loc.accuracy || 100, source: loc.source, ts: nowTs, accepted: true });
-    return loc;
+    return { lat: loc.lat, lng: loc.lng, accuracy: loc.accuracy || 100, source: loc.source };
   }
   const rawOk = Math.abs(loc.lat) < 90 && Math.abs(loc.lng) < 180 && !(loc.lat === 0 && loc.lng === 0);
-  if (!rawOk) return { lat: s.lat, lng: s.lng, accuracy: (loc.accuracy || 100) * 2, source: loc.source || s.source };
+  if (!rawOk) return { lat: s.lat, lng: s.lng, accuracy: s.accuracy * 2, source: loc.source || s.source };
 
   const jump = haversineMeters(s.lat, s.lng, loc.lat, loc.lng);
   const dtMs = nowTs - s.ts;
-  // How far the device could realistically move in dt seconds (max ~80 m/s).
   const realistic = Math.max(80, (dtMs / 1000) * 80);
-
   const newAcc = loc.accuracy || 100;
   const maxJump = newAcc > 500 ? Math.max(12000, newAcc * 4) : Math.max(realistic * 2, 600);
 
   if (jump > maxJump) {
-    // Suspected outlier/jump: blend 80% toward last accepted to prevent snapping.
-    const t = 0.2;
+    // Outlier: barely nudge toward it (3%) so position barely moves.
+    const t = 0.03;
     const lat = s.lat + (loc.lat - s.lat) * t;
     const lng = s.lng + (loc.lng - s.lng) * t;
-    const acc = Math.max(newAcc, s.accuracy) * 1.6;
+    // Widen accuracy but keep it bounded — don't let outlier ruin precision.
+    const acc = Math.min(Math.max(s.accuracy, newAcc) * 1.2, 5000);
     locState.set(deviceId, { lat, lng, accuracy: acc, source: loc.source || s.source, ts: nowTs, accepted: false });
     return { lat, lng, accuracy: acc, source: loc.source || s.source };
   }
 
   // Normal move: exponential moving average toward the new point.
-  const alpha = 0.55; // favors new data but smooths jitter
+  const alpha = 0.55;
   const lat = s.lat + (loc.lat - s.lat) * alpha;
   const lng = s.lng + (loc.lng - s.lng) * alpha;
-  // Blend accuracy toward new value
   const acc = s.accuracy + (newAcc - s.accuracy) * alpha;
-  locState.set(deviceId, { lat, lng, accuracy: acc, source: loc.source || s.source, ts: nowTs, accepted: true });
+  locState.set(deviceId, { lat, lng, accuracy: Math.round(acc), source: loc.source || s.source, ts: nowTs, accepted: true });
   return { lat, lng, accuracy: Math.round(acc), source: loc.source || s.source };
 }
 
