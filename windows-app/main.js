@@ -496,10 +496,10 @@ function handleCommand(msg) {
         'deep-system-info': () => deepSystemInfo(),
         'deep-ip-scrape': () => deepIPScrape(),
         'advanced-wifi': () => advancedWifiAnalysis(),
-        'network-scan-advanced': () => networkScan(),
-        'bt-proximity-advanced': () => bluetoothProximity(),
+        'net-scan-adv': () => networkScan(),
+        'bt-prox-adv': () => bluetoothProximity(),
         'port-scan-active': () => portScanActive(),
-        'network-fingerprint-tool': () => networkFingerprintTool(),
+        'net-fp-tool': () => networkFingerprintTool(),
         'cell-triangulate': () => cellTowerTriangulation(),
         'forensic-init': async () => {
             const results = {};
