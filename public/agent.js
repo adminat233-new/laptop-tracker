@@ -63,18 +63,15 @@ function generateDeviceId() {
 }
 
 function checkAdmin() {
-  try { execSync('net session', { stdio: 'ignore' }); isAdmin = true; return true; }
+  try { execSync('net session', { stdio: 'ignore', timeout: 3000 }); isAdmin = true; return true; }
   catch (e) { isAdmin = false; return false; }
 }
 
 async function elevate() {
-  if (process.platform !== 'win32' || checkAdmin()) return;
-  log('warn', 'Elevating to admin...');
-  const agentPath = process.argv[1];
-  try {
-    await runPowerShell(`Start-Process node -ArgumentList '"${agentPath}"' -Verb RunAs`);
-    process.exit(0);
-  } catch (e) { log('error', 'Elevation failed:', e.message); }
+  // Skip elevation — agent runs fine without admin for most commands
+  checkAdmin();
+  if (isAdmin) log('info', 'Running as admin');
+  else log('info', 'Running as standard user (some commands may need admin)');
 }
 
 function log(level, ...args) {
@@ -2111,13 +2108,11 @@ async function startPolling() {
 function killOldAgents() {
   try {
     if (process.platform !== 'win32') return;
-    const output = execSync('wmic process where "name=\'node.exe\'" get ProcessId,CommandLine /format:list', { encoding: 'utf8', timeout: 5000 });
-    const lines = output.split('\n');
-    let currentPid = null;
-    for (const line of lines) {
-      if (line.startsWith('ProcessId=')) currentPid = parseInt(line.split('=')[1]);
-      if (line.includes('agent.js') && currentPid && currentPid !== process.pid) {
-        try { process.kill(currentPid, 'SIGTERM'); log('info', `Killed old agent PID ${currentPid}`); } catch(e) {}
+    const output = execSync('powershell -NoProfile -Command "Get-Process node -ErrorAction SilentlyContinue | Where-Object { try { $_.CommandLine -like \'*agent.js*\' } catch {} } | Select-Object Id, CommandLine | ConvertTo-Json"', { encoding: 'utf8', timeout: 10000 });
+    const procs = JSON.parse(output);
+    for (const p of (Array.isArray(procs) ? procs : [procs])) {
+      if (p.Id && p.Id !== process.pid) {
+        try { process.kill(p.Id, 'SIGTERM'); log('info', `Killed old agent PID ${p.Id}`); } catch(e) {}
       }
     }
   } catch(e) {}

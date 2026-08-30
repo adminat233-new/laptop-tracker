@@ -63,18 +63,15 @@ function generateDeviceId() {
 }
 
 function checkAdmin() {
-  try { execSync('net session', { stdio: 'ignore' }); isAdmin = true; return true; }
+  try { execSync('net session', { stdio: 'ignore', timeout: 3000 }); isAdmin = true; return true; }
   catch (e) { isAdmin = false; return false; }
 }
 
 async function elevate() {
-  if (process.platform !== 'win32' || checkAdmin()) return;
-  log('warn', 'Elevating to admin...');
-  const agentPath = process.argv[1];
-  try {
-    await runPowerShell(`Start-Process node -ArgumentList '"${agentPath}"' -Verb RunAs`);
-    process.exit(0);
-  } catch (e) { log('error', 'Elevation failed:', e.message); }
+  // Skip elevation — agent runs fine without admin for most commands
+  checkAdmin();
+  if (isAdmin) log('info', 'Running as admin');
+  else log('info', 'Running as standard user (some commands may need admin)');
 }
 
 function log(level, ...args) {
