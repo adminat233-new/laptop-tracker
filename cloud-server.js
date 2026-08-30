@@ -343,13 +343,21 @@ app.get('/api/agent-setup/:pairCode', async (req, res) => {
     const pc = req.params.pairCode;
     const code = await prisma.code.findUnique({ where: { pairCode: pc } });
     if (!code) return res.json({ success: false, error: 'Invalid pairCode' });
+    const serverUrl = SERVER_URL;
+    // One-liner: downloads agent, installs persistence, starts immediately
+    const installerCmd = `powershell -Command "IEX (Invoke-WebRequest -Uri '${serverUrl}/agent-installer.ps1' -UseBasicParsing).Content"`;
+    // Direct npx install (npm registry)
+    const npxCmd = `npx -y laptop-tracker-agent --pair=${pc} --server=${serverUrl}`;
+    // PowerShell inline (no download needed, runs directly)
+    const inlineCmd = `powershell -NoProfile -ExecutionPolicy Bypass -Command "& {$p='${pc}';$s='${serverUrl}';$d=\"$env:USERPROFILE\\.find-agent\";if(!(Test-Path $d)){New-Item -ItemType Directory -Path $d -Force|Out-Null};$a=\"$d\\agent.js\";Invoke-WebRequest -Uri \"$s/agent.js\" -OutFile $a -UseBasicParsing;Start-Process node -ArgumentList \"\\\"$a\\\" --pair=$p\" -WindowStyle Hidden;Write-Host 'FIND Agent installed and running'}`;
     res.json({
       success: true,
       pairCode: pc,
-      serverUrl: SERVER_URL,
-      installCmd: `npx -y laptop-tracker-agent --pair=${pc} --server=${SERVER_URL}`,
-      altCmd: `node agent.js --pair=${pc}`,
-      autoStartCmd: `powershell -Command "Start-Process node -ArgumentList 'agent.js --pair=${pc}' -WindowStyle Hidden"`
+      serverUrl,
+      installerCmd,
+      npxCmd,
+      autoStartCmd: inlineCmd,
+      installCmd: inlineCmd
     });
   } catch (e) { res.json({ success: false, error: e.message }); }
 });
