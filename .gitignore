@@ -4,7 +4,6 @@
 cloudflared.exe
 ngrok.exe
 /generated/prisma
-public/FIND-Windows.zip
 windows-app/dist/
 windows-app/node_modules/
 dist/

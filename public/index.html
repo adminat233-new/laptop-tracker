@@ -931,9 +931,21 @@ async function updateTrackLine(){
   setTimeout(()=>{const el=document.getElementById('track-mid-label');if(el)el.textContent=(roadDist>=1000?(roadDist/1000).toFixed(1)+' km':Math.round(roadDist)+' m')+' →';},200);
 }
 
+// Light client-side EMA smoothing used by the markers to reduce residual jitter.
+const viewSmooth={lp:null,ph:null};
+function smoothView(role,lat,lng){
+  if(lat===0&&lng===0)return[0,0];
+  const v=viewSmooth[role];
+  if(!v){viewSmooth[role]={lat,lng};return[lat,lng]}
+  const alpha=0.5;
+  const o={lat:v.lat+(lat-v.lat)*alpha,lng:v.lng+(lng-v.lng)*alpha};
+  viewSmooth[role]=o;
+  return[o.lat,o.lng];
+}
+
 function renderLp(loc){
   if(!loc||!map||loc.lat==null)return;
-  const p=[loc.lat,loc.lng];if(p[0]===0&&p[1]===0)return;
+  const p=smoothView('lp',loc.lat,loc.lng);if(p[0]===0&&p[1]===0)return;
   map.invalidateSize();
   document.getElementById('lp-coords').textContent=`Coords: ${p[0].toFixed(6)}, ${p[1].toFixed(6)}`;
   document.getElementById('lp-acc').textContent='Accuracy: ±'+Math.round(loc.accuracy||0)+'m';
@@ -946,7 +958,7 @@ function renderLp(loc){
 
 function renderPh(loc){
   if(!loc||!map||loc.lat==null)return;
-  const p=[loc.lat,loc.lng];if(p[0]===0&&p[1]===0)return;
+  const p=smoothView('ph',loc.lat,loc.lng);if(p[0]===0&&p[1]===0)return;
   document.getElementById('ph-coords').textContent=`Coords: ${p[0].toFixed(6)}, ${p[1].toFixed(6)}`;
   if(phM)phM.setLatLng(p);
   else{phM=L.marker(p,{icon:L.divIcon({className:'',html:'<div class="marker-ph"><div class="ml ph">📱 PHONE</div></div>',iconSize:[22,22],iconAnchor:[11,11]})}).addTo(map)}

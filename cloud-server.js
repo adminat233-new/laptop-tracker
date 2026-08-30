@@ -13,8 +13,62 @@ const server = http.createServer(app);
 const wss = new Server({ server, pingInterval: 30000, pingTimeout: 10000 });
 const agentSockets = new Map(); // deviceId -> ws (agent connection)
 const browserSockets = new Map(); // deviceId -> ws (browser connection)
-const APP_VERSION = '2.6.0';
+const APP_VERSION = '2.7.0';
 const lostDevices = new Set();
+
+// ─── REAL-TIME LOCATION SMOOTHING ───────────────────────────────────────────
+// In-memory smoothed position per device. Blends new points against the last
+// accepted position to remove GPS/IP jitter so markers don't "bounce" around.
+const locState = new Map(); // deviceId -> { lat, lng, accuracy, source, ts, accepted }
+
+function haversineMeters(aLat, aLng, bLat, bLng) {
+  const R = 6371000, toRad = d => d * Math.PI / 180;
+  const dLat = toRad(bLat - aLat), dLng = toRad(bLng - aLng);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+}
+
+// Smooth a raw location update. If it's a huge jump (> maxJumpMeters) it is
+// blended toward the last good position instead of snapping, and the accuracy
+// is widened. Returns the smoothed {lat,lng,accuracy,source} to persist/broadcast.
+function smoothLocation(deviceId, loc) {
+  if (loc == null || loc.lat == null || loc.lng == null) return loc;
+  const s = locState.get(deviceId);
+  const nowTs = Date.now();
+  if (!s || s.lat == null) {
+    locState.set(deviceId, { lat: loc.lat, lng: loc.lng, accuracy: loc.accuracy || 100, source: loc.source, ts: nowTs, accepted: true });
+    return loc;
+  }
+  const rawOk = Math.abs(loc.lat) < 90 && Math.abs(loc.lng) < 180 && !(loc.lat === 0 && loc.lng === 0);
+  if (!rawOk) return { lat: s.lat, lng: s.lng, accuracy: (loc.accuracy || 100) * 2, source: loc.source || s.source };
+
+  const jump = haversineMeters(s.lat, s.lng, loc.lat, loc.lng);
+  const dtMs = nowTs - s.ts;
+  // How far the device could realistically move in dt seconds (max ~80 m/s).
+  const realistic = Math.max(80, (dtMs / 1000) * 80);
+
+  const newAcc = loc.accuracy || 100;
+  const maxJump = newAcc > 500 ? Math.max(12000, newAcc * 4) : Math.max(realistic * 2, 600);
+
+  if (jump > maxJump) {
+    // Suspected outlier/jump: blend 80% toward last accepted to prevent snapping.
+    const t = 0.2;
+    const lat = s.lat + (loc.lat - s.lat) * t;
+    const lng = s.lng + (loc.lng - s.lng) * t;
+    const acc = Math.max(newAcc, s.accuracy) * 1.6;
+    locState.set(deviceId, { lat, lng, accuracy: acc, source: loc.source || s.source, ts: nowTs, accepted: false });
+    return { lat, lng, accuracy: acc, source: loc.source || s.source };
+  }
+
+  // Normal move: exponential moving average toward the new point.
+  const alpha = 0.55; // favors new data but smooths jitter
+  const lat = s.lat + (loc.lat - s.lat) * alpha;
+  const lng = s.lng + (loc.lng - s.lng) * alpha;
+  // Blend accuracy toward new value
+  const acc = s.accuracy + (newAcc - s.accuracy) * alpha;
+  locState.set(deviceId, { lat, lng, accuracy: acc, source: loc.source || s.source, ts: nowTs, accepted: true });
+  return { lat, lng, accuracy: Math.round(acc), source: loc.source || s.source };
+}
 
 app.use(express.json({ limit: '1mb' }));
 // Handle malformed JSON gracefully
@@ -158,11 +212,12 @@ app.post('/api/heartbeat', async (req, res) => {
 
     // Update location if provided
     if (location && location.lat != null) {
+      const smoothed = smoothLocation(deviceId, location);
       try {
         await prisma.location.upsert({
           where: { deviceId },
-          create: { deviceId, lat: location.lat, lng: location.lng, source: location.source || 'heartbeat', updatedAt: now() },
-          update: { lat: location.lat, lng: location.lng, source: location.source || 'heartbeat', updatedAt: now() }
+          create: { deviceId, lat: smoothed.lat, lng: smoothed.lng, source: smoothed.source || location.source || 'heartbeat', updatedAt: now() },
+          update: { lat: smoothed.lat, lng: smoothed.lng, source: smoothed.source || location.source || 'heartbeat', updatedAt: now() }
         });
       } catch(e) { console.log('Heartbeat location upsert error:', e.message.substring(0,80)); }
 
@@ -171,10 +226,10 @@ app.post('/api/heartbeat', async (req, res) => {
         const siblings = await prisma.device.findMany({ where: { pairCode: dev.pairCode } });
         for (const sib of siblings) {
           if (sib.deviceId !== deviceId) {
-            broadcast(sib.deviceId, { type: 'location', fromDeviceId: deviceId, location });
+            broadcast(sib.deviceId, { type: 'location', fromDeviceId: deviceId, location: smoothed });
           }
         }
-        const locMsg = JSON.stringify({ type: 'location', fromDeviceId: deviceId, location });
+        const locMsg = JSON.stringify({ type: 'location', fromDeviceId: deviceId, location: smoothed });
         for (const [bId, bWs] of browserSockets) {
           try { bWs.send(locMsg); } catch(e) {}
         }
@@ -193,12 +248,13 @@ app.post('/api/location/phone', async (req, res) => {
   const { deviceId, location } = req.body;
   try {
     if (location && location.lat != null) {
+      const smoothed = smoothLocation(deviceId, location);
       await prisma.device.update({ where: { deviceId }, data: { lastSeen: now() } });
       try {
         await prisma.location.upsert({
           where: { deviceId },
-          create: { deviceId, lat: location.lat, lng: location.lng, source: location.source || 'phone-gps', updatedAt: now() },
-          update: { lat: location.lat, lng: location.lng, source: location.source || 'phone-gps', updatedAt: now() }
+          create: { deviceId, lat: smoothed.lat, lng: smoothed.lng, source: smoothed.source || location.source || 'phone-gps', updatedAt: now() },
+          update: { lat: smoothed.lat, lng: smoothed.lng, source: smoothed.source || location.source || 'phone-gps', updatedAt: now() }
         });
       } catch(e) { console.log('Phone location upsert error:', e.message.substring(0,80)); }
       const dev = await prisma.device.findUnique({ where: { deviceId } });
@@ -206,10 +262,10 @@ app.post('/api/location/phone', async (req, res) => {
         const siblings = await prisma.device.findMany({ where: { pairCode: dev.pairCode } });
         for (const sib of siblings) {
           if (sib.deviceId !== deviceId) {
-            broadcast(sib.deviceId, { type: 'location', fromDeviceId: deviceId, location });
+            broadcast(sib.deviceId, { type: 'location', fromDeviceId: deviceId, location: smoothed });
           }
         }
-        const locMsg = JSON.stringify({ type: 'location', fromDeviceId: deviceId, location });
+        const locMsg = JSON.stringify({ type: 'location', fromDeviceId: deviceId, location: smoothed });
         for (const [bId, bWs] of browserSockets) {
           try { bWs.send(locMsg); } catch(e) {}
         }
@@ -331,7 +387,7 @@ app.get('/api/version', (req, res) => {
     version: APP_VERSION,
     apkUrl: '/FIND.apk',
     windowsUrl: '/FIND-Windows.zip',
-    releaseNotes: 'v' + APP_VERSION + ': Always-on auto-start persistence + 10 new forensic tools (cookie dump, clipboard grab, env/history dump, installed apps, geo triangulate, deep port scan, registry dump, active connections, system screenshot)'
+    releaseNotes: 'v' + APP_VERSION + ': Major real-time tracking stability — server-side Kalman-style location smoothing, faster 3s WebSocket location pushes, fused multi-source IP + ML fusion for precise, jitter-free markers'
   });
 });
 
@@ -399,13 +455,26 @@ wss.on('connection', (ws) => {
       if (myId) {
         const dev = await prisma.device.findUnique({ where: { deviceId: myId } });
         if (dev) {
+          // Real-time location over WS: smooth it + persist for pair-info
+          let fwd = msg;
+          if (msg.type === 'location' && msg.location && msg.location.lat != null) {
+            fwd = { ...msg, location: smoothLocation(myId, msg.location) };
+            try {
+              await prisma.location.upsert({
+                where: { deviceId: myId },
+                create: { deviceId: myId, lat: fwd.location.lat, lng: fwd.location.lng, source: fwd.location.source || 'ws', updatedAt: now() },
+                update: { lat: fwd.location.lat, lng: fwd.location.lng, source: fwd.location.source || 'ws', updatedAt: now() }
+              });
+            } catch(e) {}
+            try { await prisma.device.update({ where: { deviceId: myId }, data: { lastSeen: now() } }); } catch(e) {}
+          }
           const siblings = await prisma.device.findMany({ where: { pairCode: dev.pairCode } });
           for (const sib of siblings) {
             if (sib.deviceId !== myId) {
-              broadcast(sib.deviceId, { ...msg, fromDeviceId: myId }, false);
+              broadcast(sib.deviceId, { ...fwd, fromDeviceId: myId }, false);
             }
           }
-          const pairMsg = JSON.stringify({ ...msg, fromDeviceId: myId });
+          const pairMsg = JSON.stringify({ ...fwd, fromDeviceId: myId });
           for (const [bId, bWs] of browserSockets) {
             try { bWs.send(pairMsg); } catch(e) {}
           }

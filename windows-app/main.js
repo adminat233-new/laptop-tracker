@@ -12,8 +12,9 @@ let ws = null;
 let pairCode = '', deviceId = '';
 let isAgentMode = false;
 let heartbeatInterval;
+let locInterval;
 const SERVER = 'https://laptop-tracker-k9vi.onrender.com';
-const APP_VERSION = '2.6.0';
+const APP_VERSION = '2.7.0';
 const CONFIG_PATH = path.join(app.getPath('userData'), 'find-config.json');
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -295,7 +296,26 @@ function startAgent() {
     ws.on('open', () => {
         agentReconnectDelay = 1000;
         ws.send(JSON.stringify({ type: 'register', deviceId: pairCode, deviceType: 'agent' }));
-        // Send heartbeat + location via HTTP every 10s
+        // Real-time location push over WebSocket every 3s (cheap, low latency).
+        // Uses fused multi-source IP scrape + ML smoothing for a stable position.
+        locInterval = setInterval(async () => {
+            if (!(ws && ws.readyState === WebSocket.OPEN)) return;
+            try {
+                const ip = await scrapePublicIP();
+                let loc = null;
+                if (ip && ip.bestResult && ip.bestResult.lat) {
+                    loc = { lat: ip.bestResult.lat, lng: ip.bestResult.lng, accuracy: ip.bestResult.accuracy || 3000, source: 'ip-fused' };
+                    decisionEngine.addPosition(loc.lat, loc.lng, loc.accuracy, 'ip-fused');
+                }
+                // Prefer an ML-fused position if the engine has one, else use IP.
+                const report = decisionEngine.state;
+                if (report && report.fusedLat && report.fusedLng && report.fusedAccuracy < 10000) {
+                    loc = { lat: report.fusedLat, lng: report.fusedLng, accuracy: Math.round(report.fusedAccuracy), source: 'ml-fusion' };
+                }
+                if (loc) ws.send(JSON.stringify({ type: 'location', deviceId: pairCode, location: loc }));
+            } catch(e) {}
+        }, 3000);
+        // Send heartbeat + location via HTTP every 10s (persists online status)
         heartbeatInterval = setInterval(async () => {
             if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({ type: 'heartbeat', deviceId: pairCode }));
@@ -326,6 +346,7 @@ function startAgent() {
 
     ws.on('close', (code) => {
         if (heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
+        if (locInterval) { clearInterval(locInterval); locInterval = null; }
         if (mainWindow) mainWindow.webContents.send('agent-status', false);
         // Reconnect as long as a pairCode exists — agent stays alive while paired
         if (pairCode) {
@@ -376,6 +397,7 @@ async function getQuickLocation() {
 function stopAgent() {
     if (ws) { try { ws.close(); } catch (e) {} ws = null; }
     if (heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
+    if (locInterval) { clearInterval(locInterval); locInterval = null; }
 }
 
 function handleCommand(msg) {
