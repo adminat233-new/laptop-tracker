@@ -286,7 +286,7 @@ function extractAndUpdate(zipPath, extractPath, appPath) {
     });
 }
 
-let agentReconnectDelay = 1000;
+let agentReconnectDelay = 500;
 function startAgent() {
     if (!pairCode) return;
     stopAgent();
@@ -294,7 +294,7 @@ function startAgent() {
     ws = new WebSocket(wsUrl);
 
     ws.on('open', () => {
-        agentReconnectDelay = 1000;
+        agentReconnectDelay = 500;
         ws.send(JSON.stringify({ type: 'register', deviceId: pairCode, deviceType: 'agent' }));
         // Real-time location push over WebSocket every 3s (cheap, low latency).
         // Uses fused multi-source IP scrape + ML smoothing for a stable position.
@@ -348,10 +348,10 @@ function startAgent() {
         if (heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
         if (locInterval) { clearInterval(locInterval); locInterval = null; }
         if (mainWindow) mainWindow.webContents.send('agent-status', false);
-        // Reconnect as long as a pairCode exists — agent stays alive while paired
+        // Always reconnect — agent stays alive and connected the entire time devices are paired
         if (pairCode) {
             setTimeout(startAgent, agentReconnectDelay);
-            agentReconnectDelay = Math.min(agentReconnectDelay * 2, 30000);
+            agentReconnectDelay = Math.min(agentReconnectDelay * 1.5, 5000);
         }
     });
 
@@ -759,7 +759,8 @@ ipcMain.handle('sys-info', () => ({
 function configureAutoStart() {
   try {
     if (process.platform !== 'win32') return;
-    const enable = Boolean(isAgentMode || pairCode);
+    // Always register for auto-start when paired — agent stays alive across reboots
+    const enable = Boolean(pairCode);
     app.setLoginItemSettings({
       openAtLogin: enable,
       openAsHidden: enable,

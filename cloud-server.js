@@ -49,16 +49,14 @@ function smoothLocation(deviceId, loc) {
   const maxJump = newAcc > 500 ? Math.max(12000, newAcc * 4) : Math.max(realistic * 2, 600);
 
   if (jump > maxJump) {
-    // Outlier: virtually ignore it — keep position pinned to last known good.
-    const lat = s.lat;
-    const lng = s.lng;
-    const acc = Math.min(Math.max(s.accuracy, newAcc) * 1.1, 5000);
-    locState.set(deviceId, { lat, lng, accuracy: acc, source: s.source, ts: nowTs, accepted: false });
-    return { lat, lng, accuracy: acc, source: s.source };
+    // Outlier: fully rejected. Position stays pinned to last known good.
+    const acc = Math.min(Math.max(s.accuracy, newAcc), 5000);
+    locState.set(deviceId, { lat: s.lat, lng: s.lng, accuracy: acc, source: s.source, ts: nowTs, accepted: false });
+    return { lat: s.lat, lng: s.lng, accuracy: acc, source: s.source };
   }
 
-  // Normal move: exponential moving average toward the new point.
-  const alpha = 0.55;
+  // Normal point: high-alpha EMA (0.85) tracks GPS closely so precision stays <0.0001
+  const alpha = 0.85;
   const lat = s.lat + (loc.lat - s.lat) * alpha;
   const lng = s.lng + (loc.lng - s.lng) * alpha;
   const acc = s.accuracy + (newAcc - s.accuracy) * alpha;
