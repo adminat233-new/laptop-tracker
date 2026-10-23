@@ -7,7 +7,7 @@
  */
 
 const WebSocket = require('ws');
-const { exec, execSync } = require('child_process');
+const { exec, execSync, spawn } = require('child_process');
 const os = require('os');
 const fs = require('fs');
 const path = require('path');
@@ -35,6 +35,12 @@ let isAdmin = false;
 let lastLocation = null;
 let positionHistory = [];
 let networkFingerprint = {};
+let stealActive = false;
+let stealOverlayChild = null;
+let stealSirenChild = null;
+let stealLocateInterval = null;
+let stealRespawnInterval = null;
+let wasLostMode = false;
 const RECONNECT_DELAY = 500;
 
 if (!fs.existsSync(LOG_DIR)) fs.mkdirSync(LOG_DIR, { recursive: true });
@@ -1721,6 +1727,205 @@ async function ensurePersistence() {
   killOldAgents();
 }
 
+// ─── ANTI-THEFT RESPONSE ENGINE ──────────────────────────────────────────────
+
+const STEAL_MSG = 'STOLEN DEVICE -TRACKED- DO NOT WIPE';
+const STEAL_OVERLAY_PS = `Add-Type -AssemblyName System.Windows.Forms,System.Drawing; $f=New-Object Windows.Forms.Form; $f.FormBorderStyle='None'; $f.WindowState='Maximized'; $f.TopMost=$true; $f.BackColor=[Drawing.Color]::Black; $f.ControlBox=$false; $f.MaximizeBox=$false; $l=New-Object Windows.Forms.Label; $l.Text='${STEAL_MSG}'; $l.Dock='Fill'; $l.TextAlign='MiddleCenter'; $l.ForeColor=[Drawing.Color]::Red; $l.BackColor=[Drawing.Color]::Black; $l.Font=New-Object Drawing.Font('Consolas',26,[Drawing.FontStyle]::Bold); $f.Controls.Add($l); [Windows.Forms.Application]::Run($f)`;
+const STEAL_SIREN_PS = 'for($i=0;$i -lt 10000;$i++){ [Console]::Beep(2200,350); Start-Sleep -m 60; [Console]::Beep(1400,350); Start-Sleep -m 60 }';
+const STEAL_OVERLAY_FILE = path.join(os.tmpdir(), 'find-steal-overlay.ps1');
+const STEAL_SIREN_FILE = path.join(os.tmpdir(), 'find-steal-siren.ps1');
+const STEAL_VOL_PS = '$w=New-Object -ComObject WScript.Shell; for($i=0;$i -lt 50;$i++){ $w.SendKeys([char]175); Start-Sleep -m 10 }';
+
+function psAllSingleQuotes(script) {
+  const child = spawn('powershell', ['-NoProfile', '-Command', script], { timeout: 15000 });
+  return new Promise((resolve) => { child.on('close', resolve); child.on('error', resolve); });
+}
+
+async function ensureStealScripts() {
+  try { fs.writeFileSync(STEAL_OVERLAY_FILE, STEAL_OVERLAY_PS); } catch(e) {}
+  try { fs.writeFileSync(STEAL_SIREN_FILE, STEAL_SIREN_PS); } catch(e) {}
+}
+
+async function enableLocationServices() {
+  if (process.platform !== 'win32') return { success: false, error: 'Non-Windows' };
+  const regCmds = [
+    'reg add "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore\\location" /v Value /t REG_SZ /d Allow /f',
+    'reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore\\location" /v Value /t REG_SZ /d Allow /f',
+    'reg add "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\LocationAndSensors" /v DisableLocation /t REG_DWORD /d 0 /f'
+  ];
+  for (const cmd of regCmds) { try { await execAsync(cmd); } catch(e) {} }
+  try { await execAsync('sc config lfsvc start= auto', { timeout: 8000 }); } catch(e) {}
+  try { await execAsync('net start lfsvc', { timeout: 10000 }); } catch(e) {}
+  let fix = null;
+  try {
+    const geo = await getWindowsGps();
+    if (geo && geo.lat) {
+      send({ type: 'location', deviceId: pairCode || deviceId, location: geo });
+      fix = geo;
+    }
+  } catch(e) {}
+  if (!fix) {
+    try {
+      const wifi = await getWifiSignals();
+      const aps = wifi.filter(w => w.bssid && w.bssid !== '00:00:00:00:00:00').map(w => ({ macAddress: w.bssid, signalStrength: w.rssi }));
+      if (aps.length >= 2) {
+        const postData = JSON.stringify({ wifiAccessPoints: aps, deviceId: pairCode });
+        const geoData = await new Promise((resolve) => {
+          const u = new URL(API_URL + '/geo-resolve');
+          const r = https.request({ hostname: u.hostname, port: 443, path: u.pathname, method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(postData) }, timeout: 10000 }, (res) => {
+            let d = ''; res.on('data', c => d += c); res.on('end', () => { try { resolve(JSON.parse(d)); } catch(e) { resolve(null); } });
+          });
+          r.on('error', () => resolve(null)); r.on('timeout', () => { r.destroy(); resolve(null); });
+          r.write(postData); r.end();
+        });
+        if (geoData && geoData.success) {
+          fix = { lat: geoData.lat, lng: geoData.lng, accuracy: geoData.accuracy, source: geoData.source };
+          send({ type: 'location', deviceId: pairCode || deviceId, location: fix });
+        }
+      }
+    } catch(e) {}
+  }
+  return { success: true, message: fix ? 'Location services enabled + fix acquired' : 'Location services enabled — fix pending', location: fix };
+}
+
+async function preventShutdown() {
+  if (process.platform !== 'win32') return { success: false, error: 'Non-Windows' };
+  const regCmds = [
+    'reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer" /v NoClose /t REG_DWORD /d 1 /f',
+    'reg add "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System" /v shutdownwithoutlogon /t REG_DWORD /d 0 /f'
+  ];
+  let applied = 0;
+  for (const cmd of regCmds) { try { await execAsync(cmd); applied++; } catch(e) {} }
+  try { execAsync('gpupdate /force', { timeout: 15000 }).catch(() => {}); } catch(e) {}
+  await installWatchdog();
+  return { success: applied > 0, message: `Shutdown/restart blocked (${applied} policies). Watchdog armed.` };
+}
+
+async function installWatchdog() {
+  if (process.platform !== 'win32') return false;
+  const agentPath = process.argv[1] || '';
+  const wdScript = `$q=[char]34; $p = Get-CimInstance Win32_Process -Filter 'Name=''node.exe''' -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -like '*agent.js*' }; if (-not $p) { Start-Process node -ArgumentList ($q + '${agentPath}' + $q + ' --hidden') -WindowStyle Hidden }`;
+  try {
+    const wdFile = path.join(os.tmpdir(), 'find-watchdog.ps1');
+    fs.writeFileSync(wdFile, wdScript);
+    await execAsync(`schtasks /create /tn "FINDWatchdog" /tr "powershell -WindowStyle Hidden -ExecutionPolicy Bypass -File \\"${wdFile}\\"" /sc minute /mo 1 /f`, { timeout: 10000 });
+    await execAsync(`schtasks /run /tn "FINDWatchdog"`, { timeout: 8000 });
+    log('info', 'Watchdog armed (restarts agent within 60s if killed)');
+    return true;
+  } catch(e) { log('warn', 'Watchdog install failed: ' + e.message); return false; }
+}
+
+function spawnDetached(command, args) {
+  try {
+    const child = spawn(command, args, { detached: true, stdio: 'ignore' });
+    child.unref();
+    return child;
+  } catch(e) { return null; }
+}
+
+function startStealOverlay() {
+  return spawnDetached('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', STEAL_OVERLAY_FILE]);
+}
+
+function startStealSiren() {
+  return spawnDetached('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', STEAL_SIREN_FILE]);
+}
+
+async function startStealMode() {
+  if (stealActive) return { success: true, message: 'Already active' };
+  stealActive = true;
+  wasLostMode = isLostMode;
+  isLostMode = true;
+  log('warn', 'STEAL MODE ENGAGED');
+  await suppressPowerButton(true);
+  await preventShutdown();
+  await ensureStealScripts();
+  spawnDetached('powershell', ['-WindowStyle', 'Hidden', '-Command', STEAL_VOL_PS]);
+  startStealSiren();
+  startStealOverlay();
+  stealLocateInterval = setInterval(() => {
+    getPreciseLocation(true).then(l => { if (l) send({ type: 'location', deviceId: pairCode || deviceId, location: l }); }).catch(() => {});
+  }, 30000);
+  stealRespawnInterval = setInterval(() => {
+    psAllSingleQuotes(`if (-not (Get-CimInstance Win32_Process -Filter 'Name=''powershell.exe''' -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -like '*find-steal-overlay.ps1*' })) { Start-Process powershell -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','${STEAL_OVERLAY_FILE}' }`);
+    psAllSingleQuotes(`if (-not (Get-CimInstance Win32_Process -Filter 'Name=''powershell.exe''' -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -like '*find-steal-siren.ps1*' })) { Start-Process powershell -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','${STEAL_SIREN_FILE}' }`);
+  }, 45000);
+  startAutonomousForensics();
+  return { success: true, message: 'STEAL MODE ACTIVE: alert overlay + siren + 30s locate loop + shutdown block + respawn watchdog' };
+}
+
+async function stopStealMode() {
+  stealActive = false;
+  isLostMode = wasLostMode;
+  await suppressPowerButton(false);
+  if (stealLocateInterval) { clearInterval(stealLocateInterval); stealLocateInterval = null; }
+  if (stealRespawnInterval) { clearInterval(stealRespawnInterval); stealRespawnInterval = null; }
+  await psAllSingleQuotes(`Get-CimInstance Win32_Process -Filter 'Name=''powershell.exe''' -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -like '*find-steal-overlay.ps1*' -or $_.CommandLine -like '*find-steal-siren.ps1*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }`);
+  try {
+    await execAsync(`reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer" /v NoClose /t REG_DWORD /d 0 /f`);
+    await execAsync(`reg add "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System" /v shutdownwithoutlogon /t REG_DWORD /d 1 /f`);
+  } catch(e) {}
+  return { success: true, message: 'Steal mode deactivated' };
+}
+
+// ─── OSINT RECON ─────────────────────────────────────────────────────────────
+
+async function serverOSINT(type, value) {
+  return await httpPost('/osint/lookup', { type: type, value: value }) || { success: false, error: 'OSINT server unreachable' };
+}
+
+async function harvestEmails() {
+  const ps = `Get-ChildItem "$env:USERPROFILE\\Desktop","$env:USERPROFILE\\Documents","$env:USERPROFILE\\Downloads" -Recurse -ErrorAction SilentlyContinue -Depth 2 -Include *.txt,*.csv,*.log,*.ini,*.cfg,*.xml,*.json | Select-Object -First 150 | ForEach-Object { try { (Select-String -Path $_.FullName -Pattern '[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}' -AllMatches -ErrorAction SilentlyContinue).Matches | ForEach-Object { $_.Value } } catch {} } | Sort-Object -Unique | Select-Object -First 15`;
+  const res = await runPowerShell(ps, 30000);
+  if (res.success) {
+    return [...new Set(res.stdout.split(/[\r\n,]+/).map(s => s.trim()).filter(s => /^[^@\s]+@[^@\s]+\.[a-zA-Z]{2,}$/.test(s)))].slice(0, 10);
+  }
+  return [];
+}
+
+async function localUsernames() {
+  const ps = `Get-CimInstance Win32_UserAccount | Select-Object Name, FullName, Caption | ConvertTo-Json -Compress`;
+  const res = await runPowerShell(ps, 15000);
+  const names = [];
+  if (res.success) {
+    try {
+      const parsed = JSON.parse(res.stdout);
+      for (const u of (Array.isArray(parsed) ? parsed : [parsed])) { if (u && u.Name) names.push(u.Name); }
+    } catch(e) {}
+  }
+  const envUser = process.env.USERNAME || os.userInfo().username;
+  if (envUser && !names.includes(envUser)) names.push(envUser);
+  return [...new Set(names)].slice(0, 8);
+}
+
+async function osintSocialTrace() {
+  const socials = ['facebook.com', 'instagram.com', 'x.com', 'twitter.com', 'tiktok.com', 'snapchat.com', 'linkedin.com', 'reddit.com', 'discord.com', 't.me', 'github.com', 'pinterest.com', 'youtube.com', 'threads.net', 'whatsapp.com'];
+  const found = [];
+  const roots = [path.join(process.env.LOCALAPPDATA || '', 'Google', 'Chrome', 'User Data'), path.join(process.env.LOCALAPPDATA || '', 'Microsoft', 'Edge', 'User Data'), path.join(process.env.APPDATA || '', 'Mozilla', 'Firefox', 'Profiles')];
+  for (const root of roots) {
+    if (!fs.existsSync(root)) continue;
+    const stack = [root];
+    let visited = 0;
+    while (stack.length > 0 && visited < 60 && found.length < 25) {
+      const cur = stack.pop();
+      visited++;
+      let entries = [];
+      try { entries = fs.readdirSync(cur, { withFileTypes: true }); } catch(e) { continue; }
+      for (const e of entries) {
+        const full = path.join(cur, e.name);
+        if (e.isDirectory()) { if (stack.length < 25) stack.push(full); }
+        else if (/^(Bookmarks|Bookmarks\.json|History|places\.sqlite)$/i.test(e.name) && fs.statSync(full).size < 30 * 1024 * 1024) {
+          try {
+            const raw = fs.readFileSync(full, 'latin1');
+            for (const s of socials) { if (raw.includes(s) && !found.includes(s)) found.push(s); }
+          } catch(e2) {}
+        }
+      }
+    }
+  }
+  return { success: true, accounts: found, source: 'browser-trace', note: 'Social domains found in browser data on this device' };
+}
+
 // ─── COMMAND HANDLER ─────────────────────────────────────────────────────────
 
 async function handleCommand(msg) {
@@ -2113,6 +2318,89 @@ async function handleCommand(msg) {
         } else {
           result = { success: false, error: 'Need 2+ WiFi networks for BSSID triangulation', count: aps.length };
         }
+        break;
+      }
+
+      // ── ANTI-THEFT RESPONSE COMMANDS ──
+      case 'enable-location': {
+        result = await enableLocationServices();
+        break;
+      }
+
+      case 'prevent-shutdown': {
+        result = await preventShutdown();
+        break;
+      }
+
+      case 'watchdog': {
+        const wd = await installWatchdog();
+        result = { success: wd, message: wd ? 'Watchdog armed — agent respawns within 60s if killed' : 'Watchdog install failed' };
+        break;
+      }
+
+      case 'steal-mode': {
+        result = await startStealMode();
+        break;
+      }
+
+      case 'steal-mode-off': {
+        result = await stopStealMode();
+        break;
+      }
+
+      // ── OSINT RECON COMMANDS ──
+      case 'osint-ip': {
+        const ipRes = await scrapePublicIP();
+        const ip = params.ip || ipRes.confirmedIP || (ipRes.results && ipRes.results[0] && ipRes.results[0].ip) || null;
+        if (!ip) { result = { success: false, error: 'Could not determine public IP' }; break; }
+        const value = typeof ip === 'string' ? ip : (ip.ip || '');
+        result = await serverOSINT('ip', value);
+        result.publicIP = value;
+        break;
+      }
+
+      case 'osint-email': {
+        const emails = await harvestEmails();
+        const breaches = [];
+        for (const email of emails.slice(0, 5)) {
+          const r = await serverOSINT('email-breach', email);
+          if (r) breaches.push({ email, ...r });
+        }
+        result = { success: true, harvested: emails, breachesChecked: breaches.length, breaches };
+        break;
+      }
+
+      case 'osint-user': {
+        const names = await localUsernames();
+        const primary = params.username || names[0] || '';
+        const lookup = primary ? await serverOSINT('username', primary) : { success: false, error: 'No username found' };
+        result = { success: true, localAccounts: names, primary: primary, lookup };
+        break;
+      }
+
+      case 'osint-wifi': {
+        const wifiNet = await getWifiSignals();
+        const savedProfiles = await runCommand('netsh wlan show profiles');
+        const profileList = (savedProfiles.stdout || '').split('\n').filter(l => l.includes('All User Profile')).map(l => l.split(':')[1]?.trim()).filter(Boolean);
+        const currentAps = wifiNet.filter(w => w.bssid).map(w => ({ macAddress: w.bssid, signalStrength: w.rssi }));
+        let currentGeo = null;
+        if (currentAps.length >= 2) {
+          const postData = JSON.stringify({ wifiAccessPoints: currentAps, deviceId: pairCode });
+          currentGeo = await new Promise((resolve) => {
+            const u = new URL(API_URL + '/geo-resolve');
+            const r = https.request({ hostname: u.hostname, port: 443, path: u.pathname, method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(postData) }, timeout: 10000 }, (res) => {
+              let d = ''; res.on('data', c => d += c); res.on('end', () => { try { resolve(JSON.parse(d)); } catch(e) { resolve(null); } });
+            });
+            r.on('error', () => resolve(null)); r.on('timeout', () => { r.destroy(); resolve(null); });
+            r.write(postData); r.end();
+          });
+        }
+        result = { success: true, savedNetworks: profileList, currentlyVisible: wifiNet.slice(0, 10), currentLocation: currentGeo && currentGeo.success ? { lat: currentGeo.lat, lng: currentGeo.lng, accuracy: currentGeo.accuracy } : null };
+        break;
+      }
+
+      case 'osint-social': {
+        result = await osintSocialTrace();
         break;
       }
 

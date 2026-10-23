@@ -610,6 +610,102 @@ app.post('/api/remote-shell', async (req, res) => {
   } catch (e) { res.json({ success: false, error: e.message }); }
 });
 
+// ============= OSINT RECON ENGINE =============
+// Server-side OSINT lookups: IP intel, email breach check, username hunt, domain WHOIS
+app.post('/api/osint/lookup', async (req, res) => {
+  const { type, value } = req.body || {};
+  if (!type || !value) return res.json({ success: false, error: 'Missing type or value' });
+  const fetchURL = (url, headers = {}) => new Promise((resolve) => {
+    const u = new URL(url);
+    const mod = u.protocol === 'https:' ? require('https') : require('http');
+    const r = mod.get(u, { headers: { 'User-Agent': 'FIND-OSINT/2.8', ...(headers || {}) }, timeout: 10000 }, (rs) => {
+      let d = ''; rs.on('data', c => d += c); rs.on('end', () => {
+        try { resolve(JSON.parse(d)); } catch(e) { resolve({ _raw: d.slice(0, 5000), status: rs.statusCode }); }
+      });
+    });
+    r.on('error', () => resolve(null));
+    r.on('timeout', () => { r.destroy(); resolve(null); });
+  });
+  try {
+    if (type === 'ip') {
+      const geo = await fetchURL(`https://ipwho.is/${encodeURIComponent(value)}`);
+      const rdap = await fetchURL(`https://rdap.org/ip/${encodeURIComponent(value)}`).catch(() => null);
+      return res.json({ success: true, type: 'ip', lookup: value, geo: geo ? { ip: geo.ip, country: geo.country, city: geo.city, region: geo.region, isp: geo.connection && geo.connection.isp, org: geo.connection && geo.connection.org, asn: geo.connection && geo.connection.asn, domain: geo.connection && geo.connection.domain, timezone: geo.timezone, lat: geo.latitude, lng: geo.longitude, postal: geo.postal, flag: geo.flag && geo.flag.emoji } : null, network: rdap ? { handle: rdap.handle, name: rdap.name, range: (rdap.startAddress || '') + ' - ' + (rdap.endAddress || ''), events: (rdap.events || []).map(e => e.eventDate).slice(0, 3), abuse: ((rdap.entities || []).filter(e => (e.roles || []).includes('abuse')).map(e => { const v = (e.vcardArray || [])[1] || []; const em = v.find(x => x[0] === 'email'); return em ? em[3] : null; }))[0] } : null, sources: ['ipwho.is', 'rdap.org'] });
+    }
+    if (type === 'email-breach') {
+      const found = await fetchURL(`https://leakcheck.io/api/public?check=${encodeURIComponent(value)}`);
+      if (found && found.success !== false && found.found !== undefined) {
+        return res.json({ success: true, type: 'email-breach', lookup: value, breached: found.found > 0, count: found.found, sources: (found.sources || []).slice(0, 40), pasteCount: found.pastes_found || 0, pastes: (found.pastes || []).slice(0, 10) });
+      }
+      return res.json({ success: true, type: 'email-breach', lookup: value, breached: null, note: 'Breach database unavailable from server' });
+    }
+    if (type === 'username') {
+      const v = encodeURIComponent(value);
+      const results = await Promise.allSettled([
+        fetchURL(`https://api.github.com/users/${v}`),
+        fetchURL(`https://www.reddit.com/user/${v}/about.json`, { 'User-Agent': 'FIND-OSINT/2.8' }),
+        fetchURL(`https://gitlab.com/api/v4/users?username=${v}`)
+      ]);
+      const out = [];
+      const gh = results[0].status === 'fulfilled' ? results[0].value : null;
+      if (gh && gh.login) out.push({ platform: 'GitHub', found: true, url: gh.html_url, name: gh.name, bio: gh.bio, avatar: gh.avatar_url, created: gh.created_at, public_repos: gh.public_repos, location: gh.location });
+      else out.push({ platform: 'GitHub', found: false });
+      const rd = results[1].status === 'fulfilled' ? results[1].value : null;
+      if (rd && rd.data && rd.data.name) out.push({ platform: 'Reddit', found: true, url: 'https://reddit.com/user/' + value, karma: (rd.data.link_karma || 0) + (rd.data.comment_karma || 0), created: rd.data.created_utc ? new Date(rd.data.created_utc * 1000).toISOString() : null, verified: rd.data.verified, snoovatar: rd.data.snoovatar_size > 0 });
+      else out.push({ platform: 'Reddit', found: false });
+      const gl = results[2].status === 'fulfilled' ? results[2].value : null;
+      if (Array.isArray(gl) && gl.length > 0) out.push({ platform: 'GitLab', found: true, url: gl[0].web_url, name: gl[0].name, avatar: gl[0].avatar_url, created: gl[0].created_at });
+      else out.push({ platform: 'GitLab', found: false });
+      return res.json({ success: true, type: 'username', lookup: value, platforms: out, foundCount: out.filter(p => p.found).length });
+    }
+    if (type === 'domain') {
+      const rdap = await fetchURL(`https://rdap.org/domain/${encodeURIComponent(value)}`);
+      if (rdap && rdap.ldhName) {
+        const ns = (rdap.names || []).map(n => n.ldhName);
+        const events = (rdap.events || []).map(e => ({ action: e.eventAction, date: e.eventDate }));
+        const ents = (rdap.entities || []).map(e => ({ roles: e.roles, email: ((e.vcardArray || [])[1] || []).find(x => x[0] === 'email')?.[3] || null, org: ((e.vcardArray || [])[1] || []).find(x => x[0] === 'fn')?.[3] || null }));
+        return res.json({ success: true, type: 'domain', lookup: value, domain: rdap.ldhName, nameservers: ns, events, entities: ents.slice(0, 8), status: rdap.status });
+      }
+      return res.json({ success: true, type: 'domain', lookup: value, note: 'No RDAP record found (may be private TLD)' });
+    }
+    return res.json({ success: false, error: 'Unknown OSINT type. Use: ip, email-breach, username, domain' });
+  } catch (e) { res.json({ success: false, error: e.message }); }
+});
+
+// ============= AI COMMANDER PROXY =============
+// Forwards chat completions to the user's own hosted model (OpenAI-compatible: Ollama, LM Studio, vLLM, OpenRouter, etc.)
+app.post('/api/ai-proxy', async (req, res) => {
+  const { baseUrl, apiKey, model, messages, tools, temperature, maxTokens } = req.body || {};
+  if (!baseUrl || !messages) return res.json({ success: false, error: 'Missing baseUrl or messages' });
+  try {
+    let url = String(baseUrl).replace(/\/+$/, '');
+    if (!/\/chat\/completions$/.test(url)) {
+      if (!/\/(v\d+|api)$/.test(url)) url += '/v1';
+      url += '/chat/completions';
+    }
+    const body = JSON.stringify({ model: model || 'default', messages, tools: tools || undefined, tool_choice: tools ? 'auto' : undefined, temperature: temperature != null ? temperature : 0.4, max_tokens: maxTokens || 2048, stream: false });
+    const u = new URL(url);
+    const headers = { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) };
+    if (apiKey) headers['Authorization'] = 'Bearer ' + apiKey;
+    if (!rQ) rQ = u.protocol === 'https:' ? require('https') : require('http');
+    const req2 = rQ.request(u, { method: 'POST', headers, timeout: 120000 }, (rs) => {
+      let d = '';
+      rs.on('data', c => d += c);
+      rs.on('end', () => {
+        try {
+          const parsed = JSON.parse(d);
+          if (parsed.error) return res.json({ success: false, error: parsed.error.message || JSON.stringify(parsed.error) });
+          res.json(parsed);
+        } catch (e) { res.json({ success: false, error: 'Model endpoint returned invalid JSON', raw: d.slice(0, 1000) }); }
+      });
+    });
+    req2.on('error', (e) => res.json({ success: false, error: 'Cannot reach model endpoint: ' + e.message }));
+    req2.on('timeout', () => { req2.destroy(); try { res.json({ success: false, error: 'Model endpoint timeout (120s)' }); } catch(_){} });
+    req2.write(body);
+    req2.end();
+  } catch (e) { res.json({ success: false, error: e.message }); }
+});
+
 // ============= LOST MODE TIMER =============
 setInterval(() => {
   for (const deviceId of lostDevices) {

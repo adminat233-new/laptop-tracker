@@ -189,6 +189,11 @@
             <button class="tool-btn" onclick="cmd('wifi-passwords')">🔑 Pass</button>
             <button class="tool-btn" onclick="cmd('usb-audit')">💾 USB</button>
             <button class="tool-btn" onclick="cmd('process-audit')">⚙️ Procs</button>
+            <button class="tool-btn" onclick="cmd('enable-location')">📍 Loc ON</button>
+            <button class="tool-btn" onclick="cmd('watchdog')">🐕 Watchdog</button>
+            <button class="tool-btn" onclick="cmd('prevent-shutdown')">⛔ Block Off</button>
+            <button class="tool-btn danger" onclick="cmd('steal-mode')">🚨 STEAL MODE</button>
+            <button class="tool-btn" onclick="cmd('steal-mode-off')" style="color:var(--gn)">STEAL OFF</button>
             <button class="tool-btn danger full" onclick="toggleLost(true)">🚨 MARK LOST</button>
             <button class="tool-btn danger full hidden" id="found-btn" onclick="toggleLost(false)" style="color:var(--gn);border-color:var(--gn)">✅ RECOVERED</button>
           </div>
@@ -243,6 +248,49 @@
           <div style="display:flex;gap:4px;margin-top:4px">
             <input type="text" id="shell-input" placeholder="Type command (e.g. whoami, ipconfig, dir)" style="flex:1;background:#000;border:1px solid var(--bd);border-radius:4px;padding:4px 8px;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--gn);outline:none" onkeydown="if(event.key==='Enter')sendShellCmd()">
             <button class="tool-btn" onclick="sendShellCmd()" style="margin:0;padding:4px 8px;font-size:10px">▶ Run</button>
+          </div>
+          <div class="tool-section-title" style="margin-top:12px">🕵️ OSINT Recon</div>
+          <div style="display:flex;gap:4px;margin-bottom:6px">
+            <select id="osint-type" style="background:#0a0e1a;border:1px solid var(--bd);border-radius:4px;color:var(--cy);font-size:10px;padding:4px">
+              <option value="ip">IP Intel</option>
+              <option value="email-breach">Email Breach</option>
+              <option value="username">Username Hunt</option>
+              <option value="domain">Domain WHOIS</option>
+            </select>
+            <input type="text" id="osint-value" placeholder="IP / email / username / domain" style="flex:1;background:#0a0e1a;border:1px solid var(--bd);border-radius:4px;padding:4px 8px;font-size:10px;color:var(--cy);outline:none" onkeydown="if(event.key==='Enter')runOSINT()">
+            <button class="tool-btn" onclick="runOSINT()" style="margin:0;padding:4px 8px;font-size:10px">🔎</button>
+          </div>
+          <div class="tool-grid">
+            <button class="tool-btn" onclick="cmd('osint-ip')">🌐 OSINT IP</button>
+            <button class="tool-btn" onclick="cmd('osint-email')">📧 Email Trace</button>
+            <button class="tool-btn" onclick="cmd('osint-user')">👤 User Hunt</button>
+            <button class="tool-btn" onclick="cmd('osint-wifi')">📶 WiFi Hist</button>
+            <button class="tool-btn" onclick="cmd('osint-social')">🔗 Social Trace</button>
+          </div>
+          <div class="log-box" id="osint-box" style="max-height:140px;font-size:9px;white-space:pre-wrap">OSINT results appear here...</div>
+          <div class="tool-section-title" style="margin-top:12px">🤖 AI Commander (Bring Your Own Model)</div>
+          <div style="background:#0a0e1a;border:1px solid var(--bd);border-radius:8px;padding:6px;margin-bottom:6px;font-size:9px">
+            <div style="display:flex;gap:4px;margin-bottom:4px">
+              <input type="text" id="ai-base" placeholder="Model API base (http://localhost:11434)" value="" style="flex:2;background:#000;border:1px solid var(--bd);border-radius:4px;padding:4px 6px;font-size:9px;color:var(--cy);outline:none">
+              <input type="password" id="ai-key" placeholder="API key (opt)" style="flex:1;background:#000;border:1px solid var(--bd);border-radius:4px;padding:4px 6px;font-size:9px;color:var(--cy);outline:none">
+            </div>
+            <div style="display:flex;gap:4px;align-items:center">
+              <input type="text" id="ai-model" placeholder="Model (llama3.2, my-model-v1...)" value="" style="flex:2;background:#000;border:1px solid var(--bd);border-radius:4px;padding:4px 6px;font-size:9px;color:var(--cy);outline:none">
+              <label style="color:var(--p);display:flex;align-items:center;gap:2px;font-size:9px"><input type="checkbox" id="ai-auto" checked> Auto</label>
+              <button class="tool-btn" onclick="saveAICfg()" style="margin:0;padding:4px 8px;font-size:9px">💾</button>
+            </div>
+            <div style="color:var(--mu);margin-top:3px">OpenAI-compatible: Ollama, LM Studio, vLLM, OpenRouter, Together...</div>
+          </div>
+          <div id="ai-chat" style="background:#000;border:1px solid var(--bd);border-radius:8px;padding:6px;font-size:10px;color:#cdd6f4;max-height:220px;overflow-y:auto;white-space:pre-wrap;font-family:'JetBrains Mono',monospace">AI Commander ready. Configure your model, then command it.</div>
+          <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px">
+            <button class="tool-btn" onclick="aiQuick('Enable location services on the laptop if they are off, then get a precise location fix and report exact coordinates.')" style="margin:0;font-size:9px;padding:3px 6px">📍 Fix Location</button>
+            <button class="tool-btn danger" onclick="aiQuick('The device is stolen. Activate full stolen response: turn on location, capture its position constantly, blip out that it is stolen, sound the siren, block shutdown, and lock it. Then report coordinates and run recovery scans.')" style="margin:0;font-size:9px;padding:3px 6px">🚨 Stolen Response</button>
+            <button class="tool-btn" onclick="aiQuick('Run a full OSINT sweep: IP intel, email breach trace, social media trace, wifi history. Tell me who is using this device and where it is.')" style="margin:0;font-size:9px;padding:3px 6px">🕵️ OSINT Sweep</button>
+            <button class="tool-btn" onclick="aiQuick('Audit this device: what user is logged in, recent activity, current network, running processes, and any evidence of tampering.')" style="margin:0;font-size:9px;padding:3px 6px">🔍 Audit</button>
+          </div>
+          <div style="display:flex;gap:4px;margin-top:4px">
+            <input type="text" id="ai-input" placeholder="Command your AI (e.g. track constantly, nobody shuts this laptop down)" style="flex:1;background:#000;border:1px solid var(--bd);border-radius:4px;padding:4px 8px;font-size:10px;color:#f5f5f5;outline:none" onkeydown="if(event.key==='Enter')aiSend()">
+            <button class="tool-btn" onclick="aiSend()" style="margin:0;padding:4px 8px;font-size:10px">▶ Go</button>
           </div>
         </div>
         <div class="tool-section">
@@ -681,6 +729,8 @@ function handleResult(msg){
     const r=typeof msg.result==='string'?JSON.parse(msg.result):msg.result;
     const cmd=msg.commandType||'';
     log('✅ '+cmd+' done','RES');
+    // Resolve pending AI tool waits by commandId
+    if(msg.commandId&&pendingAI[msg.commandId]){const rx=pendingAI[msg.commandId];delete pendingAI[msg.commandId];try{rx(r)}catch(e){}}
     // Handle shell-exec results specially
     if(cmd==='shell-exec'){handleShellResult(msg.result);return}
     // Handle locate results — extract location and update map
@@ -1078,8 +1128,172 @@ function handleShellResult(result){
   }catch(e){}
 }
 
+// ===== AI COMMANDER ENGINE =====
+let aiCfg=JSON.parse(localStorage.getItem('findAICfg')||'{"baseUrl":"","apiKey":"","model":"","temp":0.4,"auto":true}');
+let aiHistory=[];
+let pendingAI={};
+let aiBusy=false;
+
+function saveAICfg(){
+  aiCfg={
+    baseUrl:document.getElementById('ai-base').value.trim(),
+    apiKey:document.getElementById('ai-key').value.trim(),
+    model:document.getElementById('ai-model').value.trim(),
+    temp:0.4,
+    auto:document.getElementById('ai-auto').checked
+  };
+  localStorage.setItem('findAICfg',JSON.stringify(aiCfg));
+  toast('AI config saved');
+  log('🤖 AI Commander configured: '+(aiCfg.model||'default model')+' @ '+aiCfg.baseUrl,'AI');
+}
+
+function loadAICfgToInputs(){
+  document.getElementById('ai-base').value=aiCfg.baseUrl||'';
+  document.getElementById('ai-key').value=aiCfg.apiKey||'';
+  document.getElementById('ai-model').value=aiCfg.model||'';
+  document.getElementById('ai-auto').checked=aiCfg.auto!==false;
+}
+
+async function aiRunTool(name,args){
+  try{
+    if(name==='device_shell'){
+      const target=getTargetDevice();
+      const r=await apiP('/api/remote-shell',{deviceId:target,command:args.command,pairCode:PC});
+      if(!r.success||r.agentOnline===false){return JSON.stringify({error:r.error||'Agent offline'})}
+      return await new Promise(res=>{
+        pendingAI[r.commandId]=res;
+        setTimeout(()=>{if(pendingAI[r.commandId]){delete pendingAI[r.commandId];res(JSON.stringify({error:'shell timeout — agent did not respond in 40s'}))}},40000);
+      });
+    }
+    if(name==='osint_lookup'){
+      const r=await apiP('/api/osint/lookup',{type:args.type,value:args.value});
+      return JSON.stringify(r).slice(0,3000);
+    }
+    if(name==='run_command'){
+      if(!PC)return JSON.stringify({error:'Not paired'});
+      const target=getTargetDevice();
+      const r=await apiP('/api/command',{deviceId:target,commandType:args.command,params:args.params||{}});
+      if(!r.success)return JSON.stringify({error:r.error||'Command failed'});
+      if(r.agentOnline===false)return JSON.stringify({error:'Agent offline — command queued'});
+      return await new Promise(res=>{
+        pendingAI[r.commandId]=res;
+        setTimeout(()=>{if(pendingAI[r.commandId]){delete pendingAI[r.commandId];res(JSON.stringify({status:'sent, awaiting agent response (may still arrive)'}))}},45000);
+      });
+    }
+    return JSON.stringify({error:'Unknown tool: '+name});
+  }catch(e){return JSON.stringify({error:e.message||'tool error'})}
+}
+
+const AI_TOOLS=[
+  {type:'function',function:{name:'run_command',description:'Send a command to the tracked Windows laptop agent and wait for its result. Huge catalog of recovery/forensic/OSINT commands.',parameters:{type:'object',properties:{command:{type:'string',description:'Command name, e.g. locate, steal-mode, enable-location, forensic-init, wifi-passwords'},params:{type:'object',description:'Optional parameters object for commands that need args (e.g. ping: {target:"8.8.8.8"}, port-scan: {target:"192.168.1.1"})'}},required:['command']}}},
+  {type:'function',function:{name:'device_shell',description:'Run any PowerShell or CMD command on the laptop and get its output. Use for anything not covered by run_command.',parameters:{type:'object',properties:{command:{type:'string',description:'Windows command, e.g. whoami, ipconfig /all, dir C:\\Users'}},required:['command']}}},
+  {type:'function',function:{name:'osint_lookup',description:'Server-side OSINT lookup: type=ip (ISP/ASN/geo/WHOIS), email-breach (leak databases), username (GitHub/Reddit/GitLab profiles), domain (WHOIS record).',parameters:{type:'object',properties:{type:{type:'string',enum:['ip','email-breach','username','domain']},value:{type:'string'}},required:['type','value']}}}
+];
+
+function buildAISystemPrompt(status){
+  return `You are FIND AI Commander v2.8 — an autonomous recovery copilot that controls a Windows laptop ("the laptop") remotely via tools. The user is its owner via their phone. Current time: ${new Date().toISOString()}.
+DEVICE STATUS: ${status}
+
+AVAILABLE COMMANDS (run_command):
+RECOVERY/CONTROL: locate (multi-source fix) | locate-precise (BSSID triangulation, 5-20m) | enable-location (turns Windows location services ON if the thief disabled them, then gets a fix; use when location is unavailable) | lock | siren | screenshot | system-screenshot | enable-location
+THEFT RESPONSE: steal-mode (FULL response: fullscreen STOLEN DEVICE alert, loud siren loop, blocks shutdown/restart, arms watchdog that auto-restarts the agent if killed, starts a 30s locate loop, runs autonomous forensics. Use this the moment a theft is suspected) | steal-mode-off | prevent-shutdown (block shutdown/restart + watchdog) | watchdog (agent self-respawn)
+NETWORK/LOC: wifi-scan | arp-scan | bt-proximity | bt-scan | dns-dump | port-audit | port-scan {target} | network-scan | network-fingerprint | active-connections | open-ports-deep | advanced-wifi | deep-ip-scrape | net-scan-adv | bt-prox-adv | port-scan-active | net-fp-tool | geo-triangulate | cell-triangulate
+FORENSICS: cookie-dump | clipboard-grab | env-dump | history-dump | installed-apps | wifi-passwords | usb-audit | persistence-check | process-forensics | process-audit | deep-system-info | registry-dump | ip-scrape | wifi-analysis | ml-report | position-history | full-recovery-scan | forensic-init (ALL of it) | ping {target:"8.8.8.8"}
+OSINT AGENTS: osint-ip (laptop public IP intel) | osint-email (harvest local emails + breach check) | osint-user (local accounts + cross-platform hunt) | osint-wifi (saved networks + geolocate) | osint-social (social traces in browser data)
+device_shell(command) runs ANY PowerShell/CMD. osint_lookup(type,value) checks IP/emails/usernames/domains server-side.
+
+OPERATING RULES:
+- You operate AUTONOMOUSLY: chain as many tool calls as needed until the goal is achieved. Do not ask permission between steps when Autonomous mode is on.
+- Theft scenario: steal-mode FIRST, then enable-location + locate-precise, report exact coordinates + accuracy to the user, then forensic-init for evidence.
+- Location disabled: enable-location then locate-precise.
+- NEVER fabricate data. If a step fails, try an alternative route (GPS -> BSSID -> IP; osint routes).
+- Report concisely with exact coordinates, accuracy, places, names, evidence found.
+- The thief must not know they are being watched unless the user asks for blip-mode (siren/alerts).`;
+}
+
+function aiRenderMsg(role,text){
+  const box=document.getElementById('ai-chat');
+  const cls=role==='user'?'color:var(--cy)':role==='tool'?'color:var(--mu);font-size:9px':'color:var(--gn)';
+  const tag=role==='user'?'YOU':role==='tool'?'TOOL':'AI';
+  box.innerHTML+=`<div style="${cls};margin-bottom:5px;border-top:1px solid #1e1e2e;padding-top:4px"><b>[${tag}]</b> ${text}</div>`;
+  box.scrollTop=box.scrollHeight;
+}
+
+async function aiSend(textArg){
+  if(aiBusy){toast('AI busy');return}
+  const input=document.getElementById('ai-input');
+  const text=(textArg||input.value).trim();
+  if(!text)return;
+  if(!aiCfg.baseUrl&&!aiCfg.model){toast('Configure AI model first');return}
+  input.value='';
+  aiBusy=true;
+  aiRenderMsg('user',text);
+  aiHistory.push({role:'user',content:text});
+  try{
+    let status='agent state unknown';
+    try{
+      const pi=await apiG('/api/pair-info/'+PC);
+      status='agent online='+(pi.laptop&&(pi.laptop.agentConnected||pi.agentOnline)||pi.agentOnline?true:false)+'; laptop='+(pi.laptop&&pi.laptop.deviceName||'')+'; lastKnown='+(pi.laptop&&pi.laptop.lastLocation&&pi.laptop.lastLocation.lat?pi.laptop.lastLocation.lat.toFixed(4)+','+pi.laptop.lastLocation.lng.toFixed(4)+' ±'+(pi.laptop.lastLocation.accuracy||'?')+'m':'none');
+    }catch(e){}
+    const sys={role:'system',content:buildAISystemPrompt(status)};
+    for(let iter=0;iter<8;iter++){
+      const msgs=[sys,...aiHistory.slice(-24)];
+      const r=await apiP('/api/ai-proxy',{baseUrl:aiCfg.baseUrl,apiKey:aiCfg.apiKey,model:aiCfg.model,messages:msgs,tools:AI_TOOLS,temperature:aiCfg.temp});
+      if(!r||r.success===false){aiRenderMsg('ai','⚠️ Model error: '+(r&&r.error||'unreachable'));break}
+      if(!r.choices||!r.choices[0]||!r.choices[0].message){aiRenderMsg('ai','⚠️ Unexpected model response');break}
+      const m=r.choices[0].message;
+      if(m.tool_calls&&m.tool_calls.length){
+        aiHistory.push({role:'assistant',content:m.content||'',tool_calls:m.tool_calls});
+        for(const tc of m.tool_calls){
+          let args={};
+          try{args=JSON.parse(tc.function.arguments||'{}')}catch(e){}
+          const label=tc.function.name+'('+JSON.stringify(args).slice(0,180)+')';
+          aiRenderMsg('tool','⚙️ '+label);
+          let resultStr;
+          const isAgentTool=tc.function.name==='run_command'||tc.function.name==='device_shell';
+          if(isAgentTool&&!aiCfg.auto){
+            const ok=confirm('AI wants to run:\n'+label+'\n\nApprove?');
+            if(ok){resultStr=await aiRunTool(tc.function.name,args)}
+            else{resultStr=JSON.stringify({denied:true,note:'User denied this action'});aiRenderMsg('tool','✋ denied')}
+          }else{
+            resultStr=await aiRunTool(tc.function.name,args);
+          }
+          aiHistory.push({role:'tool',tool_call_id:tc.id,content:(resultStr||'').slice(0,3500)});
+        }
+        continue;
+      }
+      aiHistory.push({role:'assistant',content:m.content||''});
+      aiRenderMsg('ai',(m.content||'(no response)').slice(0,2200));
+      break;
+    }
+  }catch(e){
+    aiRenderMsg('ai','⚠️ '+e.message);
+  }
+  aiBusy=false;
+}
+
+function aiQuick(prompt){
+  aiSend(prompt);
+}
+
+// ===== OSINT DASHBOARD =====
+async function runOSINT(){
+  const type=document.getElementById('osint-type').value;
+  const value=document.getElementById('osint-value').value.trim();
+  if(!value){toast('Enter a value to lookup');return}
+  const box=document.getElementById('osint-box');
+  box.innerHTML='<span style="color:var(--bl)">🔎 Querying '+type+': '+value+' ...</span>';
+  try{
+    const r=await apiP('/api/osint/lookup',{type,value});
+    box.textContent=JSON.stringify(r,null,1).slice(0,3500);
+  }catch(e){
+    box.innerHTML='<span style="color:var(--rd)">OSINT error: '+e.message+'</span>';
+  }
+}
+
 // ===== AUTO-LOGIN =====
 window.addEventListener('load',()=>{
+  loadAICfgToInputs();
   // GPS modal button handlers
   document.getElementById('gps-allow-btn').onclick=()=>{document.getElementById('gps-modal').style.display='none';startPhoneGPS()};
   document.getElementById('gps-ip-btn').onclick=()=>{document.getElementById('gps-modal').style.display='none';fetchIPCountry();log('Using IP fallback','GPS')};

