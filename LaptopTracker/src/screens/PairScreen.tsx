@@ -13,7 +13,7 @@ export default function PairScreen({ serverUrl, onPair }: Props) {
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const inputs = useRef<(TextInput | null)[]>([]);
+  const inputs = useRef<any[]>([]);
 
   const handleCodeChange = (text: string, index: number) => {
     const upper = text.toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -80,13 +80,13 @@ export default function PairScreen({ serverUrl, onPair }: Props) {
           {Array.from({ length: 8 }, (_, i) => (
             <TextInput
               key={i}
-              ref={ref => { inputs.current[i] = ref; }}
+              ref={(ref: any) => { inputs.current[i] = ref; }}
               style={[styles.codeBox, code[i] ? styles.codeBoxFilled : null]}
               maxLength={1}
               value={code[i] || ''}
-              onChangeText={(t) => handleCodeChange(t, i)}
-              onKeyPress={({ nativeEvent }) => handleKeyPress(nativeEvent.key, i)}
-              onTextInput={({ nativeEvent }) => handlePaste(nativeEvent.text)}
+              onChangeText={(t: string) => handleCodeChange(t, i)}
+              onKeyPress={({ nativeEvent }: { nativeEvent: any }) => handleKeyPress(nativeEvent.key, i)}
+              onTextInput={({ nativeEvent }: { nativeEvent: any }) => handlePaste(nativeEvent.text)}
               autoCapitalize="characters"
               autoCorrect={false}
               selectTextOnFocus

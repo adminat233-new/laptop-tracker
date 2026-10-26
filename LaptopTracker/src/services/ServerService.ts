@@ -1,5 +1,3 @@
-import { AppState, AppStateStatus } from 'react-native';
-
 type MessageHandler = (msg: any) => void;
 
 export class ServerService {
@@ -15,6 +13,11 @@ export class ServerService {
     this.serverUrl = serverUrl.replace(/^http/, 'ws');
     this.deviceId = deviceId;
     this.deviceType = deviceType;
+  }
+
+  /** Public URL accessor (returns the HTTP form) */
+  get url(): string {
+    return this.serverUrl.replace(/^ws/, 'http');
   }
 
   connect() {

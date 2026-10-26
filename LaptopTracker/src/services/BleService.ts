@@ -58,7 +58,7 @@ class BleServiceClass {
     this.isScanning = true;
     this.scannedDevices.clear();
 
-    await this.manager.startDeviceScan(null, { allowDuplicates: false }, (error, device) => {
+    await this.manager.startDeviceScan(null, { allowDuplicates: false }, (error: any, device: Device | null) => {
       if (error) {
         console.error('BLE scan error:', error);
         return;
@@ -93,8 +93,8 @@ class BleServiceClass {
   }
 
   private detectTracker(device: Device): boolean {
-    if (device.serviceUUIDs?.some(uuid => uuid.includes('fff0'))) return true;
-    if (device.serviceUUIDs?.some(uuid => uuid.includes('feaa'))) return true;
+    if (device.serviceUUIDs?.some((uuid: string) => uuid.includes('fff0'))) return true;
+    if (device.serviceUUIDs?.some((uuid: string) => uuid.includes('feaa'))) return true;
     if (device.localName?.toLowerCase().includes('airtag')) return true;
     if (device.localName?.toLowerCase().includes('tile')) return true;
     if (device.localName?.toLowerCase().includes('smarttag')) return true;

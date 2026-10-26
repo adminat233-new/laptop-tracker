@@ -8,6 +8,7 @@ import SettingsScreen from './src/screens/SettingsScreen';
 import BusinessScreen from './src/screens/BusinessScreen';
 import { ServerService } from './src/services/ServerService';
 import { LocationService } from './src/services/LocationService';
+import { UpdateService } from './src/services/UpdateService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 LogBox.ignoreLogs(['new NativeEventEmitter']);
@@ -22,6 +23,7 @@ export default function App() {
   const [serverService, setServerService] = useState<ServerService | null>(null);
 
   useEffect(() => {
+    UpdateService.checkForUpdate(SERVER_URL);
     (async () => {
       const savedId = await AsyncStorage.getItem('deviceId');
       const savedLaptop = await AsyncStorage.getItem('laptopDeviceId');
@@ -86,7 +88,7 @@ export default function App() {
           }}
         >
           <Tab.Screen name="Tracker" options={{ tabBarIcon: () => <Text>📍</Text> }}>
-            {props => (
+            {(props: any) => (
               <DashboardScreen
                 {...props}
                 deviceId={deviceId!}
@@ -96,7 +98,7 @@ export default function App() {
             )}
           </Tab.Screen>
           <Tab.Screen name="Business" options={{ tabBarIcon: () => <Text>💼</Text> }}>
-            {props => (
+            {(props: any) => (
               <BusinessScreen
                 {...props}
                 serverService={serverService!}
@@ -105,7 +107,7 @@ export default function App() {
             )}
           </Tab.Screen>
           <Tab.Screen name="Settings" options={{ tabBarIcon: () => <Text>⚙️</Text> }}>
-            {props => <SettingsScreen {...props} onUnpair={handleUnpair} />}
+            {(props: any) => <SettingsScreen {...props} onUnpair={handleUnpair} />}
           </Tab.Screen>
         </Tab.Navigator>
       </NavigationContainer>

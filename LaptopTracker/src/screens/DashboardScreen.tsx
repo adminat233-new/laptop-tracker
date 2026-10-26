@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
-  View, Text, TouchableOpacity, StyleSheet, ScrollView, Dimensions, Alert, ActivityIndicator, Image, Modal, FlatList,
+  View, Text, TouchableOpacity, StyleSheet, ScrollView, Dimensions, Alert, ActivityIndicator, Image, Modal, FlatList, Platform,
 } from 'react-native';
 import MapView, { Marker, Circle, Polyline } from 'react-native-maps';
 import { ServerService, apiGet } from '../services/ServerService';
@@ -28,7 +28,7 @@ export default function DashboardScreen({ deviceId, laptopDeviceId, serverServic
   const [isLostMode, setIsLostMode] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
 
-  const mapRef = useRef<MapView>(null);
+  const mapRef = useRef<MapView | null>(null);
 
   const [logs, setLogs] = useState<any[]>([]);
 
@@ -78,11 +78,11 @@ export default function DashboardScreen({ deviceId, laptopDeviceId, serverServic
             speed: preciseFix.speed 
         });
         
-        setPathHistory(prev => [...prev.slice(-29), { latitude: preciseFix.lat, longitude: preciseFix.lng }]);
+        setPathHistory((prev: any[]) => [...prev.slice(-29), { latitude: preciseFix.lat, longitude: preciseFix.lng }]);
       }
 
       if (msg.type === 'forensic_log') {
-          setLogs(prev => [msg.log, ...prev].slice(0, 50));
+          setLogs((prev: any[]) => [msg.log, ...prev].slice(0, 50));
       }
 
       if (msg.type === 'commandResult') {
@@ -141,7 +141,7 @@ export default function DashboardScreen({ deviceId, laptopDeviceId, serverServic
       return (
         <FlatList
           data={lastResult.bssids}
-          renderItem={({ item }) => (
+          renderItem={({ item }: { item: any }) => (
             <View style={styles.resItem}>
               <View style={styles.resHeader}>
                 <Text style={styles.resTitle}>{item.ssid || 'HIDDEN'}</Text>
@@ -237,7 +237,7 @@ export default function DashboardScreen({ deviceId, laptopDeviceId, serverServic
            <FlatList
              data={logs}
              renderItem={renderLogItem}
-             keyExtractor={(_, index) => index.toString()}
+             keyExtractor={(_: any, index: number) => index.toString()}
              style={{ maxHeight: 150 }}
              scrollEnabled={true}
            />

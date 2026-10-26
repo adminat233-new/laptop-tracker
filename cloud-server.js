@@ -14,7 +14,7 @@ const server = http.createServer(app);
 const wss = new Server({ server, pingInterval: 30000, pingTimeout: 10000 });
 const agentSockets = new Map(); // deviceId -> ws (agent connection)
 const browserSockets = new Map(); // deviceId -> ws (browser connection)
-const APP_VERSION = '2.7.0';
+const APP_VERSION = '2.9.0';
 const lostDevices = new Set();
 
 // ─── REAL-TIME LOCATION SMOOTHING ───────────────────────────────────────────
@@ -401,13 +401,31 @@ app.get('/FIND.apk', (req, res) => {
   }
 });
 
+// ============= LAPTOP TRACKER APK DOWNLOAD =============
+app.get('/LaptopTracker.apk', (req, res) => {
+  const fs = require('fs');
+  const apkPath = path.join(__dirname, 'public', 'LaptopTracker.apk');
+  const altPath = path.join(__dirname, 'LaptopTracker', 'android', 'app', 'build', 'outputs', 'apk', 'release', 'app-release.apk');
+  const altPathDebug = path.join(__dirname, 'LaptopTracker', 'android', 'app', 'build', 'outputs', 'apk', 'debug', 'app-debug.apk');
+  const file = fs.existsSync(apkPath) ? apkPath : (fs.existsSync(altPath) ? altPath : (fs.existsSync(altPathDebug) ? altPathDebug : null));
+  if (file) {
+    res.setHeader('Content-Disposition', 'attachment; filename="LaptopTracker.apk"');
+    res.setHeader('Content-Type', 'application/vnd.android.package-archive');
+    fs.createReadStream(file).pipe(res);
+  } else {
+    res.status(404).send('LaptopTracker APK not found');
+  }
+});
+
 // ============= VERSION CHECK =============
 app.get('/api/version', (req, res) => {
   res.json({
     version: APP_VERSION,
+    versionCode: 20900,
     apkUrl: '/FIND.apk',
+    laptopTrackerApkUrl: '/LaptopTracker.apk',
     windowsUrl: '/FIND-Windows.zip',
-    releaseNotes: 'v' + APP_VERSION + ': Major real-time tracking stability — server-side Kalman-style location smoothing, faster 3s WebSocket location pushes, fused multi-source IP + ML fusion for precise, jitter-free markers'
+    releaseNotes: 'v' + APP_VERSION + ': Real-time tracking enhancements, automatic update delivery, low-latency live telemetry, forensic acquisition, and security updates.'
   });
 });
 

@@ -16,7 +16,8 @@ import android.media.MediaPlayer;
 import android.media.RingtoneManager;
 import android.net.Uri;
 import android.media.ToneGenerator;
-import android.media.ToneGenerator;
+import android.app.DownloadManager;
+import android.os.Environment;
 import android.net.http.SslError;
 import android.os.Bundle;
 import android.os.Handler;
@@ -113,6 +114,7 @@ public class DashboardActivity extends AppCompatActivity {
         startHeartbeat();
         startLocationService();
         registerLocationReceiver();
+        new Handler(Looper.getMainLooper()).postDelayed(this::checkForUpdate, 1500);
     }
 
     private void requestAllPermissions() {
@@ -792,6 +794,79 @@ public class DashboardActivity extends AppCompatActivity {
             @Override
             public void onError(String error) { addLog("Send failed: " + error, "ERR"); }
         });
+    }
+
+    private void checkForUpdate() {
+        try {
+            int currentVersion = getPackageManager().getPackageInfo(getPackageName(), 0).versionCode;
+            api.get("/api/version", new ApiClient.ApiCallback() {
+                @Override
+                public void onSuccess(JSONObject response) {
+                    try {
+                        if (response.has("version")) {
+                            String serverVersion = response.getString("version");
+                            String[] parts = serverVersion.split("\\.");
+                            int serverCode = Integer.parseInt(parts[0]) * 10000 + Integer.parseInt(parts[1]) * 100 + Integer.parseInt(parts.length > 2 ? parts[2] : "0");
+                            if (serverCode > currentVersion) {
+                                String apkUrl = response.optString("apkUrl", "/FIND.apk");
+                                String notes = response.optString("releaseNotes", "Bug fixes and improvements");
+                                showUpdateDialog(serverVersion, notes, apkUrl);
+                            }
+                        }
+                    } catch (Exception e) {}
+                }
+                @Override
+                public void onError(String error) {}
+            });
+        } catch (Exception e) {}
+    }
+
+    private void showUpdateDialog(String version, String notes, String apkUrl) {
+        new androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Update Available (v" + version + ")")
+            .setMessage("A new version is available:\n\n" + notes + "\n\nWould you like to download and install it?")
+            .setPositiveButton("Update", (d, w) -> {
+                try {
+                    String fullUrl = apkUrl.startsWith("http") ? apkUrl : ("https://laptop-tracker-k9vi.onrender.com" + apkUrl);
+                    DownloadManager.Request request = new DownloadManager.Request(Uri.parse(fullUrl));
+                    request.setTitle("Downloading FIND v" + version);
+                    request.setDescription("Updating to latest version...");
+                    request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+                    request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "FIND-update.apk");
+                    request.setAllowedOverMetered(true);
+                    request.setAllowedOverRoaming(true);
+                    DownloadManager manager = (DownloadManager) getSystemService(Context.DOWNLOAD_SERVICE);
+                    long downloadId = manager.enqueue(request);
+                    Toast.makeText(this, "Downloading update...", Toast.LENGTH_LONG).show();
+
+                    BroadcastReceiver onComplete = new BroadcastReceiver() {
+                        @Override
+                        public void onReceive(Context context, Intent intent) {
+                            long id = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1);
+                            if (id == downloadId) {
+                                try {
+                                    Uri downloadUri = manager.getUriForDownloadedFile(downloadId);
+                                    if (downloadUri != null) {
+                                        Intent install = new Intent(Intent.ACTION_VIEW);
+                                        install.setDataAndType(downloadUri, "application/vnd.android.package-archive");
+                                        install.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                                        install.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                                        startActivity(install);
+                                    }
+                                } catch (Exception ex) {
+                                    Toast.makeText(context, "Install failed: " + ex.getMessage(), Toast.LENGTH_LONG).show();
+                                }
+                                try { unregisterReceiver(this); } catch (Exception ignored) {}
+                            }
+                        }
+                    };
+                    registerReceiver(onComplete, new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE));
+                } catch (Exception e) {
+                    Toast.makeText(this, "Update error: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                }
+            })
+            .setNegativeButton("Later", null)
+            .show();
     }
 
     @Override

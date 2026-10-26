@@ -64,8 +64,8 @@ export default function BusinessScreen({ serverService, laptopDeviceId }: Props)
         <Text style={styles.secTitle}>Live Sales Feed</Text>
         <FlatList
           data={sales}
-          keyExtractor={(item) => item.id.toString()}
-          renderItem={({ item }) => (
+          keyExtractor={(item: any) => item.id.toString()}
+          renderItem={({ item }: { item: any }) => (
             <View style={styles.saleItem}>
               <View>
                 <Text style={styles.saleTitle}>Transaction #{item.id.toString().slice(-4)}</Text>
@@ -93,8 +93,8 @@ export default function BusinessScreen({ serverService, laptopDeviceId }: Props)
         ) : (
           <FlatList
             data={inventory}
-            keyExtractor={(item, index) => index.toString()}
-            renderItem={({ item }) => (
+            keyExtractor={(item: any, index: number) => index.toString()}
+            renderItem={({ item }: { item: any }) => (
               <View style={styles.invItem}>
                 <Text style={styles.invName}>{item.name}</Text>
                 <Text style={styles.invPrice}>${item.price.toFixed(2)}</Text>

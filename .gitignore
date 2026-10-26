@@ -1,4 +1,4 @@
-﻿node_modules/
+node_modules/
 .env
 *.log
 cloudflared.exe
@@ -7,3 +7,7 @@ ngrok.exe
 windows-app/dist/
 windows-app/node_modules/
 dist/
+.gradle/
+**/.gradle/
+**/local.properties
+.idea/
