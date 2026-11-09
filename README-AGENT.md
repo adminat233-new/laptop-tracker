@@ -147,4 +147,11 @@ Run: `node service-installer.js`
 
 ## Security Notice
 
-This agent provides full system access to the server. Only deploy on devices you own or have authorization to monitor. All communication should use WSS (TLS) in production.
+The cloud service now rejects legacy unauthenticated WebSocket registrations.
+WebSocket registration requires a v2 per-device bearer token; legacy agents
+without that credential will not connect. Legacy command, result, and remote
+shell HTTP endpoints return `410 Gone`, and server-side lost mode only records
+status. Shell execution over the network is intentionally unavailable.
+
+Do not install this agent as a hidden service or on a device you do not own or
+administer. Pairing alone is not consent for remote commands or location access.

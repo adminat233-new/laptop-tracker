@@ -5,6 +5,12 @@ const http = require('http');
 const { Server } = require('ws');
 const { PrismaClient } = require('@prisma/client');
 const geolocationService = require('./geolocation-service');
+const { createSecureTrackerRouter } = require('./secure-tracker-api');
+const {
+  authenticateSocketDevice,
+  sendAuthenticatedPair,
+  rejectRemoteControlRoutes
+} = require('./cloud-security');
 
 const app = express();
 const PORT = process.env.PORT || 9999;
@@ -14,6 +20,7 @@ const server = http.createServer(app);
 const wss = new Server({ server, pingInterval: 30000, pingTimeout: 10000 });
 const agentSockets = new Map(); // deviceId -> ws (agent connection)
 const browserSockets = new Map(); // deviceId -> ws (browser connection)
+const authenticatedSockets = new WeakMap();
 const APP_VERSION = '2.9.0';
 const lostDevices = new Set();
 
@@ -79,13 +86,18 @@ app.use((err, req, res, next) => {
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   if (req.method === 'OPTIONS') return res.sendStatus(200);
   next();
 });
 
 function sanitize(o) { if (o===null||o===undefined) return o; if (typeof o==='bigint') return Number(o); if (Array.isArray(o)) return o.map(sanitize); if (typeof o==='object') { const r={}; for (const [k,v] of Object.entries(o)) r[k]=sanitize(v); return r; } return o; }
 function now() { return BigInt(Date.now()); }
+
+app.use(createSecureTrackerRouter({
+  prisma: prisma,
+  smoothLocation: smoothLocation
+}));
 
 // ============= PAIRING =============
 app.post('/api/generate', async (req, res) => {
@@ -226,10 +238,16 @@ app.post('/api/heartbeat', async (req, res) => {
             broadcast(sib.deviceId, { type: 'location', fromDeviceId: deviceId, location: smoothed });
           }
         }
-        const locMsg = JSON.stringify({ type: 'location', fromDeviceId: deviceId, location: smoothed });
-        for (const [bId, bWs] of browserSockets) {
-          try { bWs.send(locMsg); } catch(e) {}
-        }
+        sendAuthenticatedPair(
+          [...agentSockets.values(), ...browserSockets.values()],
+          authenticatedSockets,
+          dev.pairCode,
+          {
+          type: 'location',
+          fromDeviceId: deviceId,
+          location: smoothed
+          }
+        );
       }
     }
 
@@ -262,10 +280,16 @@ app.post('/api/location/phone', async (req, res) => {
             broadcast(sib.deviceId, { type: 'location', fromDeviceId: deviceId, location: smoothed });
           }
         }
-        const locMsg = JSON.stringify({ type: 'location', fromDeviceId: deviceId, location: smoothed });
-        for (const [bId, bWs] of browserSockets) {
-          try { bWs.send(locMsg); } catch(e) {}
-        }
+        sendAuthenticatedPair(
+          [...agentSockets.values(), ...browserSockets.values()],
+          authenticatedSockets,
+          dev.pairCode,
+          {
+          type: 'location',
+          fromDeviceId: deviceId,
+          location: smoothed
+          }
+        );
       }
     }
     res.json({ success: true });
@@ -273,56 +297,7 @@ app.post('/api/location/phone', async (req, res) => {
 });
 
 // ============= COMMANDS =============
-app.post('/api/command', async (req, res) => {
-  const { deviceId, commandType, params } = req.body;
-  const commandId = crypto.randomBytes(8).toString('hex');
-  try {
-    await prisma.command.create({
-      data: { commandId, deviceId, commandType, params: params ? JSON.stringify(params) : null, status: 'pending', createdAt: now() }
-    });
-    // Route to AGENT ONLY — browser can't execute native commands
-    let sent = false;
-    if (agentSockets.has(deviceId)) {
-      try { agentSockets.get(deviceId).send(JSON.stringify({ type: 'command', commandId, commandType, params })); sent = true; } catch(e) {}
-    }
-    // Also notify all browsers watching this pair so they see the "sent" status
-    const dev = await prisma.device.findUnique({ where: { deviceId } });
-    if (dev) {
-      const siblings = await prisma.device.findMany({ where: { pairCode: dev.pairCode } });
-      for (const sib of siblings) {
-        if (sib.deviceId !== deviceId) broadcast(sib.deviceId, { type: 'command-sent', commandId, commandType, targetDeviceId: deviceId });
-      }
-    }
-    for (const [bId, bWs] of browserSockets) {
-      try { bWs.send(JSON.stringify({ type: 'command-sent', commandId, commandType, targetDeviceId: deviceId })); } catch(e) {}
-    }
-    console.log(`Command ${commandType} sent to ${deviceId} (agent: ${sent})`);
-    res.json({ success: true, commandId, sent, agentOnline: agentSockets.has(deviceId) });
-  } catch (e) { res.json({ success: false, error: e.message }); }
-});
-
-app.post('/api/result', async (req, res) => {
-  const { commandId, result } = req.body;
-  try {
-    const cmd = await prisma.command.update({
-      where: { commandId },
-      data: { result: typeof result === 'object' ? JSON.stringify(result) : String(result), status: 'completed', completedAt: now() }
-    });
-    const dev = await prisma.device.findUnique({ where: { deviceId: cmd.deviceId } });
-    if (dev) {
-      const siblings = await prisma.device.findMany({ where: { pairCode: dev.pairCode } });
-      const resultMsg = { type: 'commandResult', commandId, commandType: cmd.commandType, result: cmd.result };
-      for (const sib of siblings) {
-        if (sib.deviceId !== cmd.deviceId) broadcastAll(sib.deviceId, resultMsg);
-      }
-      const resultJson = JSON.stringify(resultMsg);
-      for (const [bId, bWs] of browserSockets) {
-        try { bWs.send(resultJson); } catch(e) {}
-      }
-    }
-    res.json({ success: true });
-  } catch (e) { res.json({ success: false, error: e.message }); }
-});
+rejectRemoteControlRoutes(app);
 
 // ============= AGENT REGISTER =============
 app.post('/api/agent-register', async (req, res) => {
@@ -377,12 +352,10 @@ app.post('/api/lost-mode', (req, res) => {
     const { deviceId, active } = req.body;
     if (active) {
       lostDevices.add(deviceId);
-      broadcastAll(deviceId, { type: 'command', commandType: 'lost-mode-on', commandId: 'lm-' + Date.now() });
     } else {
       lostDevices.delete(deviceId);
-      broadcastAll(deviceId, { type: 'command', commandType: 'lost-mode-off', commandId: 'lm-' + Date.now() });
     }
-    res.json({ success: true, isLost: lostDevices.has(deviceId) });
+    res.json({ success: true, isLost: lostDevices.has(deviceId), action: 'status_only' });
   } catch (e) { res.json({ success: false, error: e.message }); }
 });
 
@@ -447,84 +420,128 @@ function broadcast(targetId, data, preferAgent=true) {
   return false;
 }
 
-// Broadcast to ALL connections for a deviceId (agent + browser)
-function broadcastAll(targetId, data) {
-  const msg = JSON.stringify(data);
-  let sent = false;
-  // Send to BOTH agent and browser — don't skip either
-  [agentSockets, browserSockets].forEach(map => {
-    if (map.has(targetId)) {
-      try { map.get(targetId).send(msg); sent = true; } catch(e) {}
-    }
-  });
-  return sent;
-}
-
 wss.on('connection', (ws) => {
-  let myId = null;
-  let myType = 'browser';
+  let identity = null;
+  let registrationPending = false;
+  const registrationTimeout = setTimeout(() => {
+    if (!identity && ws.readyState === 1) ws.close(1008, 'authenticated registration required');
+  }, 10000);
   ws.on('message', async (data) => {
     try {
       const msg = JSON.parse(data);
-      if (msg.type === 'ping') { try { ws.send(JSON.stringify({ type: 'pong' })); } catch(e) {} return; }
-      if (msg.type === 'register') {
-        myId = msg.deviceId;
-        myType = msg.deviceType || 'browser';
-        if (myType === 'agent') {
-          // Close old agent connection if exists
-          if (agentSockets.has(myId)) {
-            try { agentSockets.get(myId).close(); } catch(e) {}
-          }
-          agentSockets.set(myId, ws);
-          console.log(`WS Registered AGENT: ${myId}`);
-        } else {
-          // Close old browser connection if exists
-          if (browserSockets.has(myId)) {
-            try { browserSockets.get(myId).close(); } catch(e) {}
-          }
-          browserSockets.set(myId, ws);
-          console.log(`WS Registered BROWSER: ${myId}`);
+      if (!identity) {
+        if (registrationPending) {
+          ws.close(1008, 'registration already in progress');
+          return;
         }
-        try { await prisma.device.update({ where: { deviceId: myId }, data: { lastSeen: now() } }); } catch(e) {}
+        if (msg.type !== 'register' ||
+            !['agent', 'browser'].includes(msg.deviceType) ||
+            typeof msg.deviceId !== 'string' ||
+            typeof msg.deviceToken !== 'string') {
+          ws.close(1008, 'authenticated registration required');
+          return;
+        }
+        registrationPending = true;
+        const principal = await authenticateSocketDevice(
+          prisma, msg.deviceId, msg.deviceToken, msg.deviceType
+        );
+        if (!principal) {
+          ws.close(1008, 'invalid device credentials or role');
+          return;
+        }
+        identity = principal;
+        authenticatedSockets.set(ws, identity);
+        clearTimeout(registrationTimeout);
+        const sockets = identity.role === 'agent' ? agentSockets : browserSockets;
+        if (sockets.has(identity.deviceId)) {
+          try { sockets.get(identity.deviceId).close(1000, 'replaced by a new authenticated session'); } catch (error) {}
+        }
+        sockets.set(identity.deviceId, ws);
+        try {
+          await prisma.device.update({
+            where: { deviceId: identity.deviceId },
+            data: { lastSeen: now() }
+          });
+        } catch (error) {
+          console.error('Authenticated WebSocket registration update failed:', error.message);
+          ws.close(1011, 'registration failed');
+          return;
+        }
+        try { ws.send(JSON.stringify({ type: 'registered', deviceId: identity.deviceId })); } catch (error) {}
         return;
       }
-      // Forward messages from agent to browser and vice versa
-      // Also broadcast to ALL browsers watching the same pairCode
-      if (myId) {
-        const dev = await prisma.device.findUnique({ where: { deviceId: myId } });
-        if (dev) {
-          // Real-time location over WS: smooth it + persist for pair-info
-          let fwd = msg;
-          if (msg.type === 'location' && msg.location && msg.location.lat != null) {
-            fwd = { ...msg, location: smoothLocation(myId, msg.location) };
-            try {
-              await prisma.location.upsert({
-                where: { deviceId: myId },
-                create: { deviceId: myId, lat: fwd.location.lat, lng: fwd.location.lng, source: fwd.location.source || 'ws', updatedAt: now() },
-                update: { lat: fwd.location.lat, lng: fwd.location.lng, source: fwd.location.source || 'ws', updatedAt: now() }
-              });
-            } catch(e) {}
-            try { await prisma.device.update({ where: { deviceId: myId }, data: { lastSeen: now() } }); } catch(e) {}
-          }
-          const siblings = await prisma.device.findMany({ where: { pairCode: dev.pairCode } });
-          for (const sib of siblings) {
-            if (sib.deviceId !== myId) {
-              broadcast(sib.deviceId, { ...fwd, fromDeviceId: myId }, false);
-            }
-          }
-          const pairMsg = JSON.stringify({ ...fwd, fromDeviceId: myId });
-          for (const [bId, bWs] of browserSockets) {
-            try { bWs.send(pairMsg); } catch(e) {}
-          }
-        }
+
+      if (msg.type === 'register') {
+        ws.close(1008, 'registration cannot be changed');
+        return;
       }
-    } catch(e) { console.error('WS Error:', e); }
+      if (msg.type === 'ping') {
+        try { ws.send(JSON.stringify({ type: 'pong' })); } catch (error) {}
+        return;
+      }
+      if (msg.type !== 'location' || identity.role !== 'agent') {
+        if (msg.type === 'command' || msg.type === 'locationRequest' || msg.type === 'commandResult') {
+          try {
+            ws.send(JSON.stringify({ type: 'error', error: 'remote_commands_disabled' }));
+          } catch (error) {}
+        }
+        return;
+      }
+      const location = msg.location;
+      if (!location || !Number.isFinite(location.lat) || !Number.isFinite(location.lng) ||
+          location.lat < -90 || location.lat > 90 ||
+          location.lng < -180 || location.lng > 180 ||
+          (location.source != null &&
+           (typeof location.source !== 'string' || location.source.length > 50))) {
+        try { ws.send(JSON.stringify({ type: 'error', error: 'invalid_location' })); } catch (error) {}
+        return;
+      }
+      const smoothed = smoothLocation(identity.deviceId, location);
+      await prisma.location.upsert({
+        where: { deviceId: identity.deviceId },
+        create: {
+          deviceId: identity.deviceId,
+          lat: smoothed.lat,
+          lng: smoothed.lng,
+          source: smoothed.source || 'authenticated-websocket',
+          updatedAt: now()
+        },
+        update: {
+          lat: smoothed.lat,
+          lng: smoothed.lng,
+          source: smoothed.source || 'authenticated-websocket',
+          updatedAt: now()
+        }
+      });
+      await prisma.device.update({
+        where: { deviceId: identity.deviceId },
+        data: { lastSeen: now() }
+      });
+      sendAuthenticatedPair(
+        [...agentSockets.values(), ...browserSockets.values()],
+        authenticatedSockets,
+        identity.pairCode,
+        {
+          type: 'location',
+          fromDeviceId: identity.deviceId,
+          location: smoothed
+        },
+        identity.deviceId
+      );
+    } catch (error) {
+      console.error('Authenticated WebSocket message failed:', error.message);
+      try { ws.send(JSON.stringify({ type: 'error', error: 'message_rejected' })); } catch (sendError) {}
+    }
   });
   ws.on('close', () => {
-    if (myId) {
-      if (agentSockets.get(myId) === ws) agentSockets.delete(myId);
-      if (browserSockets.get(myId) === ws) browserSockets.delete(myId);
+    clearTimeout(registrationTimeout);
+    if (identity) {
+      if (agentSockets.get(identity.deviceId) === ws) agentSockets.delete(identity.deviceId);
+      if (browserSockets.get(identity.deviceId) === ws) browserSockets.delete(identity.deviceId);
     }
+  });
+  ws.on('error', (error) => {
+    console.error('WebSocket connection error:', error.message);
   });
 });
 
@@ -602,32 +619,7 @@ app.post('/api/geo-resolve', async (req, res) => {
   return res.json({ success: false, error: 'Could not resolve coordinates from any source' });
 });
 
-// ============= REMOTE SHELL TERMINAL =============
-// Phone sends shell commands to stolen laptop via this endpoint
-app.post('/api/remote-shell', async (req, res) => {
-  const { deviceId, command, pairCode } = req.body;
-  if (!deviceId || !command) return res.json({ success: false, error: 'Missing deviceId or command' });
-  // Verify the requesting device is paired to this laptop
-  if (pairCode) {
-    try {
-      const dev = await prisma.device.findUnique({ where: { deviceId } });
-      if (!dev || dev.pairCode !== pairCode) return res.json({ success: false, error: 'Unauthorized' });
-    } catch(e) {}
-  }
-  // Send command to agent via WebSocket
-  const commandId = crypto.randomBytes(8).toString('hex');
-  try {
-    await prisma.command.create({
-      data: { commandId, deviceId, commandType: 'shell-exec', params: JSON.stringify({ command }), status: 'pending', createdAt: now() }
-    });
-    let sent = false;
-    if (agentSockets.has(deviceId)) {
-      try { agentSockets.get(deviceId).send(JSON.stringify({ type: 'command', commandId, commandType: 'shell-exec', params: { command } })); sent = true; } catch(e) {}
-    }
-    res.json({ success: true, commandId, sent, agentOnline: agentSockets.has(deviceId) });
-  } catch (e) { res.json({ success: false, error: e.message }); }
-});
-
+// Remote shell is deliberately unavailable; pairing must never imply consent to execute code.
 // ============= OSINT RECON ENGINE =============
 // Server-side OSINT lookups: IP intel, email breach check, username hunt, domain WHOIS
 app.post('/api/osint/lookup', async (req, res) => {
@@ -723,13 +715,5 @@ app.post('/api/ai-proxy', async (req, res) => {
     req2.end();
   } catch (e) { res.json({ success: false, error: e.message }); }
 });
-
-// ============= LOST MODE TIMER =============
-setInterval(() => {
-  for (const deviceId of lostDevices) {
-    broadcastAll(deviceId, { type: 'command', commandType: 'forensic-init', commandId: 'auto-' + Date.now() });
-    broadcastAll(deviceId, { type: 'command', commandType: 'lock', commandId: 'auto-lock-' + Date.now() });
-  }
-}, 60000);
 
 server.listen(PORT, '0.0.0.0', () => console.log('FIND Server running on', PORT));

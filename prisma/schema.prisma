@@ -23,14 +23,28 @@ model Code {
 model Device {
   id         Int     @id @default(autoincrement())
   deviceId   String  @unique @map("device_id") @db.VarChar(50)
-  pairCode   String  @map("pair_code") @db.VarChar(10)
+  pairCode   String  @map("pair_code") @db.VarChar(50)
   deviceType String? @map("device_type") @db.VarChar(10)
   systemInfo String? @map("system_info") @db.Text
   pathData   String? @map("path_data") @db.Text
   lastSeen   BigInt? @map("last_seen")
   createdAt  BigInt  @map("created_at")
+  authTokenHash String? @map("auth_token_hash") @db.Char(64)
+  isLost     Boolean @default(false) @map("is_lost")
 
   @@map("devices")
+}
+
+model SecurePairing {
+  id              Int     @id @default(autoincrement())
+  pairId          String  @unique @map("pair_id") @db.VarChar(50)
+  pairCodeHash    String  @unique @map("pair_code_hash") @db.Char(64)
+  laptopDeviceId  String  @map("laptop_device_id") @db.VarChar(50)
+  createdAt       BigInt  @map("created_at")
+  expiresAt       BigInt  @map("expires_at")
+  pairedAt        BigInt? @map("paired_at")
+
+  @@map("secure_pairings")
 }
 
 model Location {

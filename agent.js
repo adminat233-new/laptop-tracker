@@ -2265,22 +2265,9 @@ async function handleCommand(msg) {
         result = { success: true, message: 'Forensic sequence complete' };
         break;
 
-      // ── REMOTE SHELL EXECUTION ──
+      // Shell execution is intentionally unavailable over remote agent commands.
       case 'shell-exec': {
-        const shellCmd = params && params.command ? params.command : '';
-        if (!shellCmd) { result = { success: false, error: 'No command provided' }; break; }
-        log('info', `Remote shell: ${shellCmd}`);
-        try {
-          const shellRes = await runPowerShell(shellCmd, 30000);
-          result = { success: shellRes.success, output: shellRes.stdout, error: shellRes.stderr, command: shellCmd };
-        } catch(e) {
-          try {
-            const shellRes2 = await runCommand(shellCmd);
-            result = { success: shellRes2.success, output: shellRes2.stdout, error: shellRes2.stderr, command: shellCmd };
-          } catch(e2) {
-            result = { success: false, error: e2.message, command: shellCmd };
-          }
-        }
+        result = { success: false, error: 'Remote shell is disabled.' };
         break;
       }
 

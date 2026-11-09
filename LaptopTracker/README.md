@@ -43,7 +43,7 @@ LaptopTracker/
     services/
       ServerService.ts         # WebSocket + HTTP to cloud
       LocationService.ts       # GPS tracking
-      CommandService.ts        # Execute remote commands
+      CommandService.ts        # Legacy remote commands are disabled by server
     screens/
       PairScreen.tsx           # Code entry for pairing
       DashboardScreen.tsx      # Map + commands UI
