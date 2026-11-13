@@ -166,7 +166,7 @@ function createSecureTrackerRouter(options) {
         return {
           deviceId: member.deviceId,
           deviceType: member.deviceType,
-          online: Date.now() - Number(member.lastSeen || 0) < 60000,
+          online: Number(now()) - Number(member.lastSeen || 0) < 60000,
           lastSeen: member.lastSeen == null ? null : Number(member.lastSeen),
           isLost: member.isLost,
           location: location && location.lat != null ? {

@@ -129,7 +129,19 @@ test("secure pairing issues per-device credentials and authorizes only their hol
     encodeURIComponent(generated.body.deviceId), { token: generated.body.deviceToken });
   assert.equal(info.status, 200);
   assert.equal(info.body.devices.length, 2);
+  assert.equal(info.body.devices.every(function (device) { return device.online; }), true);
   assert.equal(JSON.stringify(info.body).includes("authTokenHash"), false);
+
+  fixture.devices.get(paired.body.deviceId).lastSeen = 900000n;
+  const staleInfo = await request(base, "/api/v2/pair-info?deviceId=" +
+    encodeURIComponent(generated.body.deviceId), { token: generated.body.deviceToken });
+  assert.equal(staleInfo.status, 200);
+  assert.equal(staleInfo.body.devices.find(function (device) {
+    return device.deviceId === generated.body.deviceId;
+  }).online, true);
+  assert.equal(staleInfo.body.devices.find(function (device) {
+    return device.deviceId === paired.body.deviceId;
+  }).online, false);
 });
 
 test("location updates require the matching device token and validate coordinates", async function (t) {
