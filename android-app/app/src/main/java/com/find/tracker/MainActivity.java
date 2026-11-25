@@ -38,7 +38,7 @@ public class MainActivity extends AppCompatActivity {
     EditText[] codeInputs = new EditText[8];
     LinearLayout codeInputContainer;
     Button connectBtn;
-    String pairCode, deviceId, role;
+    String pairCode, deviceId, deviceToken, role;
     android.os.Handler pollHandler;
     Runnable pollRunnable;
 
@@ -63,10 +63,13 @@ public class MainActivity extends AppCompatActivity {
         String savedRole = prefs.getString("role", null);
         String savedPc = prefs.getString("pairCode", null);
         String savedMy = prefs.getString("deviceId", null);
-        if (savedRole != null && savedPc != null && savedMy != null) {
+        String savedToken = prefs.getString("deviceToken", null);
+        if (savedRole != null && savedPc != null && savedMy != null &&
+                savedToken != null && !savedToken.isEmpty()) {
             if (savedRole.equals("phone")) {
                 pairCode = savedPc;
                 deviceId = savedMy;
+                deviceToken = savedToken;
                 role = savedRole;
                 enterDashboard();
                 return;
@@ -214,6 +217,7 @@ public class MainActivity extends AppCompatActivity {
                     if (response.getBoolean("success")) {
                         pairCode = response.getString("pairCode");
                         deviceId = response.getString("deviceId");
+                        deviceToken = response.optString("deviceToken", "");
                         saveSession();
                         showCode(pairCode);
                         startPairDetection();
@@ -302,6 +306,7 @@ public class MainActivity extends AppCompatActivity {
                     if (response.getBoolean("success")) {
                         pairCode = response.getString("pairCode");
                         deviceId = response.getString("phoneId");
+                        deviceToken = response.optString("deviceToken", "");
                         role = "phone";
                         saveSession();
                         connectWs();
@@ -351,6 +356,7 @@ public class MainActivity extends AppCompatActivity {
         Intent intent = new Intent(this, DashboardActivity.class);
         intent.putExtra("pairCode", pairCode);
         intent.putExtra("deviceId", deviceId);
+        intent.putExtra("deviceToken", deviceToken);
         intent.putExtra("role", role);
         startActivity(intent);
         finish();
@@ -361,6 +367,7 @@ public class MainActivity extends AppCompatActivity {
             .putString("role", role)
             .putString("pairCode", pairCode)
             .putString("deviceId", deviceId)
+            .putString("deviceToken", deviceToken == null ? "" : deviceToken)
             .putString("server", SERVER_URL)
             .apply();
     }

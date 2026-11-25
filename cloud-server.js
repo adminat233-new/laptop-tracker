@@ -5,7 +5,8 @@ const http = require('http');
 const { Server } = require('ws');
 const { PrismaClient } = require('@prisma/client');
 const geolocationService = require('./geolocation-service');
-const { createSecureTrackerRouter } = require('./secure-tracker-api');
+const { createSecureTrackerRouter, tokenMatches } = require('./secure-tracker-api');
+const { createLegacyPairingRouter } = require('./legacy-pairing');
 const {
   authenticateSocketDevice,
   sendAuthenticatedPair,
@@ -100,82 +101,9 @@ app.use(createSecureTrackerRouter({
 }));
 
 // ============= PAIRING =============
-app.post('/api/generate', async (req, res) => {
-  try {
-    const pairCode = crypto.randomBytes(4).toString('hex').toUpperCase();
-    const laptopId = pairCode;
-
-    // Upsert code record
-    await prisma.code.upsert({
-      where: { pairCode },
-      create: { pairCode, binaryCode: pairCode, deviceId: laptopId, createdAt: now() },
-      update: { deviceId: laptopId }
-    });
-
-    // Upsert laptop device
-    await prisma.device.upsert({
-      where: { deviceId: laptopId },
-      create: { deviceId: laptopId, pairCode, deviceType: 'laptop', createdAt: now(), lastSeen: now() },
-      update: { lastSeen: now() }
-    });
-
-    // Create initial location so /api/pair-info has something
-    try {
-      await prisma.location.upsert({
-        where: { deviceId: laptopId },
-        create: { deviceId: laptopId, lat: null, lng: null, source: 'init', updatedAt: now() },
-        update: { updatedAt: now() }
-      });
-    } catch(e) { console.log('Location upsert skipped:', e.message.substring(0,80)); }
-
-    console.log(`Generated pair code: ${pairCode} for laptop: ${laptopId}`);
-    res.json({ success: true, pairCode, deviceId: laptopId });
-  } catch (e) {
-    console.error('Generate Error:', e);
-    res.status(500).json({ success: false, error: e.message });
-  }
-});
-
-app.post('/api/verify', async (req, res) => {
-  try {
-    const { pairCode } = req.body;
-    console.log(`Verify attempt with code: ${pairCode}`);
-    const code = await prisma.code.findUnique({ where: { pairCode } });
-    if (!code) {
-      console.log('Code not found:', pairCode);
-      return res.json({ success: false, error: 'Invalid code' });
-    }
-
-    const phoneId = pairCode + '-phone';
-    const laptopId = code.deviceId;
-
-    // Create phone device
-    await prisma.device.upsert({
-      where: { deviceId: phoneId },
-      create: { deviceId: phoneId, pairCode, deviceType: 'phone', createdAt: now(), lastSeen: now() },
-      update: { lastSeen: now() }
-    });
-
-    // Create phone location record
-    try {
-      await prisma.location.upsert({
-        where: { deviceId: phoneId },
-        create: { deviceId: phoneId, lat: null, lng: null, source: 'init', updatedAt: now() },
-        update: { updatedAt: now() }
-      });
-    } catch(e) { console.log('Phone location upsert skipped:', e.message.substring(0,80)); }
-
-    console.log(`Phone ${phoneId} paired with laptop ${laptopId}`);
-
-    // Notify laptop via WS
-    broadcast(laptopId, { type: 'paired', phoneId });
-
-    res.json({ success: true, laptopId, phoneId, pairCode });
-  } catch (e) {
-    console.error('Verify Error:', e);
-    res.status(500).json({ success: false, error: e.message });
-  }
-});
+// Keeps the 8-character UX used by every shipped client, but issues a real
+// per-device token so WebSocket registration can stay authenticated.
+app.use(createLegacyPairingRouter({ prisma, now, broadcast }));
 
 // ============= PAIR INFO (single endpoint for everything) =============
 app.get('/api/pair-info/:pairCode', async (req, res) => {
@@ -313,30 +241,50 @@ app.post('/api/agent-register', async (req, res) => {
   } catch (e) { res.json({ success: false, error: e.message }); }
 });
 
-// Agent setup instructions
-app.get('/api/agent-setup/:pairCode', async (req, res) => {
+// Agent setup instructions. The browser that generated the pair supplies the
+// device token; without it the agent cannot pass the authenticated WS gate.
+async function agentSetupHandler(req, res) {
   try {
     const pc = req.params.pairCode;
     const code = await prisma.code.findUnique({ where: { pairCode: pc } });
     if (!code) return res.json({ success: false, error: 'Invalid pairCode' });
+    const suppliedToken = String((req.body && req.body.deviceToken) || req.query.deviceToken || '');
+    let tokenValid = false;
+    if (suppliedToken) {
+      const devices = await prisma.device.findMany({ where: { pairCode: pc } });
+      const laptop = devices.find(d => d.deviceId === code.deviceId);
+      tokenValid = !!(laptop && tokenMatches(suppliedToken, laptop.authTokenHash));
+      if (!tokenValid) return res.status(401).json({ success: false, error: 'invalid_device_token' });
+    }
     const serverUrl = SERVER_URL;
     // One-liner: downloads agent, installs persistence, starts immediately
-    const installerCmd = `powershell -Command "IEX (Invoke-WebRequest -Uri '${serverUrl}/agent-installer.ps1' -UseBasicParsing).Content"`;
+    const installerCmd = "powershell -NoProfile -ExecutionPolicy Bypass -Command \"$i=Join-Path $env:TEMP 'find-agent-install.ps1';Invoke-WebRequest -Uri '" +
+      serverUrl + "/agent-installer.ps1' -OutFile $i -UseBasicParsing;& $i -PairCode '" + pc + "'" +
+      (tokenValid ? " -DeviceToken '" + suppliedToken + "'" : "") + "\"";
     // Direct npx install (npm registry)
-    const npxCmd = `npx -y laptop-tracker-agent --pair=${pc} --server=${serverUrl}`;
+    const npxCmd = `npx -y laptop-tracker-agent --pair=${pc}${tokenValid ? ' --token=' + suppliedToken : ''} --server=${serverUrl}`;
     // PowerShell inline (no download needed, runs directly)
     const inlineCmd = `powershell -NoProfile -ExecutionPolicy Bypass -Command "& {$p='${pc}';$s='${serverUrl}';$d=\"$env:USERPROFILE\\.find-agent\";if(!(Test-Path $d)){New-Item -ItemType Directory -Path $d -Force|Out-Null};$a=\"$d\\agent.js\";Invoke-WebRequest -Uri \"$s/agent.js\" -OutFile $a -UseBasicParsing;Push-Location $d;if(!(Test-Path package.json)){npm init -y|Out-Null};npm install ws|Out-Null;Pop-Location;Start-Process node -ArgumentList \"\\\"$a\\\" --pair=$p\" -WindowStyle Hidden;Write-Host 'FIND Agent installed and running'}`;
+    let inlineCmdWithToken = inlineCmd;
+    if (tokenValid) {
+      inlineCmdWithToken = inlineCmd
+        .replace("$p='" + pc + "';", "$p='" + pc + "';$t='" + suppliedToken + "';")
+        .replace('--pair=$p', '--pair=$p --token=$t');
+    }
     res.json({
       success: true,
       pairCode: pc,
       serverUrl,
+      requiresToken: !tokenValid,
       installerCmd,
       npxCmd,
-      autoStartCmd: inlineCmd,
-      installCmd: inlineCmd
+      autoStartCmd: inlineCmdWithToken,
+      installCmd: inlineCmdWithToken
     });
   } catch (e) { res.json({ success: false, error: e.message }); }
-});
+}
+app.get('/api/agent-setup/:pairCode', agentSetupHandler);
+app.post('/api/agent-setup/:pairCode', agentSetupHandler);
 
 // Agent looks up pairCode by deviceId (from config)
 app.get('/api/agent-lookup/:deviceId', async (req, res) => {
@@ -404,7 +352,21 @@ app.get('/api/version', (req, res) => {
 
 // ============= STATIC =============
 app.use(express.static(path.join(__dirname, 'public')));
-app.get('*', (req, res) => { if (!req.url.startsWith('/api/')) res.sendFile(path.join(__dirname, 'public', 'index.html')); });
+// Read-only deployment check: proves the configured database is reachable
+// without writing pairing data. Use this before testing /api/generate.
+app.get('/api/health', async (req, res) => {
+  try {
+    await prisma.$queryRawUnsafe('SELECT 1 AS ok');
+    res.json({ success: true, database: 'ok', version: APP_VERSION });
+  } catch (e) {
+    res.status(503).json({ success: false, database: 'unavailable', error: e.message });
+  }
+});
+
+app.get('*', (req, res, next) => {
+  if (!req.url.startsWith('/api/')) return res.sendFile(path.join(__dirname, 'public', 'index.html'));
+  next();
+});
 
 // ============= WEBSOCKET =============
 function broadcast(targetId, data, preferAgent=true) {
@@ -435,7 +397,7 @@ wss.on('connection', (ws) => {
           return;
         }
         if (msg.type !== 'register' ||
-            !['agent', 'browser'].includes(msg.deviceType) ||
+            !['agent', 'browser', 'phone'].includes(msg.deviceType) ||
             typeof msg.deviceId !== 'string' ||
             typeof msg.deviceToken !== 'string') {
           ws.close(1008, 'authenticated registration required');
@@ -479,7 +441,7 @@ wss.on('connection', (ws) => {
         try { ws.send(JSON.stringify({ type: 'pong' })); } catch (error) {}
         return;
       }
-      if (msg.type !== 'location' || identity.role !== 'agent') {
+      if (msg.type !== 'location' || !['agent', 'phone'].includes(identity.role)) {
         if (msg.type === 'command' || msg.type === 'locationRequest' || msg.type === 'commandResult') {
           try {
             ws.send(JSON.stringify({ type: 'error', error: 'remote_commands_disabled' }));
@@ -697,8 +659,8 @@ app.post('/api/ai-proxy', async (req, res) => {
     const u = new URL(url);
     const headers = { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) };
     if (apiKey) headers['Authorization'] = 'Bearer ' + apiKey;
-    if (!rQ) rQ = u.protocol === 'https:' ? require('https') : require('http');
-    const req2 = rQ.request(u, { method: 'POST', headers, timeout: 120000 }, (rs) => {
+    const transport = u.protocol === 'https:' ? require('https') : require('http');
+    const req2 = transport.request(u, { method: 'POST', headers, timeout: 120000 }, (rs) => {
       let d = '';
       rs.on('data', c => d += c);
       rs.on('end', () => {
@@ -717,3 +679,5 @@ app.post('/api/ai-proxy', async (req, res) => {
 });
 
 server.listen(PORT, '0.0.0.0', () => console.log('FIND Server running on', PORT));
+
+module.exports = { app, server, wss, prisma };

@@ -61,7 +61,7 @@ public class DashboardActivity extends AppCompatActivity {
     private MediaPlayer mediaPlayer;
     private boolean isLocked = false;
 
-    String pairCode, deviceId, role;
+    String pairCode, deviceId, deviceToken, role;
     WebView mapView;
     DrawerLayout drawerLayout;
     Button btnToggleNav, btnCloseNav;
@@ -96,6 +96,10 @@ public class DashboardActivity extends AppCompatActivity {
 
         pairCode = getIntent().getStringExtra("pairCode");
         deviceId = getIntent().getStringExtra("deviceId");
+        deviceToken = getIntent().getStringExtra("deviceToken");
+        if (deviceToken == null || deviceToken.isEmpty()) {
+            deviceToken = prefs.getString("deviceToken", "");
+        }
         role = getIntent().getStringExtra("role");
 
         if (pairCode == null || deviceId == null) {
@@ -272,7 +276,7 @@ public class DashboardActivity extends AppCompatActivity {
                 runOnUiThread(() -> addLog("WS error: " + error, "ERR"));
             }
         });
-        ws.connect(deviceId);
+        ws.connect(deviceId, deviceToken, "phone");
     }
 
     private void handleMessage(JSONObject msg) {
@@ -779,21 +783,9 @@ public class DashboardActivity extends AppCompatActivity {
     }
 
     private void sendCommand(String type) {
-        JSONObject body = new JSONObject();
-        try {
-            String targetId = role.equals("phone") ? pairCode : pairCode + "-phone";
-            body.put("deviceId", targetId);
-            body.put("commandType", type);
-        } catch (Exception e) {}
-        api.post("/api/command", body, new ApiClient.ApiCallback() {
-            @Override
-            public void onSuccess(JSONObject response) {
-                addLog("Sent: " + type, "CMD");
-                Toast.makeText(DashboardActivity.this, "Sent: " + type, Toast.LENGTH_SHORT).show();
-            }
-            @Override
-            public void onError(String error) { addLog("Send failed: " + error, "ERR"); }
-        });
+        addLog(type + " unavailable - remote commands are disabled in this build", "ERR");
+        Toast.makeText(DashboardActivity.this,
+                "Remote commands are disabled in this build", Toast.LENGTH_SHORT).show();
     }
 
     private void checkForUpdate() {

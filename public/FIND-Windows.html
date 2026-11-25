@@ -329,10 +329,7 @@ function loadDev() {
 }
 
 function sendCmd(type) {
-    var body = JSON.stringify({deviceId: pairCode, commandType: type});
-    httpPost('/api/command', body, function(err, data) {
-        addLog('Sent: ' + type, 'CMD');
-    });
+    addLog(type + ' unavailable - remote commands are disabled in this build', 'ERR');
 }
 
 function addLog(msg, tag) {

@@ -6,7 +6,7 @@ import { apiPost } from '../services/ServerService';
 
 interface Props {
   serverUrl: string;
-  onPair: (code: string, deviceId: string, laptopDeviceId: string) => void;
+  onPair: (code: string, deviceId: string, laptopDeviceId: string, deviceToken: string) => void;
 }
 
 export default function PairScreen({ serverUrl, onPair }: Props) {
@@ -50,9 +50,8 @@ export default function PairScreen({ serverUrl, onPair }: Props) {
     setError('');
     try {
       const data = await apiPost(serverUrl, '/api/verify', { pairCode: code });
-      if (data.success && data.verified) {
-        // Use the ID generated automatically by the server
-        onPair(code, data.phoneDeviceId, data.laptopDeviceId);
+      if (data.success && data.phoneId && data.laptopId && data.deviceToken) {
+        onPair(data.pairCode || code, data.phoneId, data.laptopId, data.deviceToken);
       } else {
         setError(data.error || 'Verification failed');
       }
@@ -113,7 +112,7 @@ export default function PairScreen({ serverUrl, onPair }: Props) {
           )}
         </TouchableOpacity>
 
-        <Text style={styles.encryptedText}>Quantum Encrypted Tunnel Active</Text>
+        <Text style={styles.encryptedText}>Authenticated relay - remote control disabled</Text>
       </View>
     </KeyboardAvoidingView>
   );

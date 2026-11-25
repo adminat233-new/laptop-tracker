@@ -5,14 +5,16 @@ export class ServerService {
   private serverUrl: string;
   private deviceId: string;
   private deviceType: string;
+  private deviceToken: string;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private handlers: MessageHandler[] = [];
   private isConnected = false;
 
-  constructor(serverUrl: string, deviceId: string, deviceType: string) {
+  constructor(serverUrl: string, deviceId: string, deviceType: string, deviceToken: string) {
     this.serverUrl = serverUrl.replace(/^http/, 'ws');
     this.deviceId = deviceId;
     this.deviceType = deviceType;
+    this.deviceToken = deviceToken || '';
   }
 
   /** Public URL accessor (returns the HTTP form) */
@@ -27,7 +29,17 @@ export class ServerService {
       this.ws.onopen = () => {
         console.log('[WS] Connected');
         this.isConnected = true;
-        this.ws?.send(JSON.stringify({ type: 'register', deviceId: this.deviceId, deviceType: this.deviceType }));
+        if (!this.deviceToken) {
+          console.warn('[WS] No device token; authenticated registration unavailable');
+          this.ws?.close();
+          return;
+        }
+        this.ws?.send(JSON.stringify({
+          type: 'register',
+          deviceId: this.deviceId,
+          deviceType: this.deviceType,
+          deviceToken: this.deviceToken
+        }));
       };
       this.ws.onmessage = (event) => {
         try {

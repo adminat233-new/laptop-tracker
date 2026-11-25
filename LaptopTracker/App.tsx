@@ -20,6 +20,7 @@ export default function App() {
   const [isPaired, setIsPaired] = useState(false);
   const [deviceId, setDeviceId] = useState<string | null>(null);
   const [laptopDeviceId, setLaptopDeviceId] = useState<string | null>(null);
+  const [deviceToken, setDeviceToken] = useState<string | null>(null);
   const [serverService, setServerService] = useState<ServerService | null>(null);
 
   useEffect(() => {
@@ -27,17 +28,19 @@ export default function App() {
     (async () => {
       const savedId = await AsyncStorage.getItem('deviceId');
       const savedLaptop = await AsyncStorage.getItem('laptopDeviceId');
-      if (savedId && savedLaptop) {
+      const savedToken = await AsyncStorage.getItem('deviceToken');
+      if (savedId && savedLaptop && savedToken) {
         setDeviceId(savedId);
         setLaptopDeviceId(savedLaptop);
+        setDeviceToken(savedToken);
         setIsPaired(true);
       }
     })();
   }, []);
 
   useEffect(() => {
-    if (isPaired && deviceId) {
-      const svc = new ServerService(SERVER_URL, deviceId, 'phone');
+    if (isPaired && deviceId && deviceToken) {
+      const svc = new ServerService(SERVER_URL, deviceId, 'phone', deviceToken);
       svc.connect();
       setServerService(svc);
 
@@ -48,22 +51,25 @@ export default function App() {
         LocationService.stopTracking();
       };
     }
-  }, [isPaired, deviceId]);
+  }, [isPaired, deviceId, deviceToken]);
 
-  const handlePair = useCallback(async (code: string, newDeviceId: string, newLaptopId: string) => {
+  const handlePair = useCallback(async (code: string, newDeviceId: string, newLaptopId: string, newToken: string) => {
     setDeviceId(newDeviceId);
     setLaptopDeviceId(newLaptopId);
+    setDeviceToken(newToken);
     setIsPaired(true);
     await AsyncStorage.setItem('deviceId', newDeviceId);
     await AsyncStorage.setItem('laptopDeviceId', newLaptopId);
+    await AsyncStorage.setItem('deviceToken', newToken);
   }, []);
 
   const handleUnpair = useCallback(async () => {
     setIsPaired(false);
     setDeviceId(null);
     setLaptopDeviceId(null);
+    setDeviceToken(null);
     serverService?.disconnect();
-    await AsyncStorage.multiRemove(['deviceId', 'laptopDeviceId']);
+    await AsyncStorage.multiRemove(['deviceId', 'laptopDeviceId', 'deviceToken']);
   }, [serverService]);
 
   if (!isPaired) {

@@ -388,6 +388,7 @@ async function generateCode(){
   if(d.success){
     PC=d.pairCode;MY=d.deviceId;ROLE='laptop';
     localStorage.setItem('pc',PC);localStorage.setItem('my',MY);localStorage.setItem('role','laptop');
+    localStorage.setItem('deviceToken',d.deviceToken||'');
     showCode(PC);
     connectWS(MY);
     log('System','Code generated: '+PC+' — waiting for phone');
@@ -470,6 +471,7 @@ async function connectDevices(){
   if(d.success){
     PC=d.pairCode;MY=d.phoneId;ROLE='phone';
     localStorage.setItem('pc',PC);localStorage.setItem('my',MY);localStorage.setItem('role','phone');
+    localStorage.setItem('deviceToken',d.deviceToken||'');
     show('dashboard');
     connectWS(MY);
     startPoll();
@@ -486,6 +488,8 @@ async function connectDevices(){
 let wsConnecting=false,wsPingT=null;
 function connectWS(id){
   if(wsConnecting)return;
+  const token=localStorage.getItem('deviceToken')||'';
+  if(!token){log('System','No device token for this session — generate a new code','ERR');return}
   if(ws){
     try{ws.onclose=null;ws.close()}catch(e){}
     ws=null;
@@ -496,7 +500,7 @@ function connectWS(id){
   ws=new WebSocket(p+'//'+location.host);
   ws.onopen=()=>{
     wsConnecting=false;
-    ws.send(JSON.stringify({type:'register',deviceId:id}));
+    ws.send(JSON.stringify({type:'register',deviceId:id,deviceToken:token,deviceType:ROLE==='phone'?'phone':'browser'}));
     log('System','WebSocket connected');
     // Keepalive ping every 25s
     wsPingT=setInterval(()=>{if(ws&&ws.readyState===1)ws.send(JSON.stringify({type:'ping'}))},25000);
@@ -650,19 +654,10 @@ function getTargetDevice(){
   return PC;
 }
 
-async function cmd(type){
+function cmd(type){
   if(!PC)return toast('Not paired');
-  // Check if agent is online before sending native commands
-  try{
-    const d=await apiP('/api/pair-info/'+PC);
-    const agentOnline=(d.laptop&&d.laptop.agentConnected)||(d.phone&&d.phone.agentConnected);
-    if(!agentOnline){
-      toast('⚠️ Agent offline — install & run the Windows agent');
-      log('❌ '+type+' — agent offline. Commands require the native agent running.','CMD');
-      return;
-    }
-  }catch(e){}
-  sendCmdToAgent(type);
+  toast('Remote commands are disabled in this build');
+  log('ℹ️ '+type+' unavailable — remote control is disabled','CMD');
 }
 
 async function sendCmdToAgent(type){
@@ -1064,10 +1059,11 @@ let agentCmdCopied=false;
 async function fetchAgentSetup(){
   if(!PC||ROLE!=='laptop')return;
   try{
-    const d=await apiG('/api/agent-setup/'+PC);
+    const d=await apiP('/api/agent-setup/'+PC,{deviceToken:localStorage.getItem('deviceToken')||''});
     if(d.success){
       const box=document.getElementById('agent-cmd-box');
       if(box)box.textContent=d.autoStartCmd||d.installCmd;
+      if(d.requiresToken&&box)box.textContent='Generate a fresh pairing code to copy an authenticated agent command.';
     }
   }catch(e){}
 }
@@ -1081,7 +1077,7 @@ function copyAgentCmd(){
 function toggleSidebar(){const s=document.getElementById('sidebar');sbOpen=!sbOpen;s.classList.toggle('collapsed',!sbOpen);setTimeout(()=>map&&map.invalidateSize(),350)}
 function togglePanel(id){const p=document.getElementById(id+'-panel');const b=document.querySelector(`[onclick="togglePanel('${id}')"]`);pVis[id]=!pVis[id];p.classList.toggle('hidden-panel',!pVis[id]);b.classList.toggle('active',pVis[id])}
 function log(msg,tag){const el=document.getElementById('log-box');const ts=new Date().toLocaleTimeString('en-US',{hour12:false});el.innerHTML=`<div class="log-line"><span style="color:#555">[${ts}]</span> <span style="color:var(--bl)">[${tag||'SYS'}]</span> ${msg}</div>`+el.innerHTML}
-function rePair(){if(ws)ws.close();if(statusT)clearInterval(statusT);if(hbT)clearInterval(hbT);localStorage.clear();location.reload()}
+function rePair(){if(ws)ws.close();if(statusT)clearInterval(statusT);if(hbT)clearInterval(hbT);['pc','my','role','deviceToken'].forEach(k=>localStorage.removeItem(k));location.reload()}
 
 // ===== REMOTE SHELL TERMINAL =====
 let shellHistory=[];let shellHistIdx=-1;
@@ -1089,11 +1085,12 @@ async function sendShellCmd(){
   const input=document.getElementById('shell-input');
   const cmd=input.value.trim();
   if(!cmd)return;
-  if(!PC){toast('Not paired');return}
-  input.value='';
   const out=document.getElementById('shell-output');
-  out.innerHTML+=`<div style="color:var(--cy)">$ ${cmd}</div>`;
+  out.innerHTML+=`<div style="color:var(--rd)">Remote shell is disabled in this build — no command was sent.</div>`;
   out.scrollTop=out.scrollHeight;
+  input.value='';
+  return;
+  if(!PC){toast('Not paired');return}
   shellHistory.push(cmd);shellHistIdx=shellHistory.length;
   try{
     const target=getTargetDevice();
@@ -1301,9 +1298,10 @@ window.addEventListener('load',()=>{
   const role=localStorage.getItem('role');
   const pc=localStorage.getItem('pc');
   const my=localStorage.getItem('my');
+  const token=localStorage.getItem('deviceToken');
   // NEVER auto-login for laptop — always show pairing screen
-  // Phone can auto-login if it has valid pair data
-  if(role==='phone'&&pc&&my){
+  // Phone can auto-login only with its full authenticated session
+  if(role==='phone'&&pc&&my&&token){
     PC=pc;MY=my;ROLE='phone';
     show('dashboard');
     connectWS(MY);

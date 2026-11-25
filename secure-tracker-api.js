@@ -293,5 +293,6 @@ function createSecureTrackerRouter(options) {
 module.exports = {
   createSecureTrackerRouter: createSecureTrackerRouter,
   hashSecret: hashSecret,
+  newSecret: newSecret,
   tokenMatches: tokenMatches
 };

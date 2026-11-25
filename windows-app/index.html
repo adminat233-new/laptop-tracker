@@ -361,7 +361,11 @@ function connectWS(){
     ws=new WebSocket(p);
     ws.onopen=()=>{
         ipcRenderer.invoke('get-config').then(cfg=>{
-            if(cfg.pairCode)ws.send(JSON.stringify({type:'register',deviceId:cfg.pairCode}));
+            if(cfg.pairCode && cfg.deviceToken){
+                ws.send(JSON.stringify({type:'register',deviceId:cfg.deviceId||cfg.pairCode,deviceToken:cfg.deviceToken,deviceType:'browser'}));
+            }else{
+                log('No device token — generate a fresh pairing code','ERR');
+            }
         });
         if(wsT){clearInterval(wsT);wsT=null}
         wsT=setInterval(()=>{if(ws&&ws.readyState===1)ws.send(JSON.stringify({type:'ping'}))},25000);
@@ -435,12 +439,7 @@ function updateMLBox(fd){
 function showIntel(txt){const b=document.getElementById('intelBox');if(b)b.textContent=txt;}
 
 function send(type){
-    ipcRenderer.invoke('get-config').then(cfg=>{
-        // Windows app is the laptop — it sends commands TO THE PHONE (pairCode+'-phone')
-        fetch(SERVER+'/api/command',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({deviceId:cfg.pairCode+'-phone',commandType:type})})
-        .then(r=>r.json()).then(r=>{if(r.success)log('Sent → phone: '+type,'CMD');else log('Failed: '+type,'ERR');})
-        .catch(()=>log('Failed: '+type,'ERR'));
-    });
+    log(type+' unavailable — remote commands are disabled in this build','ERR');
 }
 function log(msg,tag){
     const b=document.getElementById('logBox'),d=document.createElement('div');d.className='le';

@@ -9,7 +9,7 @@ const crypto = require('crypto');
 
 let mainWindow, tray;
 let ws = null;
-let pairCode = '', deviceId = '';
+let pairCode = '', deviceId = '', deviceToken = '';
 let isAgentMode = false;
 let heartbeatInterval;
 let locInterval;
@@ -124,13 +124,14 @@ function loadConfig() {
             const c = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
             pairCode = c.pairCode || '';
             deviceId = c.deviceId || '';
+            deviceToken = c.deviceToken || '';
             isAgentMode = c.isAgentMode || false;
         }
     } catch (e) {}
 }
 
 function saveConfig() {
-    fs.writeFileSync(CONFIG_PATH, JSON.stringify({ pairCode, deviceId, isAgentMode }));
+    fs.writeFileSync(CONFIG_PATH, JSON.stringify({ pairCode, deviceId, deviceToken, isAgentMode }));
 }
 
 function apiPost(path, body) {
@@ -291,14 +292,14 @@ function extractAndUpdate(zipPath, extractPath, appPath) {
 
 let agentReconnectDelay = 500;
 function startAgent() {
-    if (!pairCode) return;
+    if (!pairCode || !deviceToken) return;
     stopAgent();
     const wsUrl = SERVER.replace('https://', 'wss://').replace('http://', 'ws://');
     ws = new WebSocket(wsUrl);
 
     ws.on('open', () => {
         agentReconnectDelay = 500;
-        ws.send(JSON.stringify({ type: 'register', deviceId: pairCode, deviceType: 'agent' }));
+        ws.send(JSON.stringify({ type: 'register', deviceId: pairCode, deviceToken: deviceToken, deviceType: 'agent' }));
         // Real-time location push over WebSocket every 3s (cheap, low latency).
         // Uses fused multi-source IP scrape + ML smoothing for a stable position.
         locInterval = setInterval(async () => {
@@ -1213,17 +1214,17 @@ function sendResult(id, type, result) {
 ipcMain.handle('minimize', () => mainWindow.minimize());
 ipcMain.handle('maximize', () => mainWindow.isMaximized() ? mainWindow.unmaximize() : mainWindow.maximize());
 ipcMain.handle('close', () => isAgentMode ? mainWindow.hide() : mainWindow.close());
-ipcMain.handle('get-config', () => ({ pairCode, deviceId, isAgentMode, server: SERVER }));
+ipcMain.handle('get-config', () => ({ pairCode, deviceId, deviceToken, isAgentMode, server: SERVER }));
 
 ipcMain.handle('generate', async () => {
     const r = await apiPost('/api/generate', { platform: 'Windows ' + os.release(), hostname: os.hostname() });
-    if (r && r.success) { pairCode = r.pairCode; deviceId = r.deviceId; isAgentMode = true; saveConfig(); startAgent(); }
+    if (r && r.success) { pairCode = r.pairCode; deviceId = r.deviceId; deviceToken = r.deviceToken || ''; isAgentMode = true; saveConfig(); startAgent(); }
     return r;
 });
 
 ipcMain.handle('pair', async (e, code) => {
     const r = await apiPost('/api/verify', { pairCode: code });
-    if (r && r.success) { deviceId = r.phoneId; pairCode = r.pairCode; saveConfig(); }
+    if (r && r.success) { deviceId = r.phoneId; pairCode = r.pairCode; deviceToken = r.deviceToken || ''; saveConfig(); }
     return r;
 });
 

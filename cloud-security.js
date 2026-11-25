@@ -5,10 +5,11 @@ const { tokenMatches } = require("./secure-tracker-api");
 async function authenticateSocketDevice(prisma, deviceId, token, role) {
   if (typeof deviceId !== "string" || !deviceId ||
       typeof token !== "string" || !token ||
-      !["agent", "browser"].includes(role)) return null;
+      !["agent", "browser", "phone"].includes(role)) return null;
   const device = await prisma.device.findUnique({ where: { deviceId: deviceId } });
   if (!device || !tokenMatches(token, device.authTokenHash) ||
-      (role === "agent" && device.deviceType !== "laptop")) return null;
+      (role === "agent" && device.deviceType !== "laptop") ||
+      (role === "phone" && device.deviceType !== "phone")) return null;
   return {
     deviceId: device.deviceId,
     pairCode: device.pairCode,

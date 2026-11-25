@@ -2210,34 +2210,7 @@
     }
 
     function sendCommand(type) {
-      // Determine which device we are and which device to target
-      const targetDeviceId = isLaptop ? phoneDeviceId : laptopDeviceId;
-      if (!targetDeviceId) { showToast('No paired device found'); return; }
-
-      showToast(`Initiating: ${type}...`);
-
-      const statusText = document.getElementById('status-text');
-      const originalText = statusText.textContent;
-      statusText.textContent = `Running ${type.toUpperCase()}...`;
-      statusText.style.color = "var(--accent)";
-
-      // Try WebSocket first (instant)
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        wsSend({ type: 'command', commandType: type, commandId: 'cmd-' + Date.now() });
-      } else {
-        // HTTP fallback
-        api('/api/command', { deviceId: targetDeviceId, commandType: type }).then(data => {
-          if (!data.success) showToast(type + ' failed: ' + (data.error || 'unknown'));
-        });
-      }
-
-      // Reset status after a delay if no result yet
-      setTimeout(() => {
-        if (statusText.textContent.includes(type.toUpperCase())) {
-            statusText.textContent = originalText;
-            statusText.style.color = "var(--primary)";
-        }
-      }, 10000);
+      showToast(type + ' unavailable - remote commands are disabled in this build');
     }
 
     function confirmShutdown() { if (confirm('Shutdown laptop?')) sendCommand('shutdown'); }

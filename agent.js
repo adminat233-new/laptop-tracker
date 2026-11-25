@@ -29,6 +29,7 @@ const FINGERPRINT_FILE = path.join(LOG_DIR, 'wifi-fingerprint.json');
 let ws = null;
 let deviceId = null;
 let pairCode = null;
+let deviceToken = null;
 let reconnectAttempts = 0;
 let isLostMode = false;
 let isAdmin = false;
@@ -2409,7 +2410,7 @@ async function registerWithServer() {
         pairCode = res.pairCode;
         deviceId = res.deviceId || deviceId;
         log('info', `Auto-discovered pairCode: ${pairCode}`);
-        try { fs.writeFileSync(CONFIG_FILE, JSON.stringify({ deviceId, pairCode, createdAt: Date.now() })); } catch(e) {}
+        try { fs.writeFileSync(CONFIG_FILE, JSON.stringify({ deviceId, pairCode, deviceToken, createdAt: Date.now() })); } catch(e) {}
       }
     } catch(e) {}
   }
@@ -2420,7 +2421,7 @@ async function registerWithServer() {
       pairCode = data.pairCode;
       deviceId = data.deviceId || deviceId;
       log('info', `Registered: pairCode=${pairCode}`);
-      try { fs.writeFileSync(CONFIG_FILE, JSON.stringify({ deviceId, pairCode, createdAt: Date.now() })); } catch(e) {}
+      try { fs.writeFileSync(CONFIG_FILE, JSON.stringify({ deviceId, pairCode, deviceToken, createdAt: Date.now() })); } catch(e) {}
     }
   } catch(e) {}
 }
@@ -2432,7 +2433,11 @@ function connect() {
     reconnectAttempts = 0;
     log('info', 'WebSocket connected');
     await registerWithServer();
-    send({ type: 'register', deviceId: pairCode || deviceId, deviceType: 'agent', hostname: os.hostname(), platform: os.platform() });
+    if (!deviceToken) {
+      log('warn', 'Skipping WebSocket registration: no deviceToken for this pair');
+      return;
+    }
+    send({ type: 'register', deviceId: pairCode || deviceId, deviceToken: deviceToken, deviceType: 'agent', hostname: os.hostname(), platform: os.platform() });
     sendForensicHeartbeat().catch(e => log('error', 'Heartbeat failed:', e.message));
     if (ws.pingInterval) clearInterval(ws.pingInterval);
     ws.pingInterval = setInterval(() => { if (ws && ws.readyState === WebSocket.OPEN) ws.ping(); }, 25000);
@@ -2453,19 +2458,8 @@ function connect() {
   ws.on('pong', () => {});
 }
 
-async function startPolling() {
-  setInterval(async () => {
-    try {
-      const res = await fetch(`${API_URL}/poll/${deviceId}`);
-      const data = await res.json();
-      if (data.success && data.commands) {
-        for (const cmd of data.commands) {
-          await handleCommand({ commandId: cmd.commandId, commandType: cmd.commandType, params: cmd.params ? JSON.parse(cmd.params) : {} });
-        }
-      }
-    } catch(e) {}
-  }, 10000);
-}
+// Legacy /poll/:deviceId was never implemented by the server and remote
+// commands are disabled; commands arrive only over the authenticated socket.
 
 function killOldAgents() {
   try {
@@ -2497,14 +2491,19 @@ async function start() {
       const data = JSON.parse(fs.readFileSync(CONFIG_FILE));
       if (data.deviceId) deviceId = data.deviceId;
       if (data.pairCode) { pairCode = data.pairCode; log('info', `Loaded pairCode: ${pairCode}`); }
+      if (data.deviceToken) deviceToken = data.deviceToken;
     } catch(e) {}
   }
 
   const argPC = process.argv.find(a => a.startsWith('--pair='));
   if (argPC) pairCode = argPC.split('=')[1];
+  const argToken = process.argv.find(a => a.startsWith('--token='));
+  if (argToken) deviceToken = argToken.split('=')[1];
   if (process.env.PAIR_CODE) pairCode = process.env.PAIR_CODE;
+  if (process.env.PAIR_TOKEN) deviceToken = process.env.PAIR_TOKEN;
 
   if (!pairCode) log('warn', 'No pairCode. Run browser pairing first.');
+  if (!deviceToken) log('warn', 'No deviceToken — WebSocket registration will be rejected. Generate a fresh authenticated agent command in the browser.');
 
   // Load position history
   try {
@@ -2515,7 +2514,6 @@ async function start() {
   } catch(e) {}
 
   connect();
-  startPolling();
   setInterval(sendForensicHeartbeat, 10000);
 }
 

@@ -1,6 +1,6 @@
 # FIND Agent Auto-Installer
 # Run: powershell -Command "IEX (Invoke-WebRequest -Uri 'https://laptop-tracker-k9vi.onrender.com/agent-installer.ps1' -UseBasicParsing).Content"
-param([string]$PairCode, [string]$ServerUrl = "https://laptop-tracker-k9vi.onrender.com")
+param([string]$PairCode, [string]$DeviceToken, [string]$ServerUrl = "https://laptop-tracker-k9vi.onrender.com")
 
 $ErrorActionPreference = "SilentlyContinue"
 $AgentDir = "$env:USERPROFILE\.find-agent"
@@ -18,6 +18,10 @@ if (-not $PairCode) {
 }
 if (-not $PairCode) {
     Write-Host "No pair code provided. Exiting." -ForegroundColor Red
+    exit 1
+}
+if (-not $DeviceToken) {
+    Write-Host "No device token provided. Generate a fresh authenticated command in the browser." -ForegroundColor Red
     exit 1
 }
 
@@ -57,6 +61,7 @@ Pop-Location
 # Save config
 $Config = @{
     pairCode = $PairCode
+    deviceToken = $DeviceToken
     deviceId = (-join ((1..16) | ForEach-Object { '{0:X}' -f (Get-Random -Maximum 16) }))
     createdAt = [DateTimeOffset]::Now.ToUnixTimeMilliseconds()
 } | ConvertTo-Json
@@ -92,7 +97,7 @@ try {
 
 # Start agent NOW
 Write-Host "[..] Starting agent..." -ForegroundColor Yellow
-$proc = Start-Process node -ArgumentList "`"$AgentFile`" --pair=$PairCode" -WindowStyle Hidden -PassThru
+$proc = Start-Process node -ArgumentList "`"$AgentFile`" --pair=$PairCode --token=$DeviceToken" -WindowStyle Hidden -PassThru
 Start-Sleep -Seconds 2
 
 # Verify connection

@@ -16,7 +16,7 @@ To start both the secure cloud relay and the intelligence agent automatically:
     - **Persistence Check**: Scan for unauthorized startup entries and services.
 - **AI-Driven Interface**: A modern, human-like interaction node that provides real-time telemetry updates and intelligence briefings.
 - **Forensic Terminal**: Live-streaming log of all agent activities and ethical hacking tool outputs.
-- **Quantum Handshake**: Secure, binary-signature based pairing between the target node and control phone.
+- **Authenticated Pairing**: An 8-character pairing code plus a per-device token. The token is stored as a hash and required for WebSocket registration; remote commands are disabled in this build.
 
 ## 🛠️ Tech Stack
 - **Backend**: Node.js, Express, Prisma, WebSocket.

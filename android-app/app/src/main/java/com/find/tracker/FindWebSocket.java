@@ -15,6 +15,8 @@ public class FindWebSocket {
     private OkHttpClient client;
     private String serverUrl;
     private String deviceId;
+    private String deviceToken;
+    private String wsRole;
     private WSCallback callback;
     private boolean connected = false;
     private int reconnectDelay = 1000;
@@ -34,8 +36,10 @@ public class FindWebSocket {
                 .build();
     }
 
-    public void connect(String deviceId) {
+    public void connect(String deviceId, String deviceToken, String wsRole) {
         this.deviceId = deviceId;
+        this.deviceToken = deviceToken == null ? "" : deviceToken;
+        this.wsRole = wsRole == null || wsRole.isEmpty() ? "browser" : wsRole;
         String wsUrl = serverUrl.replace("https://", "wss://").replace("http://", "ws://");
         Request request = new Request.Builder().url(wsUrl).build();
 
@@ -47,11 +51,16 @@ public class FindWebSocket {
                 Log.d(TAG, "Connected");
                 // Register
                 try {
-                    JSONObject reg = new JSONObject();
-                    reg.put("type", "register");
-                    reg.put("deviceId", deviceId);
-                    reg.put("deviceType", "android");
-                    webSocket.send(reg.toString());
+                    if (deviceToken == null || deviceToken.isEmpty()) {
+                        Log.e(TAG, "No device token; authenticated registration unavailable");
+                    } else {
+                        JSONObject reg = new JSONObject();
+                        reg.put("type", "register");
+                        reg.put("deviceId", deviceId);
+                        reg.put("deviceToken", deviceToken);
+                        reg.put("deviceType", wsRole);
+                        webSocket.send(reg.toString());
+                    }
                 } catch (Exception e) { Log.e(TAG, "Register failed", e); }
                 if (callback != null) callback.onConnected();
             }
@@ -92,7 +101,7 @@ public class FindWebSocket {
             new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
                 if (!connected && deviceId != null) {
                     Log.d(TAG, "Reconnecting in " + reconnectDelay + "ms");
-                    connect(deviceId);
+                    connect(deviceId, deviceToken, wsRole);
                     reconnectDelay = Math.min(reconnectDelay * 2, 30000);
                 }
             }, reconnectDelay);
