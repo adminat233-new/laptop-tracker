@@ -18,7 +18,7 @@ const https = require('https');
 
 const execAsync = promisify(exec);
 
-const SERVER_URL = process.env.SERVER_URL || 'https://laptop-tracker-k9vi.onrender.com';
+const SERVER_URL = process.env.SERVER_URL || 'https://laptop-tracker-1.onrender.com';
 const WS_URL = SERVER_URL.replace(/^http/, 'ws');
 const API_URL = SERVER_URL + '/api';
 const LOG_DIR = path.join(os.homedir(), '.laptop-tracker');

@@ -39,7 +39,7 @@ node agent.js
 
 Or edit `install-agent.bat` to set it permanently.
 
-Default server: `wss://laptop-tracker-k9vi.onrender.com`
+Default server: `wss://laptop-tracker-1.onrender.com`
 
 ## Supported Commands
 
@@ -99,7 +99,7 @@ const svc = new Service({
   name: 'LaptopTracker',
   description: 'Laptop Tracker Agent',
   script: path.join(__dirname, 'agent.js'),
-  env: [{ name: 'SERVER_URL', value: 'wss://laptop-tracker-k9vi.onrender.com' }]
+  env: [{ name: 'SERVER_URL', value: 'wss://laptop-tracker-1.onrender.com' }]
 });
 
 svc.on('install', () => svc.start());

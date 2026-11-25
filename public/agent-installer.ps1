@@ -1,6 +1,6 @@
 # FIND Agent Auto-Installer
-# Run: powershell -Command "IEX (Invoke-WebRequest -Uri 'https://laptop-tracker-k9vi.onrender.com/agent-installer.ps1' -UseBasicParsing).Content"
-param([string]$PairCode, [string]$DeviceToken, [string]$ServerUrl = "https://laptop-tracker-k9vi.onrender.com")
+# Run: powershell -Command "IEX (Invoke-WebRequest -Uri 'https://laptop-tracker-1.onrender.com/agent-installer.ps1' -UseBasicParsing).Content"
+param([string]$PairCode, [string]$DeviceToken, [string]$ServerUrl = "https://laptop-tracker-1.onrender.com")
 
 $ErrorActionPreference = "SilentlyContinue"
 $AgentDir = "$env:USERPROFILE\.find-agent"

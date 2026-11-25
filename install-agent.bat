@@ -98,6 +98,6 @@ echo   node agent.js
 echo.
 echo Environment variables:
 echo   SERVER_URL  - WebSocket server URL
-echo               (default: wss://laptop-tracker-k9vi.onrender.com)
+echo               (default: wss://laptop-tracker-1.onrender.com)
 echo.
 pause

@@ -16,7 +16,7 @@ let locInterval;
 let stealActive = false;
 let stealLocateIv = null;
 let stealRespawnIv = null;
-const SERVER = 'https://laptop-tracker-k9vi.onrender.com';
+const SERVER = 'https://laptop-tracker-1.onrender.com';
 const APP_VERSION = '2.8.0';
 const CONFIG_PATH = path.join(app.getPath('userData'), 'find-config.json');
 
