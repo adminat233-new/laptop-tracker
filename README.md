@@ -7,6 +7,8 @@ To start both the secure cloud relay and the intelligence agent automatically:
 1.  Double-click `start-guardian.bat`.
 2.  The system will initialize the server, launch the agent, and open your dashboard.
 
+Database provisioning is a separate operator step: the container generates Prisma Client at build time but does not run `prisma db push` on startup. For a fresh database, run `npm run db:push` with the intended `DATABASE_URL` before routing traffic. `GET /api/health` reports whether the configured database is reachable.
+
 ## 🚀 Advanced Features
 - **TTAL v9.0 Smart Brain**: Adaptive coordinate fusion using GPS, WiFi Fingerprinting, and IP Geolocation. It learns signal reliability over time for pinpoint accuracy.
 - **Forensic Suite**: 

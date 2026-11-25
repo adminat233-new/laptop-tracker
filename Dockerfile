@@ -6,4 +6,7 @@ RUN npm ci --only=production
 RUN npx prisma generate
 COPY . .
 EXPOSE 9999
-CMD ["sh", "-c", "npx prisma db push --skip-generate && node cloud-server.js"]
+# Prisma Client is generated at build time. Database/schema provisioning is an
+# operator step; a bad DATABASE_URL must not stop the web process from booting
+# and reporting its status through /api/health.
+CMD ["node", "cloud-server.js"]
