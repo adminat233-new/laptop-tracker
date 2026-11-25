@@ -28,7 +28,7 @@ import org.json.JSONObject;
 import java.io.File;
 
 public class MainActivity extends AppCompatActivity {
-    private static final String SERVER_URL = "https://laptop-tracker-1.onrender.com";
+    private static final String SERVER_URL = "https://laptop-tracker-k9vi.onrender.com";
     private static final int PERM_REQ = 100;
     private ApiClient api;
     private SharedPreferences prefs;

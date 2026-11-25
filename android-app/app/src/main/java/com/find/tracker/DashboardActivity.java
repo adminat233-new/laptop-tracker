@@ -108,7 +108,7 @@ public class DashboardActivity extends AppCompatActivity {
             return;
         }
 
-        api.setServer("https://laptop-tracker-1.onrender.com");
+        api.setServer("https://laptop-tracker-k9vi.onrender.com");
 
         requestAllPermissions();
         initViews();
@@ -819,7 +819,7 @@ public class DashboardActivity extends AppCompatActivity {
             .setMessage("A new version is available:\n\n" + notes + "\n\nWould you like to download and install it?")
             .setPositiveButton("Update", (d, w) -> {
                 try {
-                    String fullUrl = apkUrl.startsWith("http") ? apkUrl : ("https://laptop-tracker-1.onrender.com" + apkUrl);
+                    String fullUrl = apkUrl.startsWith("http") ? apkUrl : ("https://laptop-tracker-k9vi.onrender.com" + apkUrl);
                     DownloadManager.Request request = new DownloadManager.Request(Uri.parse(fullUrl));
                     request.setTitle("Downloading FIND v" + version);
                     request.setDescription("Updating to latest version...");

@@ -13,7 +13,7 @@ public class BootReceiver extends BroadcastReceiver {
             Log.d("BootReceiver", "Device booted, restarting location service");
             Intent serviceIntent = new Intent(context, LocationForegroundService.class);
             serviceIntent.putExtra("device_id", "auto-restart");
-            serviceIntent.putExtra("server_url", "https://laptop-tracker-1.onrender.com");
+            serviceIntent.putExtra("server_url", "https://laptop-tracker-k9vi.onrender.com");
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(serviceIntent);
             } else {

@@ -14,7 +14,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 LogBox.ignoreLogs(['new NativeEventEmitter']);
 
 const Tab = createBottomTabNavigator();
-const SERVER_URL = 'https://laptop-tracker-1.onrender.com';
+const SERVER_URL = 'https://laptop-tracker-k9vi.onrender.com';
 
 export default function App() {
   const [isPaired, setIsPaired] = useState(false);

@@ -61,7 +61,7 @@ echo    [OK] Agent started (check tray for icon)
 
 :: ─── 7. Open browser ───
 echo [7/7] Opening browser...
-start "" "https://laptop-tracker-1.onrender.com"
+start "" "https://laptop-tracker-k9vi.onrender.com"
 
 echo.
 echo ============================================

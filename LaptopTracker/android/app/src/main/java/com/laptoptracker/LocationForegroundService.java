@@ -62,7 +62,7 @@ public class LocationForegroundService extends Service {
         deviceId = intent.getStringExtra("device_id");
         serverUrl = intent.getStringExtra("server_url");
         if (deviceId == null) deviceId = "unknown";
-        if (serverUrl == null) serverUrl = "https://laptop-tracker-1.onrender.com";
+        if (serverUrl == null) serverUrl = "https://laptop-tracker-k9vi.onrender.com";
 
         Notification notification = buildNotification();
         startForeground(NOTIFICATION_ID, notification);
